@@ -63,6 +63,15 @@ EOF
   esac
 done
 
+# Temp file cleanup trap
+TEMP_FILES=()
+cleanup_temp_files() {
+  for tf in "${TEMP_FILES[@]}"; do
+    [[ -f "$tf" ]] && rm -f "$tf"
+  done
+}
+trap cleanup_temp_files EXIT
+
 if [[ -z "$TARGET" ]]; then
   log_error "Usage: ./uninstall.sh [--confirm] /path/to/repo"
   exit 1
@@ -227,6 +236,7 @@ CLAUDE_MD="$TARGET/CLAUDE.md"
 if [[ -f "$CLAUDE_MD" ]] && grep -qF "$SENTINEL_START" "$CLAUDE_MD"; then
   if $CONFIRM; then
     tmp_md=$(mktemp)
+    TEMP_FILES+=("$tmp_md")
     awk -v start="$SENTINEL_START" -v end="$SENTINEL_END" \
         'BEGIN { skip=0 }
          $0 == start { skip=1; next }
@@ -251,6 +261,7 @@ MK_SENTINEL_END="# claude-pm-toolkit:end"
 if [[ -f "$TARGET_MAKEFILE" ]] && grep -qF "$MK_SENTINEL_START" "$TARGET_MAKEFILE"; then
   if $CONFIRM; then
     tmp_mk=$(mktemp)
+    TEMP_FILES+=("$tmp_mk")
     awk -v start="$MK_SENTINEL_START" -v end="$MK_SENTINEL_END" \
         'BEGIN { skip=0 }
          $0 == start { skip=1; next }
@@ -282,41 +293,39 @@ if [[ -f "$SETTINGS" ]]; then
   if $hooks_found; then
     if $CONFIRM; then
       # Remove hook entries that reference toolkit scripts
-      # This uses python3 for reliable JSON manipulation
-      python3 -c "
-import json, sys
+      # Build a jq filter to remove toolkit hook commands
+      JQ_SCRIPTS=""
+      for script in "${TOOLKIT_HOOK_SCRIPTS[@]}"; do
+        JQ_SCRIPTS="${JQ_SCRIPTS:+$JQ_SCRIPTS, }\"$script\""
+      done
 
-with open('$SETTINGS') as f:
-    data = json.load(f)
-
-toolkit_scripts = set($( printf '['; for s in "${TOOLKIT_HOOK_SCRIPTS[@]}"; do printf '"%s",' "$s"; done; printf ']' ))
-
-if 'hooks' in data:
-    for event_name in list(data['hooks'].keys()):
-        matchers = data['hooks'][event_name]
-        cleaned_matchers = []
-        for matcher in matchers:
-            if 'hooks' in matcher:
-                cleaned_hooks = [h for h in matcher['hooks'] if h.get('command', '') not in toolkit_scripts]
-                if cleaned_hooks:
-                    matcher['hooks'] = cleaned_hooks
-                    cleaned_matchers.append(matcher)
-            else:
-                cleaned_matchers.append(matcher)
-        if cleaned_matchers:
-            data['hooks'][event_name] = cleaned_matchers
-        else:
-            del data['hooks'][event_name]
-
-    # Remove hooks key entirely if empty
-    if not data['hooks']:
-        del data['hooks']
-
-with open('$SETTINGS', 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-" 2>/dev/null
-      log_ok "Removed toolkit hooks from settings.json"
+      if jq --arg scripts "placeholder" '
+        . as $root |
+        [$root.hooks // {} | keys[]] as $events |
+        reduce $events[] as $event ($root;
+          .hooks[$event] = [
+            .hooks[$event][] |
+            if .hooks then
+              .hooks = [.hooks[] | select(.command | IN('"$JQ_SCRIPTS"') | not)] |
+              if (.hooks | length) > 0 then . else empty end
+            else
+              .
+            end
+          ] |
+          if (.hooks[$event] | length) == 0 then del(.hooks[$event]) else . end
+        ) |
+        if (.hooks // {} | length) == 0 then del(.hooks) else . end
+      ' "$SETTINGS" > "${SETTINGS}.tmp" 2>/dev/null; then
+        mv "${SETTINGS}.tmp" "$SETTINGS"
+        log_ok "Removed toolkit hooks from settings.json"
+      else
+        rm -f "${SETTINGS}.tmp"
+        log_warn "Could not remove hooks from settings.json automatically"
+        log_warn "Manually remove entries referencing these scripts:"
+        for script in "${TOOLKIT_HOOK_SCRIPTS[@]}"; do
+          printf "  - %s\n" "$script"
+        done
+      fi
     else
       log_info "Would remove toolkit hooks from settings.json"
     fi
