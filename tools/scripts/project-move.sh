@@ -8,6 +8,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pm.config.sh"
 
+# Cleanup trap for temp files
+TEMP_FILES=()
+cleanup_temp_files() {
+  for tf in "${TEMP_FILES[@]}"; do
+    [[ -f "$tf" ]] && rm -f "$tf"
+  done
+}
+trap cleanup_temp_files EXIT
+
 show_help() {
   cat <<'HELPEOF'
 project-move.sh - Move an issue to a workflow state
@@ -229,6 +238,7 @@ if [ "$STATE" = "Done" ]; then
     else
       # Detection: do containers exist? (prints: found|empty|error)
       CHECK_STDERR=$(mktemp)
+      TEMP_FILES+=("$CHECK_STDERR")
       CHECK_STATUS=$(COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT" make -C "$REPO_ROOT" --no-print-directory compose-check 2>"$CHECK_STDERR") || true
 
       case "$CHECK_STATUS" in
@@ -250,7 +260,6 @@ if [ "$STATE" = "Done" ]; then
           cat "$CHECK_STDERR" 2>/dev/null
           ;;
       esac
-      rm -f "$CHECK_STDERR"
     fi
   fi
 
