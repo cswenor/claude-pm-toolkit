@@ -281,8 +281,7 @@ if ! $UPDATE_MODE; then
     log_ok "  Priority: Critical, High, Normal"
 
     log_info "Adding Area field..."
-    read -r -p "$(printf "${CYAN}Area options (comma-separated)${RESET} [${BOLD}Frontend,Backend,Infra,Docs${RESET}]: ")" AREA_OPTS
-    AREA_OPTS="${AREA_OPTS:-Frontend,Backend,Infra,Docs}"
+    AREA_OPTS=$(prompt_with_default "Area options (comma-separated)" "Frontend,Backend,Infra,Docs")
     gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Area" --data-type "SINGLE_SELECT" \
       --single-select-options "$AREA_OPTS" 2>/dev/null || \
     gh project field-create "$PROJECT_NUMBER" --owner @me --name "Area" --data-type "SINGLE_SELECT" \
