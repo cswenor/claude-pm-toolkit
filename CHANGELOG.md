@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
 - `worktree-setup.sh`: Use `BASH_SOURCE[0]` instead of `$0` for symlink/sourcing portability
 - `claude-secret-check-path.sh`: Only expand `~` and `~/...`, not `~user/...` form
 - `project-add.sh`: Replace `seq` with C-style for loop (word-splitting, POSIX portability)
+- `worktree-cleanup.sh`: Add main/master fallback for DEFAULT_BRANCH detection (consistent with project-move.sh)
+- `codex-mcp-overrides.sh`: Replace unquoted for-in loops with while-read (word-splitting safety)
+- `project-archive-done.sh`: Add early guard for unsubstituted `{{PREFIX}}` placeholders
+- `install.sh`: Initialize `ORIGINAL_INSTALLED_AT` and `PREVIOUS_VERSION` before conditional assignment
 
 ### Changed
 - All scripts: Standardized shebang to `#!/usr/bin/env bash` (11 scripts updated)
