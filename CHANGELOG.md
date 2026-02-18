@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - `install.sh --update`: Project ID change detection
 - `install.sh --update`: Separate `updated_at` timestamp in metadata (preserves `installed_at`)
 - `validate.sh`: Quick inline validation in `pm-validate` Makefile target (file presence + placeholder check)
+- `install.sh`: EXIT trap for temp file cleanup (8 mktemp calls registered)
 - `project-move.sh`: EXIT trap for temp file cleanup (prevents leak on early exit)
 - `worktree-setup.sh`: Numeric validation for issue number
 - `worktree-setup.sh`: Port offset bounds validation (3200-11000 range)

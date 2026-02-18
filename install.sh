@@ -29,6 +29,15 @@ log_error()   { printf "${RED}[error]${RESET} %s\n" "$*" >&2; }
 log_skip()    { printf "${YELLOW}[skip]${RESET}  %s\n" "$*"; }
 log_section() { printf "\n${BOLD}%s${RESET}\n%s\n" "$*" "$(printf '%0.s-' {1..60})"; }
 
+# Cleanup trap for temp files
+TEMP_FILES=()
+cleanup_temp_files() {
+  for tf in "${TEMP_FILES[@]}"; do
+    [[ -f "$tf" ]] && rm -f "$tf"
+  done
+}
+trap cleanup_temp_files EXIT
+
 # ---------------------------------------------------------------------------
 # Help
 # ---------------------------------------------------------------------------
@@ -668,6 +677,7 @@ merge_settings_json() {
 
   local tmp_src
   tmp_src=$(mktemp)
+  TEMP_FILES+=("$tmp_src")
   apply_replacements_to_content "$src_file" "$tmp_src"
 
   local merged
@@ -690,7 +700,6 @@ merge_settings_json() {
     .hooks.Stop         = (merge_hook_matchers(($dst.hooks.Stop         // []);  ($src.hooks.Stop         // [])))
   ' "$dst_file" "$tmp_src")
 
-  rm -f "$tmp_src"
   echo "$merged" > "$dst_file"
   log_ok "Merged .claude/settings.json"
 }
@@ -712,6 +721,7 @@ merge_claude_md() {
 
   local tmp_sections
   tmp_sections=$(mktemp)
+  TEMP_FILES+=("$tmp_sections")
   apply_replacements_to_content "$SECTIONS_FILE" "$tmp_sections"
 
   if [[ ! -f "$target_claude_md" ]]; then
@@ -728,7 +738,6 @@ merge_claude_md() {
       echo ""
       echo "$SENTINEL_END"
     } > "$target_claude_md"
-    rm -f "$tmp_sections"
     log_ok "Created CLAUDE.md"
     return
   fi
@@ -738,6 +747,7 @@ merge_claude_md() {
     log_info "Updating existing claude-pm-toolkit section in CLAUDE.md ..."
     local tmp_md
     tmp_md=$(mktemp)
+    TEMP_FILES+=("$tmp_md")
     awk -v start="$SENTINEL_START" -v end="$SENTINEL_END" \
         -v replacement_file="$tmp_sections" \
         'BEGIN { printing=1 }
@@ -746,7 +756,6 @@ merge_claude_md() {
          printing    { print }
         ' "$target_claude_md" > "$tmp_md"
     mv "$tmp_md" "$target_claude_md"
-    rm -f "$tmp_sections"
     log_ok "Updated claude-pm-toolkit section in CLAUDE.md"
     return
   fi
@@ -762,7 +771,6 @@ merge_claude_md() {
     echo ""
     echo "$SENTINEL_END"
   } >> "$target_claude_md"
-  rm -f "$tmp_sections"
   log_ok "Appended to CLAUDE.md"
 }
 
@@ -812,9 +820,9 @@ while IFS= read -r src_file; do
       COUNT_MERGED=$((COUNT_MERGED+1))
     else
       tmp_dst=$(mktemp)
+      TEMP_FILES+=("$tmp_dst")
       apply_replacements_to_content "$src_file" "$tmp_dst"
       cp "$tmp_dst" "$dst_file"
-      rm -f "$tmp_dst"
       log_ok "Created: $rel"
       COUNT_COPIED=$((COUNT_COPIED+1))
     fi
@@ -837,9 +845,9 @@ while IFS= read -r src_file; do
     is_new=false
     [[ ! -f "$dst_file" ]] && is_new=true
     tmp_dst=$(mktemp)
+    TEMP_FILES+=("$tmp_dst")
     apply_replacements_to_content "$src_file" "$tmp_dst"
     cp "$tmp_dst" "$dst_file"
-    rm -f "$tmp_dst"
     if $is_new; then
       log_ok "Created: $rel"
       COUNT_COPIED=$((COUNT_COPIED+1))
@@ -865,9 +873,9 @@ while IFS= read -r src_file; do
 
   # Apply replacements and copy
   tmp_dst=$(mktemp)
+  TEMP_FILES+=("$tmp_dst")
   apply_replacements_to_content "$src_file" "$tmp_dst"
   cp "$tmp_dst" "$dst_file"
-  rm -f "$tmp_dst"
   log_ok "Copied: $rel"
   COUNT_COPIED=$((COUNT_COPIED+1))
 
@@ -1014,6 +1022,7 @@ if [[ -f "$TARGET_MAKEFILE" ]] && [[ -f "$MAKEFILE_TARGETS" ]]; then
   if grep -qF "$MAKEFILE_SENTINEL_START" "$TARGET_MAKEFILE"; then
     # Update existing sentinel block
     tmp_mk=$(mktemp)
+    TEMP_FILES+=("$tmp_mk")
     awk -v start="$MAKEFILE_SENTINEL_START" -v end="$MAKEFILE_SENTINEL_END" \
         'BEGIN { skip=0 }
          $0 == start { skip=1; next }
