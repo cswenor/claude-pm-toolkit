@@ -180,7 +180,7 @@ if [[ "$PROJECT_NUMBER" == "new" ]]; then
   PROJECT_TITLE=$(prompt_with_default "Project board title" "$REPO")
   log_info "Creating project '$PROJECT_TITLE'..."
   CREATE_RESULT=$(gh project create --owner "$OWNER" --title "$PROJECT_TITLE" --format json 2>&1) || {
-    # Fallback for personal accounts (--owner @me)
+    log_warn "Project create failed for owner '$OWNER', trying personal account (@me)..."
     CREATE_RESULT=$(gh project create --owner @me --title "$PROJECT_TITLE" --format json 2>&1) || {
       log_error "Failed to create project: $CREATE_RESULT"
       exit 1
