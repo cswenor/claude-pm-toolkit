@@ -269,6 +269,35 @@ if [ "$STATE" = "Done" ]; then
     fi
   fi
 
+  # Record outcome to memory (best-effort, non-blocking)
+  if [ -x "$REPO_ROOT/tools/scripts/pm-record.sh" ]; then
+    REPO_NAME=$(pm_get_repo 2>/dev/null || echo "")
+    PR_NUM=""
+    REVIEW_ROUNDS=0
+    AREA_LABEL=""
+
+    # Try to find the linked PR
+    if command -v gh &>/dev/null && [ -n "$REPO_NAME" ]; then
+      PR_DATA=$(gh pr list --repo "$PM_OWNER/$REPO_NAME" --state merged --search "Fixes #$ISSUE_NUM" --json number,reviews --limit 1 2>/dev/null || echo "")
+      if [ -n "$PR_DATA" ] && [ "$PR_DATA" != "[]" ]; then
+        PR_NUM=$(echo "$PR_DATA" | jq -r '.[0].number // empty' 2>/dev/null || echo "")
+        REVIEW_ROUNDS=$(echo "$PR_DATA" | jq -r '.[0].reviews | length // 0' 2>/dev/null || echo "0")
+      fi
+    fi
+
+    # Try to detect area from labels
+    if command -v gh &>/dev/null && [ -n "$REPO_NAME" ]; then
+      AREA_LABEL=$(gh issue view "$ISSUE_NUM" --repo "$PM_OWNER/$REPO_NAME" --json labels --jq '.labels[] | select(.name | startswith("area:")) | .name | sub("area:"; "")' 2>/dev/null | head -1 || echo "")
+    fi
+
+    "$REPO_ROOT/tools/scripts/pm-record.sh" outcome \
+      --issue "$ISSUE_NUM" \
+      ${PR_NUM:+--pr "$PR_NUM"} \
+      --result merged \
+      ${REVIEW_ROUNDS:+--rounds "$REVIEW_ROUNDS"} \
+      ${AREA_LABEL:+--area "$AREA_LABEL"} 2>/dev/null || true
+  fi
+
   # Inform about worktree (do NOT auto-remove -- per non-goals)
   if [ -x "$REPO_ROOT/tools/scripts/worktree-cleanup.sh" ]; then
     WT_CHECK=$("$REPO_ROOT/tools/scripts/worktree-cleanup.sh" "$ISSUE_NUM" --check 2>/dev/null || true)

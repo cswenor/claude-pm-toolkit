@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - `pm-record.sh`: CLI utility for recording decisions (`decision`), outcomes (`outcome`), and board state (`board`) to `.claude/memory/` JSONL files
 - `.claude/memory/`: Persistent memory directory for cross-session learning (decisions.jsonl, outcomes.jsonl, board-cache.json)
 - `settings.json`: SessionStart hook configuration (5-second timeout, fires on all session types)
+- `project-move.sh`: Auto-records outcome to `.claude/memory/outcomes.jsonl` on Done transition (linked PR, review rounds, area label)
 
 ## [0.4.0] - 2026-02-18
 
