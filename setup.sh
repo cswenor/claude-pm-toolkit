@@ -16,12 +16,15 @@ set -euo pipefail
 # removed in a future version.
 
 echo ""
-echo "NOTE: setup.sh is deprecated. Prefer install.sh instead:"
+echo "WARNING: setup.sh is deprecated and will be removed in a future version."
+echo ""
+echo "Use install.sh instead:"
 echo "  ./install.sh /path/to/repo        # Install into existing repo"
+echo "  ./install.sh --update /path/to/repo  # Update existing installation"
 echo "  ./install.sh .                     # Template mode (this repo)"
 echo ""
-echo "Continuing with setup.sh..."
-echo ""
+echo "Continuing with setup.sh in 3 seconds... (Ctrl-C to cancel)"
+sleep 3
 
 # Original setup.sh follows:
 # setup.sh - Configure this repository by replacing template placeholders
