@@ -73,6 +73,7 @@ REQUIRED_FILES=(
   "tools/scripts/project-add.sh"
   "tools/scripts/project-move.sh"
   "tools/scripts/project-status.sh"
+  "tools/scripts/project-archive-done.sh"
   "tools/scripts/worktree-setup.sh"
   "tools/scripts/worktree-detect.sh"
   "tools/scripts/worktree-cleanup.sh"
@@ -83,6 +84,7 @@ REQUIRED_FILES=(
   ".claude/skills/weekly/SKILL.md"
   "docs/PM_PLAYBOOK.md"
   "docs/PM_PROJECT_CONFIG.md"
+  ".claude-pm-toolkit.json"
 )
 
 for f in "${REQUIRED_FILES[@]}"; do
@@ -99,6 +101,10 @@ OPTIONAL_FILES=(
   "tools/scripts/find-plan.sh"
   "tools/scripts/tmux-session.sh"
   "tools/scripts/portfolio-notify.sh"
+  "tools/scripts/codex-mcp-overrides.sh"
+  "tools/config/command-guard.conf"
+  "tools/config/secret-patterns.json"
+  "tools/config/secret-paths.conf"
   "reports/weekly/.gitkeep"
   "reports/weekly/analysis/.gitkeep"
 )
@@ -212,6 +218,15 @@ if [[ -f "$CONFIG_FILE" ]]; then
   else
     fail "PM_WORKFLOW_ACTIVE is empty or TODO — project-move.sh will fail"
   fi
+
+  # Check for unreplaced placeholders in any field (catches broken installs)
+  UNRESOLVED_COUNT=$(grep -cE '^PM_[A-Z_]+="[^"]*\{\{' "$CONFIG_FILE" 2>/dev/null || true)
+  UNRESOLVED_COUNT="${UNRESOLVED_COUNT:-0}"
+  if [[ "$UNRESOLVED_COUNT" -eq 0 ]]; then
+    pass "No unreplaced {{...}} placeholders in config values"
+  else
+    fail "$UNRESOLVED_COUNT config value(s) contain unreplaced {{...}} placeholders"
+  fi
 else
   fail "pm.config.sh not found"
 fi
@@ -225,8 +240,19 @@ CLAUDE_MD="$TARGET/CLAUDE.md"
 if [[ -f "$CLAUDE_MD" ]]; then
   pass "CLAUDE.md exists"
 
-  if grep -qF "claude-pm-toolkit:start" "$CLAUDE_MD"; then
-    pass "PM toolkit sentinel markers present"
+  HAS_START=$(grep -cF "claude-pm-toolkit:start" "$CLAUDE_MD" || echo 0)
+  HAS_END=$(grep -cF "claude-pm-toolkit:end" "$CLAUDE_MD" || echo 0)
+
+  if [[ "$HAS_START" -gt 0 ]] && [[ "$HAS_END" -gt 0 ]]; then
+    # Count lines between sentinels (should have content)
+    SENTINEL_LINES=$(awk '/claude-pm-toolkit:start/{found=1;next} /claude-pm-toolkit:end/{found=0} found{c++} END{print c+0}' "$CLAUDE_MD")
+    if [[ "$SENTINEL_LINES" -gt 0 ]]; then
+      pass "PM toolkit sentinel block present ($SENTINEL_LINES lines of content)"
+    else
+      fail "PM toolkit sentinel block is empty (start/end markers present but no content)"
+    fi
+  elif [[ "$HAS_START" -gt 0 ]]; then
+    fail "Sentinel start marker found but no end marker — CLAUDE.md may be corrupted"
   else
     warn "No claude-pm-toolkit sentinel markers — toolkit sections may not be integrated"
   fi
@@ -242,6 +268,13 @@ log_section "6. Claude Settings (hooks)"
 SETTINGS_FILE="$TARGET/.claude/settings.json"
 if [[ -f "$SETTINGS_FILE" ]]; then
   pass ".claude/settings.json exists"
+
+  # Validate JSON structure before inspecting hooks
+  if ! jq empty "$SETTINGS_FILE" 2>/dev/null; then
+    fail ".claude/settings.json is not valid JSON — may be corrupted"
+  else
+    pass ".claude/settings.json is valid JSON"
+  fi
 
   if jq -e '.hooks' "$SETTINGS_FILE" >/dev/null 2>&1; then
     HOOK_COUNT=$(jq '[.hooks | to_entries[].value | length] | add // 0' "$SETTINGS_FILE")
