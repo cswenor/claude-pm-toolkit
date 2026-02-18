@@ -575,9 +575,15 @@ apply_replacements_to_content() {
     local fallback="${REPLACE_PAIRS[$((i+2))]}"
     i=$((i+3))
 
-    if [[ -n "$value" ]]; then
+    # Use value if set, else fallback, else leave placeholder
+    local effective="$value"
+    if [[ -z "$effective" && -n "$fallback" ]]; then
+      effective="$fallback"
+    fi
+
+    if [[ -n "$effective" ]]; then
       # Use awk with index() for fixed-string matching (no regex interpretation)
-      awk -v ph="$placeholder" -v val="$value" '
+      awk -v ph="$placeholder" -v val="$effective" '
         {
           while (idx = index($0, ph)) {
             $0 = substr($0, 1, idx-1) val substr($0, idx+length(ph))
@@ -892,22 +898,33 @@ log_section "Saving configuration metadata"
 
 TOOLKIT_VERSION=$(cd "$TOOLKIT_DIR" && git log --oneline -1 --format='%h' 2>/dev/null || echo "unknown")
 
-cat > "$METADATA_FILE" <<METADATA_EOF
-{
-  "toolkit_version": "$TOOLKIT_VERSION",
-  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "owner": "$OWNER",
-  "repo": "$REPO",
-  "project_number": "$PROJECT_NUMBER",
-  "project_id": "$PROJECT_ID",
-  "prefix_lower": "$PREFIX_LOWER",
-  "prefix_upper": "$PREFIX_UPPER",
-  "display_name": "$DISPLAY_NAME",
-  "test_command": "$TEST_COMMAND",
-  "setup_command": "$SETUP_COMMAND",
-  "dev_command": "$DEV_COMMAND"
-}
-METADATA_EOF
+jq -n \
+  --arg toolkit_version "$TOOLKIT_VERSION" \
+  --arg installed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg owner "$OWNER" \
+  --arg repo "$REPO" \
+  --arg project_number "$PROJECT_NUMBER" \
+  --arg project_id "$PROJECT_ID" \
+  --arg prefix_lower "$PREFIX_LOWER" \
+  --arg prefix_upper "$PREFIX_UPPER" \
+  --arg display_name "$DISPLAY_NAME" \
+  --arg test_command "$TEST_COMMAND" \
+  --arg setup_command "$SETUP_COMMAND" \
+  --arg dev_command "$DEV_COMMAND" \
+  '{
+    toolkit_version: $toolkit_version,
+    installed_at: $installed_at,
+    owner: $owner,
+    repo: $repo,
+    project_number: $project_number,
+    project_id: $project_id,
+    prefix_lower: $prefix_lower,
+    prefix_upper: $prefix_upper,
+    display_name: $display_name,
+    test_command: $test_command,
+    setup_command: $setup_command,
+    dev_command: $dev_command
+  }' > "$METADATA_FILE"
 
 log_ok "Saved .claude-pm-toolkit.json (used by --update mode)"
 

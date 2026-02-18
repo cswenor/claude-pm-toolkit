@@ -429,7 +429,7 @@ If you are analyzing the **most recent** weekly report (i.e., the report period 
 
 ```bash
 # Get current project board state for mutable field verification
-gh project item-list 2 --owner {{OWNER}} --format json --limit 200
+gh project item-list {{PROJECT_NUMBER}} --owner {{OWNER}} --format json --limit 200
 ```
 
 If the live state contradicts the JSON for mutable fields:
