@@ -931,6 +931,46 @@ jq -n \
 log_ok "Saved .claude-pm-toolkit.json (used by --update mode)"
 
 # ---------------------------------------------------------------------------
+# Makefile integration (optional)
+# ---------------------------------------------------------------------------
+MAKEFILE_SENTINEL_START="# claude-pm-toolkit:start"
+MAKEFILE_SENTINEL_END="# claude-pm-toolkit:end"
+TARGET_MAKEFILE="$TARGET/Makefile"
+MAKEFILE_TARGETS="$TOOLKIT_DIR/tools/scripts/makefile-targets.mk"
+
+if [[ -f "$TARGET_MAKEFILE" ]] && [[ -f "$MAKEFILE_TARGETS" ]]; then
+  if grep -qF "$MAKEFILE_SENTINEL_START" "$TARGET_MAKEFILE"; then
+    # Update existing sentinel block
+    tmp_mk=$(mktemp)
+    awk -v start="$MAKEFILE_SENTINEL_START" -v end="$MAKEFILE_SENTINEL_END" \
+        'BEGIN { skip=0 }
+         $0 == start { skip=1; next }
+         $0 == end   { skip=0; next }
+         !skip       { print }
+        ' "$TARGET_MAKEFILE" > "$tmp_mk"
+
+    # Append fresh block
+    {
+      echo ""
+      echo "$MAKEFILE_SENTINEL_START"
+      cat "$MAKEFILE_TARGETS"
+      echo "$MAKEFILE_SENTINEL_END"
+    } >> "$tmp_mk"
+    mv "$tmp_mk" "$TARGET_MAKEFILE"
+    log_ok "Updated Makefile targets (make claude, make pm-status)"
+  elif ! $UPDATE_MODE; then
+    # Fresh install — append targets
+    {
+      echo ""
+      echo "$MAKEFILE_SENTINEL_START"
+      cat "$MAKEFILE_TARGETS"
+      echo "$MAKEFILE_SENTINEL_END"
+    } >> "$TARGET_MAKEFILE"
+    log_ok "Added Makefile targets (make claude, make pm-status)"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 log_section "Install complete"

@@ -108,6 +108,7 @@ TOOLKIT_FILES=(
   "tools/scripts/claude-secret-check-path.sh"
   "tools/scripts/codex-mcp-overrides.sh"
   "tools/scripts/pm-dashboard.sh"
+  "tools/scripts/makefile-targets.mk"
   "tools/config/command-guard.conf"
   "tools/config/secret-patterns.json"
   "tools/config/secret-paths.conf"
@@ -239,6 +240,30 @@ if [[ -f "$CLAUDE_MD" ]] && grep -qF "$SENTINEL_START" "$CLAUDE_MD"; then
   removed_count=$((removed_count + 1))
 else
   log_info "No sentinel block found in CLAUDE.md"
+fi
+
+# Clean Makefile sentinel block
+log_section "Makefile targets"
+TARGET_MAKEFILE="$TARGET/Makefile"
+MK_SENTINEL_START="# claude-pm-toolkit:start"
+MK_SENTINEL_END="# claude-pm-toolkit:end"
+if [[ -f "$TARGET_MAKEFILE" ]] && grep -qF "$MK_SENTINEL_START" "$TARGET_MAKEFILE"; then
+  if $CONFIRM; then
+    tmp_mk=$(mktemp)
+    awk -v start="$MK_SENTINEL_START" -v end="$MK_SENTINEL_END" \
+        'BEGIN { skip=0 }
+         $0 == start { skip=1; next }
+         $0 == end   { skip=0; next }
+         !skip       { print }
+        ' "$TARGET_MAKEFILE" > "$tmp_mk"
+    mv "$tmp_mk" "$TARGET_MAKEFILE"
+    log_ok "Removed toolkit targets from Makefile"
+  else
+    log_info "Would remove toolkit targets from Makefile"
+  fi
+  removed_count=$((removed_count + 1))
+else
+  log_info "No toolkit targets found in Makefile"
 fi
 
 # Clean hooks from settings.json
