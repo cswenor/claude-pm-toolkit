@@ -77,8 +77,24 @@ if [ -z "$ISSUE_NUM" ]; then
   exit 1
 fi
 
+# Validate issue number is numeric
+if ! [[ "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+  echo "Error: issue number must be numeric (got: $ISSUE_NUM)" >&2
+  exit 1
+fi
+
 # Calculate port offset: (issue_number % 79) * 100 + 3200
 OFFSET=${WORKTREE_PORT_OFFSET:-$(( (ISSUE_NUM % 79) * 100 + 3200 ))}
+
+# Validate offset is in safe range (3200-11000)
+# Floor 3200 clears macOS system ports. Ceiling 11000 keeps highest base+offset < 65535.
+if [[ "$OFFSET" -lt 3200 ]] || [[ "$OFFSET" -gt 11000 ]]; then
+  echo "Error: port offset must be in range 3200-11000 (got: $OFFSET)" >&2
+  if [[ -n "${WORKTREE_PORT_OFFSET:-}" ]]; then
+    echo "Fix: adjust WORKTREE_PORT_OFFSET to a value in range" >&2
+  fi
+  exit 1
+fi
 
 # Read port services from config file
 declare -a PORT_NAMES=()
