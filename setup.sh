@@ -238,6 +238,10 @@ if [[ "$PROJECT_NUMBER" == "new" ]]; then
 fi
 
 PREFIX_LOWER=$(prompt_with_default "Short prefix, lowercase (e.g. hov, myapp)" "")
+if [[ ! "$PREFIX_LOWER" =~ ^[a-z][a-z0-9]{1,9}$ ]]; then
+  log_error "Prefix must be 2-10 lowercase alphanumeric characters starting with a letter"
+  exit 1
+fi
 PREFIX_UPPER=$(echo "$PREFIX_LOWER" | tr '[:lower:]' '[:upper:]')
 DISPLAY_NAME=$(prompt_with_default "Display name (e.g. My Project)" "$OWNER")
 TEST_COMMAND=$(prompt_with_default "Test command (run before PR/review)" "make test")
