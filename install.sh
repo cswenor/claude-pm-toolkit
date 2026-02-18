@@ -154,6 +154,9 @@ METADATA_FILE="$TARGET/.claude-pm-toolkit.json"
 USER_CONFIG_FILES=(
   "tools/scripts/worktree-ports.conf"
   "tools/scripts/worktree-urls.conf"
+  "tools/config/command-guard.conf"
+  "tools/config/secret-paths.conf"
+  "tools/config/secret-patterns.json"
   "docs/PM_PROJECT_CONFIG.md"
 )
 
