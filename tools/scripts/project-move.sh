@@ -11,7 +11,7 @@ source "$SCRIPT_DIR/pm.config.sh"
 # Cleanup trap for temp files
 TEMP_FILES=()
 cleanup_temp_files() {
-  for tf in "${TEMP_FILES[@]}"; do
+  for tf in "${TEMP_FILES[@]+"${TEMP_FILES[@]}"}"; do
     [[ -f "$tf" ]] && rm -f "$tf"
   done
 }

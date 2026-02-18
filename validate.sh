@@ -114,6 +114,32 @@ for f in "${REQUIRED_FILES[@]}"; do
   fi
 done
 
+# Sub-playbooks and appendices (required for decomposed /issue skill)
+SKILL_SUBFILES=(
+  ".claude/skills/issue/VERIFICATION.md"
+  ".claude/skills/issue/sub-playbooks/duplicate-scan.md"
+  ".claude/skills/issue/sub-playbooks/update-existing.md"
+  ".claude/skills/issue/sub-playbooks/merge-consolidate.md"
+  ".claude/skills/issue/sub-playbooks/discovered-work.md"
+  ".claude/skills/issue/sub-playbooks/collaborative-planning.md"
+  ".claude/skills/issue/sub-playbooks/implementation-review.md"
+  ".claude/skills/issue/sub-playbooks/post-implementation.md"
+  ".claude/skills/issue/appendices/templates.md"
+  ".claude/skills/issue/appendices/briefing-format.md"
+  ".claude/skills/issue/appendices/worktrees.md"
+  ".claude/skills/issue/appendices/priority.md"
+  ".claude/skills/issue/appendices/codex-reference.md"
+  ".claude/skills/issue/appendices/design-rationale.md"
+)
+
+for f in "${SKILL_SUBFILES[@]}"; do
+  if [[ -f "$TARGET/$f" ]]; then
+    pass "$f"
+  else
+    fail "$f — MISSING (required for /issue skill)"
+  fi
+done
+
 # Optional files (warn if missing)
 OPTIONAL_FILES=(
   "tools/scripts/worktree-urls.conf"
@@ -176,10 +202,20 @@ while IFS= read -r line; do
       PLACEHOLDER_COUNT=$((PLACEHOLDER_COUNT+1))
       PLACEHOLDER_FILES="$PLACEHOLDER_FILES\n  $rel: $match"
     fi
-  else
-    PLACEHOLDER_COUNT=$((PLACEHOLDER_COUNT+1))
-    PLACEHOLDER_FILES="$PLACEHOLDER_FILES\n  $rel: $match"
+    continue
   fi
+
+  # In shell scripts, skip echo/printf/comment lines — these reference placeholders
+  # as literal text (e.g. error messages about unreplaced placeholders), not actual placeholders
+  if [[ "$rel" == *.sh ]]; then
+    content="${match#*:}"  # Strip line number prefix
+    if echo "$content" | grep -qE '^\s*(echo |printf |#)'; then
+      continue
+    fi
+  fi
+
+  PLACEHOLDER_COUNT=$((PLACEHOLDER_COUNT+1))
+  PLACEHOLDER_FILES="$PLACEHOLDER_FILES\n  $rel: $match"
 done < <(grep -rn '{{[A-Z_a-z]*}}' "$TARGET/tools" "$TARGET/.claude" "$TARGET/docs" \
     --include="*.sh" --include="*.md" --include="*.json" --include="*.conf" \
     2>/dev/null || true)

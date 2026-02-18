@@ -30,14 +30,9 @@ PM_PRIORITY_CRITICAL="{{OPT_PRI_CRITICAL}}"
 PM_PRIORITY_HIGH="{{OPT_PRI_HIGH}}"
 PM_PRIORITY_NORMAL="{{OPT_PRI_NORMAL}}"
 
-# Area option IDs
-PM_AREA_FRONTEND="{{OPT_AREA_FRONTEND}}"
-PM_AREA_BACKEND="{{OPT_AREA_BACKEND}}"
-PM_AREA_CONTRACTS="{{OPT_AREA_CONTRACTS}}"
-PM_AREA_INFRA="{{OPT_AREA_INFRA}}"
-PM_AREA_DESIGN="{{OPT_AREA_DESIGN}}"
-PM_AREA_DOCS="{{OPT_AREA_DOCS}}"
-PM_AREA_PM="{{OPT_AREA_PM}}"
+# Area option IDs (auto-discovered from project board by install.sh)
+# pm-area-options:start
+# pm-area-options:end
 
 # Issue Type option IDs
 PM_TYPE_BUG="{{OPT_TYPE_BUG}}"

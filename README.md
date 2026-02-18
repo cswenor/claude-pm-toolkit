@@ -1,28 +1,62 @@
 # Claude PM Toolkit
 
-A complete project management system for Claude Code. Gives your AI coding assistant structured workflows, adversarial reviews, parallel development with worktrees, and portfolio management — all driven by GitHub Projects v2.
+**Stop Claude Code from winging it.**
 
-**Works with any project.** Install into an existing repo in under 2 minutes. Update to the latest toolkit version with one command.
+Claude Code is powerful — but without structure, it creates duplicate issues, bundles unrelated work into unmergeable PRs, rubber-stamps reviews, loses context between sessions, and leaves your project board in shambles.
+
+This toolkit gives Claude a PM brain: structured workflows, adversarial reviews, parallel development, and portfolio management — all backed by GitHub Projects v2.
+
+**Install into any existing repo in 2 minutes. No framework dependencies.**
+
+```bash
+git clone https://github.com/cswenor/claude-pm-toolkit.git
+cd claude-pm-toolkit
+./install.sh /path/to/your/repo
+```
+
+---
+
+## Before & After
+
+| Without Toolkit | With Toolkit |
+|----------------|-------------|
+| Claude creates 3 partial issues for the same problem | Duplicate scan catches it before creation |
+| Feature PR includes surprise Docker upgrade | Scope discipline creates separate issue + blocker |
+| "LGTM" review misses unhandled edge cases | Adversarial review with mandatory failure mode analysis |
+| Context lost between sessions — starts over | `/issue 42` loads full state: issue, comments, PR, plan |
+| Project board stuck in "Review" for weeks | Auto-transitions: Active → Review → Done |
+| One issue at a time, serial development | Worktrees + tmux = parallel Claude sessions |
+
+---
 
 ## What You Get
 
-| Skill | What It Does |
-|-------|-------------|
-| `/issue` | Full issue lifecycle: create via PM interview, deduplicate, execute with worktree isolation, detect workflow state, plan mode, post-implementation review sequence |
-| `/pm-review` | Adversarial PM reviewer: scope verification, failure mode analysis, comment skepticism, infra parity checks, split completeness/robustness verdict |
-| `/weekly` | AI narrative analysis from weekly JSON snapshots with stakeholder-ready summaries |
+### Three Skills
 
-| Scripts | What They Do |
-|---------|-------------|
-| `project-*.sh` | GitHub Projects v2 integration — add issues, move between states, check status |
-| `worktree-*.sh` | Git worktree management with automatic port isolation for parallel development |
-| `tmux-session.sh` | Portfolio manager — run multiple Claude sessions on different issues simultaneously |
-| `claude-*-guard.sh` | Security hooks — block dangerous commands, detect secrets in output |
+| Skill | Purpose |
+|-------|---------|
+| **`/issue`** | Full lifecycle. Create via PM interview with duplicate detection. Execute with worktree isolation, plan mode, Codex collaboration, and post-implementation review. |
+| **`/pm-review`** | Adversarial reviewer. Scope verification, failure mode analysis, comment skepticism, deep code comparison, split completeness/robustness verdict. |
+| **`/weekly`** | AI narrative from weekly snapshots. Stakeholder-ready summaries, health scores, trend analysis. |
 
-| Docs | What They Define |
-|------|-----------------|
-| `PM_PLAYBOOK.md` | Workflow states, transition rules, field references, command cheat sheet |
-| `PM_PROJECT_CONFIG.md` | Your project's doc paths, library mappings, port services, review examples |
+### 18 Scripts
+
+| Category | Scripts | Purpose |
+|----------|---------|---------|
+| **Project** | `project-add.sh`, `project-move.sh`, `project-status.sh`, `project-archive-done.sh` | GitHub Projects v2 integration |
+| **Worktrees** | `worktree-setup.sh`, `worktree-detect.sh`, `worktree-cleanup.sh` | Parallel development with port isolation |
+| **Portfolio** | `tmux-session.sh`, `portfolio-notify.sh` | Multi-session management with tmux alerts |
+| **Security** | `claude-command-guard.sh`, `claude-secret-*.sh` | Block dangerous commands, detect secrets |
+| **Utilities** | `find-plan.sh`, `pm-dashboard.sh`, `pm.config.sh`, `codex-mcp-overrides.sh` | Plan discovery, health dashboard, config |
+
+### Workflow Docs
+
+| Doc | Purpose |
+|-----|---------|
+| `PM_PLAYBOOK.md` | Workflow states, transition rules, field IDs, command reference |
+| `PM_PROJECT_CONFIG.md` | Your project's doc paths, library mappings, port services |
+
+---
 
 ## Quick Start
 
@@ -30,326 +64,275 @@ A complete project management system for Claude Code. Gives your AI coding assis
 
 - [GitHub CLI](https://cli.github.com) (`gh`) — authenticated
 - [jq](https://jqlang.github.io/jq/)
-- `gh auth refresh -s project` (adds project scope for board writes)
+- `gh auth refresh -s project` (adds project scope)
 
-### Fresh Install (existing repo)
+### Install
 
 ```bash
-git clone https://github.com/YOUR_USER/claude-pm-toolkit.git
-cd claude-pm-toolkit
 ./install.sh /path/to/your/repo
 ```
 
-The installer will:
-1. Prompt for GitHub owner, repo, project number (or create a new board)
-2. Auto-discover all field IDs via GraphQL
-3. Copy files with placeholders resolved
-4. Merge hooks into your `.claude/settings.json`
-5. Append PM sections to your `CLAUDE.md` (between sentinel comments)
-6. Save config to `.claude-pm-toolkit.json` for future updates
+The installer:
+1. Prompts for GitHub owner, repo, project number (or creates a new board)
+2. **Auto-detects your stack** (React, Svelte, Next.js, Python, etc.) and suggests area options
+3. Discovers all field IDs via GraphQL — you never look up IDs manually
+4. Links project to repo, sets it public with description
+5. Copies files with all placeholders resolved
+6. Merges hooks into `.claude/settings.json`
+7. Prints board view setup instructions
 
-### Template Mode (new repo)
-
-1. Use this repo as a GitHub template
-2. Clone and run `./install.sh .`
-
-### Uninstall
+### Update
 
 ```bash
-cd claude-pm-toolkit
-./uninstall.sh /path/to/your/repo             # Dry run (show what would be removed)
-./uninstall.sh --confirm /path/to/your/repo   # Actually remove
+cd claude-pm-toolkit && git pull
+./install.sh --update /path/to/your/repo
 ```
 
-### Update to Latest
-
-When the toolkit gets new features or fixes:
-
-```bash
-cd claude-pm-toolkit
-git pull                                    # Get latest
-./install.sh --update /path/to/your/repo    # Apply changes
-```
-
-Update mode:
-- Reads your saved config from `.claude-pm-toolkit.json` (no re-prompting)
-- Refreshes field IDs from GitHub (catches project board changes)
-- Overwrites toolkit-managed files with the latest versions
-- **Preserves your customizations**: `worktree-ports.conf`, `worktree-urls.conf`, `command-guard.conf`, `secret-paths.conf`, `secret-patterns.json`, `PM_PROJECT_CONFIG.md`
-- Updates CLAUDE.md sentinel block and settings.json hooks
+Reads saved config, refreshes field IDs, overwrites toolkit files, preserves your customizations.
 
 ### Validate
 
 ```bash
-cd claude-pm-toolkit
-./validate.sh /path/to/your/repo            # Check installation
-./validate.sh --fix /path/to/your/repo      # Auto-fix what's possible
+./validate.sh /path/to/your/repo            # 76-check validation suite
+./validate.sh --fix /path/to/your/repo      # Auto-fix permissions, .gitignore
 ```
 
-Checks: required files, script permissions, unresolved placeholders, pm.config.sh values, CLAUDE.md sentinels, settings.json hooks, .gitignore correctness, GitHub connectivity.
+### Uninstall
+
+```bash
+./uninstall.sh /path/to/your/repo           # Dry run
+./uninstall.sh --confirm /path/to/your/repo # Remove
+```
+
+---
 
 ## Daily Workflow
 
 ```bash
-# Start working on an issue
-/issue 42              # Load context, detect state, enter plan mode
-
-# Create a new issue
-/issue                 # PM interview → duplicate scan → structured issue
-
-# Review a PR
+/issue                 # Create issue → PM interview → duplicate scan → structured issue
+/issue 42              # Load context → detect state → enter plan mode
 /pm-review 123         # Adversarial review with split verdict
-
-# Weekly report
 /weekly                # AI analysis of latest weekly snapshot
 ```
 
-### Worktree Isolation
+### Workflow States
 
-Each issue gets its own directory with isolated ports:
+| State | What Claude Can Do | Transitions |
+|-------|--------------------|-------------|
+| **Backlog** | Analyze only | → Ready |
+| **Ready** | Plan only | → Active |
+| **Active** | **Implement** (only state where coding is allowed) | → Review |
+| **Review** | Wait for feedback | → Done or → Rework |
+| **Rework** | Address feedback | → Review |
+| **Done** | Nothing | Archive after 30 days |
+
+**WIP limit:** Claude may have only 1 issue in Active at a time.
+
+### Parallel Development
+
+Each issue gets its own worktree with isolated ports:
 
 ```
 ~/Development/
 ├── my-project/        # Main repo
-├── app-42/            # Worktree for issue #42 (own ports)
-└── app-57/            # Worktree for issue #57 (own ports)
-```
-
-Configure port services in `tools/scripts/worktree-ports.conf`:
-
-```
-Dev_server    3000    DEV_PORT
-Database      5432    DB_PORT
-Redis         6379    REDIS_PORT
+├── app-42/            # Worktree for issue #42 (ports offset by +4200)
+└── app-57/            # Worktree for issue #57 (ports offset by +5700)
 ```
 
 ### Portfolio Mode (tmux)
 
-Run multiple Claude sessions in parallel:
+Run multiple Claude sessions simultaneously:
 
 ```bash
 make claude            # Start tmux session
 /issue 42              # Spawns background window
 /issue 57              # Spawns another window
-# Watch status bar for alerts when a session needs input
+# Status bar shows alerts when a session needs input
 ```
 
-## Customization
-
-### Project-Specific Config (`docs/PM_PROJECT_CONFIG.md`)
-
-This is your main customization file. It controls:
-
-- **Area Documentation**: Maps `area:frontend` etc. to your docs
-- **Keyword Documentation**: Maps keywords in issues to relevant docs
-- **Library Documentation**: Maps keywords to context7 library lookups
-- **Worktree Port Services**: Your dev server, database, etc. (`worktree-ports.conf`)
-- **Review Examples**: Domain-specific examples for `/pm-review`
-- **Stakeholder Context**: How to frame technical work for stakeholders in `/weekly`
-
-### Area Options
-
-The Area field options (Frontend, Backend, etc.) are configurable during setup. After install, edit `tools/scripts/pm.config.sh` to add or remove areas. The `/issue` skill references areas by label (`area:frontend`, `area:backend`).
-
-### CLAUDE.md Sections
-
-PM sections in your CLAUDE.md are wrapped in sentinel comments:
-
-```html
-<!-- claude-pm-toolkit:start -->
-...PM workflow rules...
-<!-- claude-pm-toolkit:end -->
-```
-
-Running `--update` replaces only this block. Your custom CLAUDE.md content outside the sentinels is never touched.
+---
 
 ## Architecture
 
 ```
-.claude-pm-toolkit.json          # Install metadata (enables --update)
+.claude-pm-toolkit.json              # Install metadata (enables --update)
 .claude/
-├── settings.json                # Hooks: security guards, portfolio notifications
+├── settings.json                    # Hooks: security guards, portfolio notifications
 └── skills/
-    ├── issue/SKILL.md           # /issue skill (2000+ lines)
-    ├── pm-review/SKILL.md       # /pm-review skill (1000+ lines)
-    └── weekly/SKILL.md          # /weekly skill
+    └── issue/
+        ├── SKILL.md                 # Router (~1,300 lines)
+        ├── VERIFICATION.md          # Regression checklist
+        ├── sub-playbooks/           # 7 extracted playbooks
+        │   ├── duplicate-scan.md
+        │   ├── update-existing.md
+        │   ├── merge-consolidate.md
+        │   ├── discovered-work.md
+        │   ├── collaborative-planning.md
+        │   ├── implementation-review.md
+        │   └── post-implementation.md
+        └── appendices/              # 6 reference files
+            ├── templates.md
+            ├── briefing-format.md
+            ├── worktrees.md
+            ├── priority.md
+            ├── codex-reference.md
+            └── design-rationale.md
+    ├── pm-review/SKILL.md           # Adversarial reviewer (~1,000 lines)
+    └── weekly/SKILL.md              # Weekly analysis
 docs/
-├── PM_PLAYBOOK.md               # Workflow definitions, field IDs, transitions
-└── PM_PROJECT_CONFIG.md         # Your project's doc paths, libraries, port services
+├── PM_PLAYBOOK.md                   # Workflow definitions, field IDs
+└── PM_PROJECT_CONFIG.md             # Your project config (user-editable)
 tools/
-├── config/
-│   ├── command-guard.conf       # Blocked command patterns (user-editable)
-│   ├── secret-patterns.json     # Token detection regexes (user-editable)
-│   └── secret-paths.conf        # Custom sensitive paths (user-editable)
-└── scripts/
-    ├── pm.config.sh             # Central config (all field/option IDs)
-    ├── project-add.sh           # Add issue to project board
-    ├── project-move.sh          # Move issue between workflow states
-    ├── project-status.sh        # Check issue's workflow state
-    ├── project-archive-done.sh  # Archive completed issues
-    ├── worktree-setup.sh        # Create worktree with port isolation
-    ├── worktree-detect.sh       # Detect worktree status
-    ├── worktree-cleanup.sh      # Clean up after merge
-    ├── worktree-ports.conf      # Port service configuration (user-editable)
-    ├── worktree-urls.conf       # URL exports from ports (user-editable)
-    ├── tmux-session.sh          # Portfolio manager
-    ├── portfolio-notify.sh      # Hook notification handler
-    ├── find-plan.sh             # Find plan files by issue number
-    ├── claude-command-guard.sh  # Block dangerous bash commands (reads config/)
-    ├── claude-secret-guard.sh   # Block reading secret files
-    ├── claude-secret-bash-guard.sh  # Block secret patterns in bash
-    ├── claude-secret-check-path.sh  # Shared path sensitivity checker
-    └── claude-secret-detect.sh  # Detect secrets in tool output
-reports/weekly/                   # Weekly report snapshots
-└── analysis/                    # AI-generated narrative reports
+├── config/                          # User-editable security configs
+│   ├── command-guard.conf
+│   ├── secret-patterns.json
+│   └── secret-paths.conf
+└── scripts/                         # 18 scripts (all support --help)
+    ├── pm.config.sh                 # Central config (auto-generated field IDs)
+    ├── project-{add,move,status,archive-done}.sh
+    ├── worktree-{setup,detect,cleanup}.sh
+    ├── worktree-{ports,urls}.conf   # User-editable port config
+    ├── tmux-session.sh
+    ├── portfolio-notify.sh
+    ├── find-plan.sh
+    ├── pm-dashboard.sh
+    ├── codex-mcp-overrides.sh
+    └── claude-{command-guard,secret-*}.sh
 ```
 
 ### How Updates Work
 
-The toolkit separates **managed files** from **user config files**:
+| Category | Examples | Install | Update |
+|----------|---------|---------|--------|
+| **Managed** | SKILL.md, scripts, PM_PLAYBOOK.md | Copied | Overwritten |
+| **User Config** | PM_PROJECT_CONFIG.md, *.conf | Copied | **Preserved** |
+| **Merged** | settings.json | Created | Hooks merged |
+| **Sentinel** | CLAUDE.md PM sections | Appended | Block replaced |
 
-| Category | Examples | Fresh Install | Update |
-|----------|---------|---------------|--------|
-| Managed | SKILL.md, scripts, PM_PLAYBOOK.md | Copied | Overwritten with latest |
-| User Config | PM_PROJECT_CONFIG.md, ports.conf, urls.conf | Copied | Preserved |
-| Merged | settings.json | Created/merged | Hooks merged |
-| Sentinel | CLAUDE.md PM sections | Appended | Block replaced |
-| Metadata | .claude-pm-toolkit.json | Created | Updated |
+---
 
-This means you can safely `git pull` the toolkit and run `--update` without losing your customizations.
+## Customization
 
-## Workflow States
+### Project Config (`docs/PM_PROJECT_CONFIG.md`)
 
-| State | What Claude Can Do | Entry | Exit |
-|-------|--------------------|-------|------|
-| Backlog | Analyze only | Default for new issues | Move to Ready |
-| Ready | Plan only | Triaged and spec-ready | Move to Active |
-| Active | **Implement** | Work begins | PR opened → Review |
-| Review | Wait for feedback | Tests pass, PR ready | Approved or Changes Requested |
-| Rework | Address feedback | Changes requested | Fixes applied → Review |
-| Done | Nothing | PR merged | Archive after 30 days |
+Your main customization file. Controls:
 
-**WIP limit:** Claude may have only 1 issue in Active at a time.
+- **Area docs** — Maps `area:frontend` to your project's architecture docs
+- **Keyword docs** — Maps issue keywords to relevant docs for context loading
+- **Library docs** — Maps keywords to [context7](https://github.com/upstash/context7) library lookups
+- **Port services** — Your dev server, database, etc. for worktree isolation
+- **Review examples** — Domain-specific examples for `/pm-review`
+- **Stakeholder context** — How to frame technical work for `/weekly` reports
 
-## GitHub Projects v2 Setup
+### CLAUDE.md Integration
 
-If you don't have a board yet, the installer can create one for you (enter `new` when prompted for project number). It creates these fields:
+PM sections are wrapped in sentinel comments:
 
-- **Workflow**: Backlog, Ready, Active, Review, Rework, Done
-- **Priority**: Critical, High, Normal
-- **Area**: (you choose the options)
-- **Issue Type**: Bug, Feature, Spike, Epic, Chore
-- **Risk**: Low, Medium, High
-- **Estimate**: Small, Medium, Large
+```html
+<!-- claude-pm-toolkit:start -->
+...PM workflow rules, stop checks, conventions...
+<!-- claude-pm-toolkit:end -->
+```
 
-Field IDs are auto-discovered via GraphQL — you never look up IDs manually.
+Updates replace only this block. Your custom content is never touched.
+
+---
+
+## GitHub Projects v2
+
+The installer can create a board with all required fields:
+
+| Field | Options |
+|-------|---------|
+| **Workflow** | Backlog, Ready, Active, Review, Rework, Done |
+| **Priority** | Critical, High, Normal |
+| **Area** | (auto-detected from your stack) |
+| **Issue Type** | Bug, Feature, Spike, Epic, Chore |
+| **Risk** | Low, Medium, High |
+| **Estimate** | Small, Medium, Large |
+
+After install, the project is linked to your repo and made public. Set up a Board view grouped by Workflow for a Kanban-style experience.
+
+---
 
 ## Troubleshooting
 
-### `Error: gh CLI token missing 'project' scope`
-
-The `gh` CLI needs the `project` scope for GitHub Projects v2 operations.
+<details>
+<summary><code>gh CLI token missing 'project' scope</code></summary>
 
 ```bash
 gh auth refresh -s project --hostname github.com
 ```
+</details>
 
-### `Error: Issue #X not found in project`
-
-The issue hasn't been added to the project board yet.
-
-```bash
-./tools/scripts/project-add.sh 123 normal    # Add with normal priority
-```
-
-### `Error: pm.config.sh contains unreplaced {{placeholders}}`
-
-The installer didn't finish replacing template values. Re-run:
+<details>
+<summary><code>Issue #X not found in project</code></summary>
 
 ```bash
-./install.sh --update /path/to/your/repo
+./tools/scripts/project-add.sh 123 normal
 ```
+</details>
 
-### `Error: Could not find project #N for owner 'X'`
-
-Common causes:
-- **Owner misspelled** — check `PM_OWNER` in `tools/scripts/pm.config.sh`
-- **Project number wrong** — verify at `https://github.com/orgs/YOUR_ORG/projects`
-- **Missing scope** — run `gh auth refresh -s project`
-- **Org vs user** — if the project is under your user account, the owner should be your username
-
-Verify manually:
-```bash
-gh project view 2 --owner YOUR_OWNER
-```
-
-### `validate.sh` shows failures
-
-Run with `--fix` to auto-repair permissions and .gitignore:
-
-```bash
-./validate.sh --fix /path/to/your/repo
-```
-
-If config values are empty, re-run the installer:
+<details>
+<summary><code>pm.config.sh contains unreplaced {{placeholders}}</code></summary>
 
 ```bash
 ./install.sh --update /path/to/your/repo
 ```
+</details>
 
-### Worktree already exists
+<details>
+<summary><code>Could not find project #N for owner 'X'</code></summary>
 
-If you get "worktree already exists" errors but the directory is gone:
+- Check `PM_OWNER` in `tools/scripts/pm.config.sh`
+- Verify project at `https://github.com/orgs/YOUR_ORG/projects`
+- Run `gh auth refresh -s project`
+- If user-owned (not org), owner = your username
+</details>
+
+<details>
+<summary>Worktree already exists</summary>
 
 ```bash
 git worktree prune     # Clean up stale metadata
 ```
+</details>
 
-### Port conflicts
-
-Check what's using the port:
-
-```bash
-lsof -i :5173          # Replace with conflicting port number
-```
-
-Each worktree gets a port offset calculated as `(issue_number % 79) * 100 + 3200`. Override with:
+<details>
+<summary>Port conflicts</summary>
 
 ```bash
-WORKTREE_PORT_OFFSET=5000 ./tools/scripts/worktree-setup.sh 294 feat/my-feature
+lsof -i :5173          # Check what's using the port
+# Override: WORKTREE_PORT_OFFSET=5000 ./tools/scripts/worktree-setup.sh 294 feat/my-feature
 ```
+</details>
 
-### `settings.json` is corrupted
-
-If `.claude/settings.json` has invalid JSON (can happen from failed merge):
+<details>
+<summary>settings.json corrupted</summary>
 
 ```bash
-# Check validity
-jq empty .claude/settings.json
-
-# If it fails, restore from git
-git checkout .claude/settings.json
-./install.sh --update /path/to/your/repo     # Re-merge hooks
+jq empty .claude/settings.json        # Check validity
+git checkout .claude/settings.json    # Restore
+./install.sh --update /path/to/repo   # Re-merge hooks
 ```
+</details>
 
-### tmux "portfolio session not found"
-
-Start the session first:
+<details>
+<summary>tmux "portfolio session not found"</summary>
 
 ```bash
 make claude    # Creates tmux session and launches Claude
 ```
+</details>
 
 ### Placeholder Convention
 
-The toolkit uses two placeholder cases with distinct meanings:
-
-| Placeholder | Case | Purpose | Example After Install |
-|------------|------|---------|----------------------|
-| `{{prefix}}` | lowercase | Directory names, session names, file paths | `hov`, `myapp` |
+| Placeholder | Case | Purpose | After Install |
+|------------|------|---------|--------------|
+| `{{prefix}}` | lowercase | Directory names, session names | `hov`, `myapp` |
 | `{{PREFIX}}` | UPPERCASE | Environment variable names | `HOV`, `MYAPP` |
 
-So `{{prefix}}-294` becomes `hov-294` (worktree directory) and `{{PREFIX}}_ISSUE_NUM` becomes `HOV_ISSUE_NUM` (env var).
+---
 
 ## Script Reference
 
@@ -358,11 +341,22 @@ Every script supports `--help`:
 ```bash
 ./tools/scripts/project-move.sh --help
 ./tools/scripts/project-add.sh --help
-./tools/scripts/project-status.sh --help
-./tools/scripts/project-archive-done.sh --help
 ./tools/scripts/worktree-setup.sh --help
-./tools/scripts/worktree-detect.sh --help
-./tools/scripts/worktree-cleanup.sh --help
-./tools/scripts/find-plan.sh --help
 ./tools/scripts/pm-dashboard.sh --help
 ```
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
+
+1. Fork + clone
+2. Install to test repo: `./install.sh /path/to/test-repo`
+3. Make changes, test with `./install.sh --update`
+4. Validate: `./validate.sh /path/to/test-repo`
+5. PR with what changed and why
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -20,8 +20,21 @@ All notable changes to this project will be documented in this file.
 - `/pm-review` SKILL.md: Draft PR detection in Step 2 (warns and offers analysis-only for draft PRs)
 - `/pm-review` SKILL.md: CI status check via `mcp__github__get_pull_request_status` in Step 4
 - `/pm-review` SKILL.md: AC Traceability Table verification in Step 4
+- `install.sh`: Auto-link project to repository via `gh project link` (shows project on repo page)
+- `install.sh`: Auto-set project description and public visibility via GraphQL `updateProjectV2`
+- `install.sh`: Project board URL shown in summary output
+- `install.sh`: Board view setup instructions in post-install next steps (GitHub API doesn't support view creation)
+- `install.sh`: Stack auto-detection — detects SvelteKit, Next.js, React, Vue, Python, Rust, Go, Solidity/Anchor and suggests area options
+- `pm-dashboard.sh`: Health Score (0-100) — WIP compliance, rework pileup, review bottleneck, backlog bloat, config health
+- `validate.sh`: Checks for decomposed sub-playbooks (7 files) and appendices (6 files) + VERIFICATION.md
+- `/issue` SKILL.md: Context budget tracking — tiered loading (P0–P3) with skip rules based on issue weight (light/medium/heavy)
+- `/issue` SKILL.md: Sub-Playbook Index and Appendix Index — file reference tables for on-demand loading
+- `/issue` SKILL.md: VERIFICATION.md — developer reference checklist extracted from inline appendix
+- `/issue` sub-playbooks: 7 extracted playbooks (duplicate-scan, update-existing, merge-consolidate, discovered-work, collaborative-planning, implementation-review, post-implementation)
+- `/issue` appendices: 6 extracted files (templates, briefing-format, worktrees, priority, codex-reference, design-rationale)
 
 ### Changed
+- `/issue` SKILL.md: Decomposed from 3,309-line monolith to 1,283-line router + 14 extracted files (~62% reduction in initial context load)
 - `/issue` SKILL.md: Implementation review uses `exec -s workspace-write` — Codex can write tests and verification scripts to prove findings ("agents that prove, not guess")
 - `/issue` SKILL.md: Implementation review uses `exec` with structured prompt instead of `review --base main` (fixes 0-byte output, flag exclusion, unreliable stdin issues)
 - `/issue` SKILL.md: No pre-generated patch file — Codex explores codebase freely with full filesystem access
@@ -31,6 +44,12 @@ All notable changes to this project will be documented in this file.
 - `/issue` SKILL.md: `allowed-tools` frontmatter now includes `Bash(git diff *)`
 - `/pm-review` SKILL.md: `allowed-tools` frontmatter now includes `Bash(git rev-parse *)` and `mcp__github__get_pull_request_status`
 - `/pm-review` SKILL.md: MERGE_AND_CHECKLIST git sync is now worktree-safe (fetch-only in worktrees vs checkout+pull in main repo)
+- `README.md`: Rewritten with problem/solution framing, before/after comparison, collapsible troubleshooting
+
+### Fixed
+- `validate.sh`: False positive on pm.config.sh guard function — echo/printf lines with literal `{{placeholders}}` are no longer counted
+- `install.sh`: `TEMP_FILES[@]` unbound variable with `set -u` when array is empty (fixed with `${TEMP_FILES[@]+"${TEMP_FILES[@]}"}`)
+- `project-move.sh`: Same `TEMP_FILES[@]` unbound variable fix
 
 ## [0.3.1] - 2026-02-18
 

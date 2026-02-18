@@ -32,7 +32,7 @@ log_section() { printf "\n${BOLD}%s${RESET}\n%s\n" "$*" "$(printf '%0.s-' {1..60
 # Cleanup trap for temp files
 TEMP_FILES=()
 cleanup_temp_files() {
-  for tf in "${TEMP_FILES[@]}"; do
+  for tf in "${TEMP_FILES[@]+"${TEMP_FILES[@]}"}"; do
     [[ -f "$tf" ]] && rm -f "$tf"
   done
 }
@@ -258,7 +258,7 @@ if ! $UPDATE_MODE; then
 
   OWNER=$(prompt_with_default "GitHub owner (org or user)" "$DETECTED_OWNER")
   REPO=$(prompt_with_default "GitHub repo name" "$DETECTED_REPO")
-  PROJECT_NUMBER=$(prompt_with_default "GitHub Project number (Projects v2, or 'new' to create)" "")
+  PROJECT_NUMBER=$(prompt_with_default "GitHub Project number (existing number, or 'new' to create)" "new")
 
   # If user entered "new", create a project board with all required fields
   if [[ "$PROJECT_NUMBER" == "new" ]]; then
@@ -290,7 +290,41 @@ if ! $UPDATE_MODE; then
     log_ok "  Priority: Critical, High, Normal"
 
     log_info "Adding Area field..."
-    AREA_OPTS=$(prompt_with_default "Area options (comma-separated)" "Frontend,Backend,Infra,Docs")
+    # Auto-detect project stack for smarter area suggestions
+    DETECTED_AREAS="Frontend,Backend,Infra,Docs"
+    STACK_HINTS=""
+    if [[ -f "$TARGET/package.json" ]]; then
+      PKG=$(cat "$TARGET/package.json" 2>/dev/null || echo "{}")
+      if echo "$PKG" | grep -qE '"(svelte|sveltekit|@sveltejs/)' 2>/dev/null; then
+        STACK_HINTS="SvelteKit"
+      elif echo "$PKG" | grep -qE '"(next|@next/)' 2>/dev/null; then
+        STACK_HINTS="Next.js"
+      elif echo "$PKG" | grep -qE '"(nuxt|@nuxt/)' 2>/dev/null; then
+        STACK_HINTS="Nuxt"
+      elif echo "$PKG" | grep -qE '"(react|react-dom)' 2>/dev/null; then
+        STACK_HINTS="React"
+      elif echo "$PKG" | grep -qE '"(vue|@vue/)' 2>/dev/null; then
+        STACK_HINTS="Vue"
+      fi
+    fi
+    if [[ -f "$TARGET/pyproject.toml" ]] || [[ -f "$TARGET/requirements.txt" ]]; then
+      STACK_HINTS="${STACK_HINTS:+$STACK_HINTS, }Python"
+      DETECTED_AREAS="Frontend,Backend,Data,Infra,Docs"
+    fi
+    if [[ -f "$TARGET/foundry.toml" ]] || [[ -f "$TARGET/Anchor.toml" ]] || [[ -d "$TARGET/contracts" ]]; then
+      STACK_HINTS="${STACK_HINTS:+$STACK_HINTS, }Smart Contracts"
+      DETECTED_AREAS="Frontend,Backend,Contracts,Infra,Docs"
+    fi
+    if [[ -f "$TARGET/Cargo.toml" ]]; then
+      STACK_HINTS="${STACK_HINTS:+$STACK_HINTS, }Rust"
+    fi
+    if [[ -f "$TARGET/go.mod" ]]; then
+      STACK_HINTS="${STACK_HINTS:+$STACK_HINTS, }Go"
+    fi
+    if [[ -n "$STACK_HINTS" ]]; then
+      log_info "Detected stack: $STACK_HINTS"
+    fi
+    AREA_OPTS=$(prompt_with_default "Area options (comma-separated)" "$DETECTED_AREAS")
     gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Area" --data-type "SINGLE_SELECT" \
       --single-select-options "$AREA_OPTS" 2>/dev/null || \
     gh project field-create "$PROJECT_NUMBER" --owner @me --name "Area" --data-type "SINGLE_SELECT" \
@@ -430,6 +464,34 @@ PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.id')
 log_info "Project ID: $PROJECT_ID"
 
 # ---------------------------------------------------------------------------
+# Link project to repo & set visibility (idempotent, safe on update too)
+# ---------------------------------------------------------------------------
+log_info "Linking project to repository..."
+gh project link "$PROJECT_NUMBER" --owner "$OWNER" --repo "$OWNER/$REPO" 2>/dev/null && \
+  log_ok "Project linked to $OWNER/$REPO" || \
+  log_info "Project already linked (or link not supported for user-owned projects)"
+
+log_info "Setting project description and visibility..."
+GQL_UPDATE=$(cat <<GQLEOF
+mutation {
+  updateProjectV2(input: {
+    projectId: "$PROJECT_ID"
+    shortDescription: "Issue tracking and workflow management for $REPO"
+    public: true
+  }) {
+    projectV2 { id shortDescription public }
+  }
+}
+GQLEOF
+)
+TMPGQL=$(mktemp)
+TEMP_FILES+=("$TMPGQL")
+echo "$GQL_UPDATE" > "$TMPGQL"
+gh api graphql -F query=@"$TMPGQL" --silent 2>/dev/null && \
+  log_ok "Project is public with description set" || \
+  log_info "Could not update project visibility (may require admin permissions)"
+
+# ---------------------------------------------------------------------------
 # Field/option helpers
 # ---------------------------------------------------------------------------
 get_field_id() {
@@ -493,14 +555,28 @@ OPT_PRI_CRITICAL=$(get_option_id "Priority" "Critical")
 OPT_PRI_HIGH=$(get_option_id     "Priority" "High")
 OPT_PRI_NORMAL=$(get_option_id   "Priority" "Normal")
 
-# Area options
-OPT_AREA_FRONTEND=$(get_option_id  "Area" "Frontend")
-OPT_AREA_BACKEND=$(get_option_id   "Area" "Backend")
-OPT_AREA_CONTRACTS=$(get_option_id "Area" "Contracts")
-OPT_AREA_INFRA=$(get_option_id     "Area" "Infra")
-OPT_AREA_DESIGN=$(get_option_id    "Area" "Design")
-OPT_AREA_DOCS=$(get_option_id      "Area" "Docs")
-OPT_AREA_PM=$(get_option_id        "Area" "PM")
+# Area options (dynamically discovered — supports any area names)
+declare -a AREA_NAMES=()
+declare -a AREA_KEYS=()
+declare -a AREA_IDS=()
+
+if [[ -n "$FIELD_AREA" ]]; then
+  while IFS=$'\t' read -r opt_name opt_id; do
+    [[ -z "$opt_name" ]] && continue
+    area_key=$(echo "$opt_name" | tr '[:lower:] -' '[:upper:]__')
+    AREA_NAMES+=("$opt_name")
+    AREA_KEYS+=("$area_key")
+    AREA_IDS+=("$opt_id")
+    declare "OPT_AREA_${area_key}=${opt_id}"
+    log_ok "  Area option: $opt_name → PM_AREA_${area_key}"
+  done < <(echo "$PROJECT_DATA" | jq -r '.fields.nodes[] | select(.name == "Area") | .options[] | [.name, .id] | @tsv')
+fi
+
+if [[ ${#AREA_NAMES[@]} -eq 0 ]]; then
+  log_warn "No Area options found in project board"
+else
+  log_ok "  ${#AREA_NAMES[@]} area option(s) discovered"
+fi
 
 # Issue Type options
 OPT_TYPE_BUG=$(get_option_id     "Issue Type" "Bug")
@@ -556,7 +632,7 @@ done
 
 for oval in "$OPT_WF_BACKLOG" "$OPT_WF_READY" "$OPT_WF_ACTIVE" "$OPT_WF_REVIEW" "$OPT_WF_REWORK" "$OPT_WF_DONE" \
             "$OPT_PRI_CRITICAL" "$OPT_PRI_HIGH" "$OPT_PRI_NORMAL" \
-            "$OPT_AREA_FRONTEND" "$OPT_AREA_BACKEND" "$OPT_AREA_CONTRACTS" "$OPT_AREA_INFRA" "$OPT_AREA_DESIGN" "$OPT_AREA_DOCS" "$OPT_AREA_PM" \
+            "${AREA_IDS[@]}" \
             "$OPT_TYPE_BUG" "$OPT_TYPE_FEATURE" "$OPT_TYPE_SPIKE" "$OPT_TYPE_EPIC" "$OPT_TYPE_CHORE" \
             "$OPT_RISK_LOW" "$OPT_RISK_MEDIUM" "$OPT_RISK_HIGH" \
             "$OPT_EST_SMALL" "$OPT_EST_MEDIUM" "$OPT_EST_LARGE"; do
@@ -611,13 +687,7 @@ REPLACE_PAIRS=(
   "{{OPT_PRI_CRITICAL}}"    "$OPT_PRI_CRITICAL"    "TODO: add Critical option to Priority field"
   "{{OPT_PRI_HIGH}}"        "$OPT_PRI_HIGH"        "TODO: add High option to Priority field"
   "{{OPT_PRI_NORMAL}}"      "$OPT_PRI_NORMAL"      "TODO: add Normal option to Priority field"
-  "{{OPT_AREA_FRONTEND}}"   "$OPT_AREA_FRONTEND"   "TODO: add Frontend option to Area field"
-  "{{OPT_AREA_BACKEND}}"    "$OPT_AREA_BACKEND"    "TODO: add Backend option to Area field"
-  "{{OPT_AREA_CONTRACTS}}"  "$OPT_AREA_CONTRACTS"  "TODO: add Contracts option to Area field"
-  "{{OPT_AREA_INFRA}}"      "$OPT_AREA_INFRA"      "TODO: add Infra option to Area field"
-  "{{OPT_AREA_DESIGN}}"     "$OPT_AREA_DESIGN"     "TODO: add Design option to Area field"
-  "{{OPT_AREA_DOCS}}"       "$OPT_AREA_DOCS"       "TODO: add Docs option to Area field"
-  "{{OPT_AREA_PM}}"         "$OPT_AREA_PM"         "TODO: add PM option to Area field"
+  # Area options are injected dynamically (see post-replacement step below)
   "{{OPT_TYPE_BUG}}"        "$OPT_TYPE_BUG"        "TODO: add Bug option to Issue Type field"
   "{{OPT_TYPE_FEATURE}}"    "$OPT_TYPE_FEATURE"    "TODO: add Feature option to Issue Type field"
   "{{OPT_TYPE_SPIKE}}"      "$OPT_TYPE_SPIKE"      "TODO: add Spike option to Issue Type field"
@@ -950,6 +1020,36 @@ while IFS= read -r file_with_opt; do
 done < <(grep -rl '{{OPT_' "$TARGET" --include='*.sh' --include='*.json' --include='*.md' 2>/dev/null || true)
 
 # ---------------------------------------------------------------------------
+# Inject dynamic area options into pm.config.sh
+# ---------------------------------------------------------------------------
+PM_CONFIG_TARGET="$TARGET/tools/scripts/pm.config.sh"
+if [[ -f "$PM_CONFIG_TARGET" ]] && [[ ${#AREA_KEYS[@]} -gt 0 ]]; then
+  log_info "Injecting ${#AREA_KEYS[@]} area option(s) into pm.config.sh"
+
+  # Build the area lines file
+  AREA_LINES_FILE=$(mktemp)
+  TEMP_FILES+=("$AREA_LINES_FILE")
+  for (( i=0; i<${#AREA_KEYS[@]}; i++ )); do
+    echo "PM_AREA_${AREA_KEYS[$i]}=\"${AREA_IDS[$i]}\"" >> "$AREA_LINES_FILE"
+  done
+
+  # Replace sentinel block in pm.config.sh with actual area lines
+  awk -v replacement_file="$AREA_LINES_FILE" '
+    /^# pm-area-options:start$/ {
+      print
+      while ((getline line < replacement_file) > 0) print line
+      close(replacement_file)
+      # Skip lines until end sentinel
+      while ((getline) > 0 && $0 !~ /^# pm-area-options:end$/) {}
+      print
+      next
+    }
+    { print }
+  ' "$PM_CONFIG_TARGET" > "${PM_CONFIG_TARGET}.tmp" && mv "${PM_CONFIG_TARGET}.tmp" "$PM_CONFIG_TARGET"
+  log_ok "Area options injected into pm.config.sh"
+fi
+
+# ---------------------------------------------------------------------------
 # Make shell scripts executable in target
 # ---------------------------------------------------------------------------
 log_section "Making shell scripts executable in target"
@@ -980,6 +1080,12 @@ fi
 ORIGINAL_INSTALLED_AT="${ORIGINAL_INSTALLED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# Build area names JSON array
+AREA_NAMES_JSON="[]"
+if [[ ${#AREA_NAMES[@]} -gt 0 ]]; then
+  AREA_NAMES_JSON=$(printf '%s\n' "${AREA_NAMES[@]}" | jq -R . | jq -s .)
+fi
+
 jq -n \
   --arg toolkit_version "$TOOLKIT_VERSION" \
   --arg installed_at "$ORIGINAL_INSTALLED_AT" \
@@ -994,6 +1100,7 @@ jq -n \
   --arg test_command "$TEST_COMMAND" \
   --arg setup_command "$SETUP_COMMAND" \
   --arg dev_command "$DEV_COMMAND" \
+  --argjson areas "$AREA_NAMES_JSON" \
   '{
     toolkit_version: $toolkit_version,
     installed_at: $installed_at,
@@ -1007,7 +1114,8 @@ jq -n \
     display_name: $display_name,
     test_command: $test_command,
     setup_command: $setup_command,
-    dev_command: $dev_command
+    dev_command: $dev_command,
+    areas: $areas
   }' > "$METADATA_FILE"
 
 log_ok "Saved .claude-pm-toolkit.json (used by --update mode)"
@@ -1063,6 +1171,7 @@ printf "${GREEN}%-20s${RESET} %s\n" "Owner:"          "$OWNER"
 printf "${GREEN}%-20s${RESET} %s\n" "Repo:"           "$REPO"
 printf "${GREEN}%-20s${RESET} %s\n" "Project ID:"     "$PROJECT_ID"
 printf "${GREEN}%-20s${RESET} %s\n" "Project number:" "$PROJECT_NUMBER"
+printf "${GREEN}%-20s${RESET} %s\n" "Project URL:"    "https://github.com/orgs/$OWNER/projects/$PROJECT_NUMBER"
 printf "${GREEN}%-20s${RESET} %s\n" "Prefix (lower):" "$PREFIX_LOWER"
 printf "${GREEN}%-20s${RESET} %s\n" "Prefix (upper):" "$PREFIX_UPPER"
 printf "${GREEN}%-20s${RESET} %s\n" "Display name:"   "$DISPLAY_NAME"
@@ -1125,9 +1234,19 @@ else
   fi
 
   printf "\n${GREEN}Done.${RESET} The PM toolkit has been installed into:\n  $TARGET\n"
-  printf "\nNext steps:\n"
+  printf "\n${BOLD}Project board:${RESET}\n"
+  printf "  URL: https://github.com/orgs/$OWNER/projects/$PROJECT_NUMBER\n"
+  printf "       (If user-owned: https://github.com/users/$OWNER/projects/$PROJECT_NUMBER)\n"
+  printf "\n${BOLD}Next steps:${RESET}\n"
   printf "  1. Review and customize: docs/PM_PROJECT_CONFIG.md\n"
   printf "  2. Configure port services: tools/scripts/worktree-ports.conf\n"
   printf "  3. Validate: (cd $TOOLKIT_DIR && ./validate.sh $TARGET)\n"
-  printf "  4. Commit the new files\n\n"
+  printf "  4. Commit the new files\n"
+  printf "\n${BOLD}Set up Board view (manual — GitHub API doesn't support view creation):${RESET}\n"
+  printf "  5. Open the project URL above in your browser\n"
+  printf "  6. Click '+ New view' → select 'Board'\n"
+  printf "  7. Click the view's ⋯ menu → 'Group by' → select 'Workflow'\n"
+  printf "  8. Click 'Fields' → enable Priority, Area, and Assignees\n"
+  printf "  9. Rename the default 'View 1' tab to 'Table' (optional)\n"
+  printf "  10. The Board view shows issues as cards in Backlog → Ready → Active → Review → Rework → Done columns\n\n"
 fi

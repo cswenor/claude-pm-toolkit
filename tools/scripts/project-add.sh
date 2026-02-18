@@ -95,20 +95,15 @@ fi
 
 AREA_LABEL="$AREA_LABELS"
 AREA_ID=""  # Initialize to avoid unbound variable with set -u
-case "$AREA_LABEL" in
-  area:frontend)   AREA_ID="${PM_AREA_FRONTEND:-}" ;;
-  area:backend)    AREA_ID="${PM_AREA_BACKEND:-}" ;;
-  area:contracts)  AREA_ID="${PM_AREA_CONTRACTS:-}" ;;
-  area:infra)      AREA_ID="${PM_AREA_INFRA:-}" ;;
-  area:design)     AREA_ID="${PM_AREA_DESIGN:-}" ;;
-  area:docs)       AREA_ID="${PM_AREA_DOCS:-}" ;;
-  area:pm)         AREA_ID="${PM_AREA_PM:-}" ;;
-  *) echo "Warning: Unknown area label '$AREA_LABEL' — skipping area field" ;;
-esac
 
-# If area config var was empty (not configured in this project), warn
-if [ -n "$AREA_LABEL" ] && [ -z "$AREA_ID" ]; then
-  echo "Warning: Area label '$AREA_LABEL' has no matching option ID in pm.config.sh — skipping area field"
+# Dynamic area lookup via variable indirection (supports any area names)
+AREA_NAME="${AREA_LABEL#area:}"
+AREA_KEY=$(echo "$AREA_NAME" | tr '[:lower:]-' '[:upper:]_')
+AREA_VAR="PM_AREA_${AREA_KEY}"
+AREA_ID="${!AREA_VAR:-}"
+
+if [ -z "$AREA_ID" ]; then
+  echo "Warning: No PM_AREA_${AREA_KEY} variable configured for '$AREA_LABEL' — skipping area field"
 fi
 
 # --- Check if already in project (idempotent) ---

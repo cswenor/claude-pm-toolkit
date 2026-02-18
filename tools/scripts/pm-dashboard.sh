@@ -313,4 +313,89 @@ else
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# 6. Health Score (0-100)
+# ---------------------------------------------------------------------------
+section "Health Score"
+
+HEALTH=100
+HEALTH_NOTES=""
+
+# Tooling health (-10 per missing critical file)
+for f in "tools/scripts/pm.config.sh" ".claude/settings.json" ".claude/skills/issue/SKILL.md"; do
+  if [[ ! -f "$REPO_ROOT/$f" ]]; then
+    HEALTH=$((HEALTH - 10))
+    HEALTH_NOTES="${HEALTH_NOTES}\n  -10  Missing: $f"
+  fi
+done
+
+# WIP compliance: more than 1 Active issue = penalty
+if [[ -n "${BOARD_DATA:-}" ]]; then
+  ACTIVE_COUNT=$(echo "$BOARD_DATA" | jq -r '
+    [(.data.user.projectV2.items.nodes // .data.organization.projectV2.items.nodes // [])
+    | .[] | select(.fieldValueByName.name == "Active" and .content != null)] | length
+  ' 2>/dev/null || echo "0")
+  if [[ "$ACTIVE_COUNT" -gt 1 ]]; then
+    PENALTY=$((ACTIVE_COUNT * 10))
+    HEALTH=$((HEALTH - PENALTY))
+    HEALTH_NOTES="${HEALTH_NOTES}\n  -${PENALTY}  WIP violation: $ACTIVE_COUNT items Active (limit: 1)"
+  fi
+
+  # Rework pileup: each Rework item = -5
+  REWORK_COUNT=$(echo "$BOARD_DATA" | jq -r '
+    [(.data.user.projectV2.items.nodes // .data.organization.projectV2.items.nodes // [])
+    | .[] | select(.fieldValueByName.name == "Rework" and .content != null)] | length
+  ' 2>/dev/null || echo "0")
+  if [[ "$REWORK_COUNT" -gt 0 ]]; then
+    PENALTY=$((REWORK_COUNT * 5))
+    HEALTH=$((HEALTH - PENALTY))
+    HEALTH_NOTES="${HEALTH_NOTES}\n  -${PENALTY}  Rework pileup: $REWORK_COUNT item(s) need attention"
+  fi
+
+  # Review bottleneck: more than 2 items in Review = -10
+  REVIEW_COUNT=$(echo "$BOARD_DATA" | jq -r '
+    [(.data.user.projectV2.items.nodes // .data.organization.projectV2.items.nodes // [])
+    | .[] | select(.fieldValueByName.name == "Review" and .content != null)] | length
+  ' 2>/dev/null || echo "0")
+  if [[ "$REVIEW_COUNT" -gt 2 ]]; then
+    HEALTH=$((HEALTH - 10))
+    HEALTH_NOTES="${HEALTH_NOTES}\n  -10  Review bottleneck: $REVIEW_COUNT items waiting"
+  fi
+
+  # Backlog bloat: more than 20 items in Backlog = -5
+  BACKLOG_COUNT=$(echo "$BOARD_DATA" | jq -r '
+    [(.data.user.projectV2.items.nodes // .data.organization.projectV2.items.nodes // [])
+    | .[] | select(.fieldValueByName.name == "Backlog" and .content != null)] | length
+  ' 2>/dev/null || echo "0")
+  if [[ "$BACKLOG_COUNT" -gt 20 ]]; then
+    HEALTH=$((HEALTH - 5))
+    HEALTH_NOTES="${HEALTH_NOTES}\n  -5   Backlog bloat: $BACKLOG_COUNT items (consider triaging)"
+  fi
+fi
+
+# Unreplaced placeholders = -15
+if [[ -f "$REPO_ROOT/tools/scripts/pm.config.sh" ]]; then
+  UNRESOLVED=$(grep -cE '^PM_[A-Z_]+="[^"]*\{\{' "$REPO_ROOT/tools/scripts/pm.config.sh" 2>/dev/null || true)
+  if [[ "${UNRESOLVED:-0}" -gt 0 ]]; then
+    HEALTH=$((HEALTH - 15))
+    HEALTH_NOTES="${HEALTH_NOTES}\n  -15  Config has unreplaced placeholders"
+  fi
+fi
+
+# Clamp to 0
+[[ $HEALTH -lt 0 ]] && HEALTH=0
+
+# Display
+if [[ $HEALTH -ge 80 ]]; then
+  printf "  ${GREEN}${BOLD}%d/100${RESET} — Healthy\n" "$HEALTH"
+elif [[ $HEALTH -ge 50 ]]; then
+  printf "  ${YELLOW}${BOLD}%d/100${RESET} — Needs attention\n" "$HEALTH"
+else
+  printf "  ${RED}${BOLD}%d/100${RESET} — At risk\n" "$HEALTH"
+fi
+
+if [[ -n "$HEALTH_NOTES" ]]; then
+  printf "${DIM}%b${RESET}\n" "$HEALTH_NOTES"
+fi
+
 printf "\n"
