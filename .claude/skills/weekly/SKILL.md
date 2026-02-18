@@ -50,6 +50,16 @@ Read JSON files from `reports/weekly/`:
 - If analyzing the latest report, read prior weeks to establish baseline
 - Check `reports/stats.csv` for historical metrics summary
 
+**Validate JSON files before processing:**
+
+For each JSON file loaded, verify it parses correctly. If a file is corrupt (truncated, invalid JSON), skip it with a warning rather than crashing:
+
+```
+Warning: reports/weekly/2026-02-01.json is not valid JSON — skipping.
+```
+
+If ALL files in the range are invalid, report the error and exit.
+
 If no JSON files exist:
 
 ```
@@ -431,6 +441,12 @@ If you are analyzing the **most recent** weekly report (i.e., the report period 
 # Get current project board state for mutable field verification
 gh project item-list {{PROJECT_NUMBER}} --owner {{OWNER}} --format json --limit 200
 ```
+
+**If the live board query fails** (token permissions, network error, project not found):
+
+- Log a warning: "Could not cross-reference live board state — using JSON snapshot as-is"
+- Continue with the JSON data for all fields
+- Note in the Appendix that live cross-referencing was unavailable
 
 If the live state contradicts the JSON for mutable fields:
 

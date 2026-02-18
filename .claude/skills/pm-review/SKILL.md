@@ -209,6 +209,7 @@ Before reviewing code, verify the PM process was followed and **FIX any violatio
 ### 2. Issue is in correct workflow state
 
 - Check with: `./tools/scripts/project-status.sh <issue_number>`
+- **If the command fails** (issue not in project, GraphQL error): Note "Unable to verify workflow state" and continue — don't block the review on PM infrastructure issues
 - If PR is open but issue is in Backlog/Ready → Move issue to Review
 - If PR is merged but issue is in Review → Move issue to Done
 - If issue is in Active but no PR exists → Note this is expected (work in progress)

@@ -324,7 +324,7 @@ gh issue view $ARGUMENTS --json comments --jq '.comments[] | {author: .author.lo
 ./tools/scripts/project-status.sh $ARGUMENTS
 ```
 
-Extract the `workflow` field.
+Extract the `workflow` field. **If the command fails** (non-zero exit, issue not in project, network error), set `workflow = null` — this will trigger MISMATCH(not_in_project) in Step 4, which offers to add the issue to the project.
 
 #### 1d. PR Discovery
 
