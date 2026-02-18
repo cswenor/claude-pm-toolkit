@@ -59,11 +59,17 @@ case "$STATE" in
 esac
 
 # Get item ID
-ITEM_ID=$(pm_get_item_id "$ISSUE_NUM")
+ITEM_ID=$(pm_get_item_id "$ISSUE_NUM" 2>/dev/null || echo "")
 
 if [ -z "$ITEM_ID" ]; then
-  echo "Error: Issue #$ISSUE_NUM not found in project"
-  echo "Run: ./tools/scripts/project-add.sh $ISSUE_NUM <priority>"
+  echo "Error: Issue #$ISSUE_NUM not found in project #$PM_PROJECT_NUMBER" >&2
+  echo "" >&2
+  echo "Possible causes:" >&2
+  echo "  - Issue hasn't been added to the project yet" >&2
+  echo "  - Issue number is wrong" >&2
+  echo "  - gh CLI token missing 'project' scope" >&2
+  echo "" >&2
+  echo "Fix: ./tools/scripts/project-add.sh $ISSUE_NUM <priority>" >&2
   exit 1
 fi
 

@@ -45,6 +45,9 @@ fi
 
 # Get project root (works in worktrees too)
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+if [ -z "$PROJECT_ROOT" ]; then
+  echo "Warning: Not in a git repository. Only global plans will be searched." >&2
+fi
 
 # Collect search directories
 SEARCH_DIRS=()
@@ -71,7 +74,10 @@ get_mtime() {
   if stat -f "%m" "$file" 2>/dev/null; then
     return
   fi
-  stat -c "%Y" "$file" 2>/dev/null
+  if stat -c "%Y" "$file" 2>/dev/null; then
+    return
+  fi
+  echo "0"
 }
 
 # Search for plan files containing the issue number as a distinct token

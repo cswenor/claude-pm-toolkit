@@ -92,14 +92,28 @@ pm_validate_config() {
     printf '  - %s\n' "${missing[@]}" >&2
     return 1
   fi
+
+  # Check for unreplaced template placeholders
+  local config_file
+  config_file="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pm.config.sh"
+  if grep -qE '^\w+=".*\{\{' "$config_file" 2>/dev/null; then
+    echo "Error: pm.config.sh contains unreplaced {{placeholders}}" >&2
+    echo "Run: install.sh --update /path/to/repo  (to re-discover field IDs)" >&2
+    return 1
+  fi
 }
 
 # Helper: get repo name from git remote
 pm_get_repo() {
+  if ! git rev-parse --git-dir &>/dev/null; then
+    echo "Error: Not inside a git repository" >&2
+    return 1
+  fi
   local url
   url=$(git remote get-url origin 2>/dev/null)
-  if [ $? -ne 0 ]; then
-    echo "Error: Not in a git repo or no origin remote" >&2
+  if [ -z "$url" ]; then
+    echo "Error: No 'origin' remote configured" >&2
+    echo "Run: git remote add origin <url>" >&2
     return 1
   fi
   echo "$url" | sed -E 's#(git@github\.com:|https://github\.com/)##' | sed 's/\.git$//' | cut -d'/' -f2

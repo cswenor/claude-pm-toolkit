@@ -62,7 +62,15 @@ if [[ -z "$PROJECT_ID" ]]; then
 fi
 
 if [[ -z "$PROJECT_ID" ]]; then
-  err "Could not find project $PROJECT_NUMBER for $OWNER (tried both org and user queries)"
+  err "Could not find project #$PROJECT_NUMBER for owner '$OWNER'"
+  err ""
+  err "Possible causes:"
+  err "  - Owner name is misspelled in pm.config.sh"
+  err "  - Project number is wrong"
+  err "  - gh CLI token missing 'project' scope"
+  err "  - Owner is a user but script tried org first (or vice versa)"
+  err ""
+  err "To verify: gh project view $PROJECT_NUMBER --owner $OWNER"
   exit 1
 fi
 

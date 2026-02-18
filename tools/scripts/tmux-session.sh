@@ -225,8 +225,11 @@ cmd_start() {
   fi
 
   # Determine repo root (works from any worktree)
+  if ! git rev-parse --git-dir &>/dev/null; then
+    die "Not in a git repository. Run from your project directory."
+  fi
   local repo_root
-  repo_root=$(git rev-parse --git-common-dir 2>/dev/null | xargs dirname)
+  repo_root=$(git rev-parse --git-common-dir | xargs dirname)
   repo_root=$(realpath "$repo_root")
 
   # Determine worktree path

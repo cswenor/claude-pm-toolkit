@@ -53,8 +53,21 @@ RESULT=$(gh api graphql -f query='
     }
   }
 ' -f owner="$PM_OWNER" -f repo="$REPO" -F issue="$ISSUE_NUM" 2>&1) || {
-  echo "Error: Failed to fetch issue #$ISSUE_NUM"
-  echo "$RESULT"
+  echo "Error: Failed to fetch issue #$ISSUE_NUM" >&2
+  echo "" >&2
+  # Parse common GraphQL errors
+  if echo "$RESULT" | grep -q "Could not resolve to a Repository"; then
+    echo "Cause: Repository '$PM_OWNER/$REPO' not found or not accessible" >&2
+    echo "Check: PM_OWNER in pm.config.sh and your gh CLI authentication" >&2
+  elif echo "$RESULT" | grep -q "INSUFFICIENT_SCOPES\|insufficient_scope"; then
+    echo "Cause: gh CLI token missing required scopes" >&2
+    echo "Fix: gh auth refresh -s project,read:org" >&2
+  elif echo "$RESULT" | grep -q "Could not resolve to an Issue"; then
+    echo "Cause: Issue #$ISSUE_NUM does not exist in this repository" >&2
+  else
+    echo "Raw error:" >&2
+    echo "$RESULT" >&2
+  fi
   exit 1
 }
 
