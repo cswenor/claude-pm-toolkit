@@ -16,7 +16,7 @@ jobs:
         run: sudo apt-get install -y shellcheck
       - name: Check scripts
         run: |
-          shellcheck -x install.sh validate.sh setup.sh
+          shellcheck -x install.sh validate.sh setup.sh uninstall.sh
           shellcheck -x tools/scripts/*.sh
 
   validate-templates:
@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
       - name: Check for broken placeholders
         run: |
           # All placeholders should be {{UPPER_SNAKE}} format
@@ -60,21 +62,20 @@ jobs:
           done < tools/config/command-guard.conf
           echo "OK: command-guard.conf"
 
-          # secret-patterns.json: valid JSON with required schema
-          if ! python3 -c "
-          import json, sys
-          with open('tools/config/secret-patterns.json') as f:
-              data = json.load(f)
-          assert 'secret_token_patterns' in data, 'Missing secret_token_patterns'
-          assert isinstance(data['secret_token_patterns'], list), 'Not a list'
-          for p in data['secret_token_patterns']:
-              assert 'name' in p, f'Missing name in {p}'
-              assert 'pattern' in p, f'Missing pattern in {p}'
-          print(f'OK: secret-patterns.json ({len(data[\"secret_token_patterns\"])} patterns)')
-          "; then
-            echo "ERROR: Invalid secret-patterns.json"
+          # secret-patterns.json: valid JSON with required schema (using jq)
+          if ! jq -e '.secret_token_patterns | type == "array"' tools/config/secret-patterns.json >/dev/null 2>&1; then
+            echo "ERROR: secret-patterns.json missing or invalid 'secret_token_patterns' array"
             exit 1
           fi
+          PATTERN_COUNT=$(jq '.secret_token_patterns | length' tools/config/secret-patterns.json)
+          # Verify each pattern has required fields
+          MISSING=$(jq '[.secret_token_patterns[] | select(.name == null or .pattern == null)] | length' tools/config/secret-patterns.json)
+          if [ "$MISSING" -gt 0 ]; then
+            echo "ERROR: $MISSING pattern(s) missing 'name' or 'pattern' field"
+            jq '.secret_token_patterns[] | select(.name == null or .pattern == null)' tools/config/secret-patterns.json
+            exit 1
+          fi
+          echo "OK: secret-patterns.json ($PATTERN_COUNT patterns)"
 
   install-test:
     name: Install Test
@@ -92,16 +93,48 @@ jobs:
           echo "# Test" > CLAUDE.md
           mkdir -p .claude
           echo '{}' > .claude/settings.json
-      - name: Test install (non-interactive smoke test)
+      - name: Test install help and structure
         run: |
-          # This tests the install script can parse flags and find files
-          # It can't do a real install without gh auth, but validates structure
-          ./install.sh --help 2>&1 || true
+          # Verify --help works
+          ./install.sh --help 2>&1 | grep -q "install.sh" || { echo "ERROR: --help output missing"; exit 1; }
+
+          # Verify uninstall --help works
+          ./uninstall.sh --help 2>&1 | grep -q "uninstall" || { echo "ERROR: uninstall --help output missing"; exit 1; }
+
+          # Verify validate --help works
+          ./validate.sh --help 2>&1 | grep -q "validate" || { echo "ERROR: validate --help output missing"; exit 1; }
+
+          echo "OK: All scripts respond to --help"
+
           # Verify all template files exist
-          for f in claude-md-sections.md docs/PM_PLAYBOOK.md; do
+          TEMPLATES=(
+            "claude-md-sections.md"
+            "docs/PM_PLAYBOOK.md"
+            "docs/PM_PROJECT_CONFIG.md"
+            "AGENTS.md"
+          )
+          for f in "${TEMPLATES[@]}"; do
             if [[ ! -f "$f" ]]; then
               echo "ERROR: Missing template file: $f"
               exit 1
             fi
           done
           echo "OK: All template files present"
+
+          # Verify all scripts are executable
+          NON_EXEC=$(find tools/scripts -name "*.sh" ! -executable 2>/dev/null | head -5)
+          if [[ -n "$NON_EXEC" ]]; then
+            echo "ERROR: Non-executable scripts found:"
+            echo "$NON_EXEC"
+            exit 1
+          fi
+          echo "OK: All scripts are executable"
+
+          # Verify skill files exist and have content
+          for skill in .claude/skills/*/SKILL.md; do
+            if [[ ! -s "$skill" ]]; then
+              echo "ERROR: Empty or missing skill file: $skill"
+              exit 1
+            fi
+          done
+          echo "OK: All skill files have content"
