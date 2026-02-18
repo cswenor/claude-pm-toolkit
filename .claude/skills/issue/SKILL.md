@@ -617,31 +617,17 @@ Then run `/issue <num>` again to create a fresh worktree.
 
 #### Load Based on Area Labels
 
-| Label            | Docs to Load                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------ |
-| `area:frontend`  | `docs/development/LOCAL_DEV.md`, `docs/architecture/OVERVIEW.md`                     |
-| `area:backend`   | `docs/architecture/DATABASE.md`, `docs/architecture/OVERVIEW.md`                     |
-| `area:contracts` | `docs/contracts/GAME_CONTRACT_INTERFACE.md`, `packages/contracts/algorand/README.md` |
-| `area:infra`     | `docs/ENV_WORKFLOW.md`, `docs/SECRETS.md`, `docs/development/SETUP.md`               |
+Read `docs/PM_PROJECT_CONFIG.md` § "Area Documentation" for the mapping of area labels to documentation files. For each area label on the issue, load the corresponding docs listed in that table.
 
 > **Note:** Not all area labels may exist in your project. Skip any that don't apply.
 
 #### Load Based on Keywords
 
-Scan issue body AND comments for keywords (see Appendix G).
+Scan issue body AND comments for keywords listed in `docs/PM_PROJECT_CONFIG.md` § "Keyword Documentation" (see also Appendix G). Load the corresponding docs for any matching keywords.
 
 #### Load External Library Docs (context7)
 
-Scan for library references and query context7:
-
-| Keywords                 | Library to Query |
-| ------------------------ | ---------------- |
-| sveltekit, svelte, $app/ | sveltekit        |
-| algosdk, algorand sdk    | algosdk          |
-| supabase, supabase-js    | supabase         |
-| tailwind, tailwindcss    | tailwindcss      |
-| vitest                   | vitest           |
-| playwright               | playwright       |
+Scan for library references listed in `docs/PM_PROJECT_CONFIG.md` § "Library Documentation (context7)" and query context7:
 
 ```
 mcp__context7__resolve-library-id { "libraryName": "<library>" }
@@ -706,8 +692,8 @@ For each candidate, assess overlap and MUST cite concrete evidence:
 
 **Example output:**
 
-> **#187: Fix wallet connection timeout**
-> Related - mentions Kibisis SDK, has AC "handle timeout errors" (overlaps your timeout handling goal)
+> **#187: Fix API connection timeout**
+> Related - mentions retry logic, has AC "handle timeout errors" (overlaps your timeout handling goal)
 
 #### Step 4: Recommend
 
@@ -881,7 +867,7 @@ During START or CONTINUE mode, if you discover:
 
 ### Why This Matters
 
-**The PR #266 lesson:** A developer working on Demo Wallet (#60) discovered algod needed upgrading. They bundled both into one PR. Result:
+**The scope mixing lesson:** A developer working on a feature discovered an infrastructure dependency needed upgrading. They bundled both into one PR. Result:
 
 - 3 reviews requesting changes due to scope mixing
 - Can't merge infra fix without also merging incomplete feature
@@ -1519,9 +1505,9 @@ As a {user_type}, I want {goal} so that {benefit}.
 
 | User mentions                         | Area Label       |
 | ------------------------------------- | ---------------- |
-| UI, button, page, component, Svelte   | `area:frontend`  |
-| API, endpoint, database, Supabase     | `area:backend`   |
-| contract, on-chain, Algorand, Voi     | `area:contracts` |
+| UI, button, page, component, CSS      | `area:frontend`  |
+| API, endpoint, database, query        | `area:backend`   |
+| contract, on-chain, blockchain, smart | `area:contracts` |
 | CI, deploy, script, tooling, workflow | `area:infra`     |
 
 > **Note:** Not all area labels may exist in your project. Only create the ones relevant to your work.
@@ -1711,15 +1697,9 @@ As a {user_type}, I want {goal} so that {benefit}.
 
 ## Appendix G: Keyword-Based Doc Loading
 
-| Keywords                          | Docs to Load                              |
-| --------------------------------- | ----------------------------------------- |
-| env, environment, secrets, .env   | `docs/ENV_WORKFLOW.md`, `docs/SECRETS.md` |
-| database, supabase, postgres, sql | `docs/architecture/DATABASE.md`           |
-| game, unity, bridge, postmessage  | `docs/architecture/GAME_INTEGRATION.md`   |
-| wallet, account, auth, magic      | `docs/ACCOUNT_AND_WALLET_UX.md`           |
-| chain, algorand, voi, multi-chain | `docs/architecture/MULTI_CHAIN.md`        |
-| test, vitest, playwright          | `docs/development/TESTING.md`             |
-| deploy, production, release       | `docs/runbooks/DEPLOY.md`                 |
+**Read `docs/PM_PROJECT_CONFIG.md` § "Keyword Documentation" for the full mapping.**
+
+The config file maps keywords found in issue bodies/comments to documentation files that Claude should load for context. When scanning an issue, match against all keyword rows and load the corresponding docs.
 
 ---
 
@@ -2349,15 +2329,15 @@ This skill exists because Claude tends to:
 
 4. **Don't mix worktrees** - if you need to work on a different issue, that issue has its own worktree
 
-### The Scope Discipline Lesson (PR #266)
+### The Scope Discipline Lesson
 
-A developer worked on Issue #60 (Demo Wallet). During implementation, they discovered algod needed upgrading to support `allowUnnamedResources`. Instead of:
+A developer worked on a feature issue. During implementation, they discovered an infrastructure dependency needed upgrading. Instead of:
 
-1. Creating Issue #283 for the algod upgrade
+1. Creating a separate issue for the infrastructure upgrade
 2. Establishing a blocker relationship
 3. Implementing the upgrade in a separate PR first
 
-They bundled both into PR #266. Result:
+They bundled both into one PR. Result:
 
 - **3 reviews requesting changes** due to scope mixing
 - **Can't merge infra** without also merging incomplete feature
@@ -2402,16 +2382,7 @@ Worktrees are created as sibling directories to the main repo:
 
 Each worktree gets a unique port offset based on `(issue_number % 79) * 100 + 3200`.
 
-| Service                  | Base Port | Issue #291 | Issue #294 |
-| ------------------------ | --------- | ---------- | ---------- |
-| Vite dev server          | 5173      | 13773      | 14073      |
-| Kong HTTP (Supabase API) | 54321     | 62921      | 63221      |
-| Kong HTTPS               | 54443     | 63043      | 63343      |
-| Supabase Studio          | 54323     | 62923      | 63223      |
-| Postgres                 | 5432      | 14032      | 14332      |
-| Pooler                   | 6543      | 15143      | 15443      |
-| Algod                    | 4001      | 12601      | 12901      |
-| KMD                      | 4002      | 12602      | 12902      |
+Port services are configured in `tools/scripts/worktree-ports.conf`. Each service defined there gets `BASE_PORT + offset` as its assigned port. URL-based exports are configured in `tools/scripts/worktree-urls.conf`.
 
 Port offsets are set via shell exports (no env files):
 
@@ -2421,13 +2392,13 @@ eval "$(./tools/scripts/worktree-setup.sh 294 --print-env)"
 {{DEV_COMMAND}}
 ```
 
-This prints and exports:
+This reads the port config and prints exports like:
 
 ```bash
 export COMPOSE_PROJECT_NAME={{prefix}}-294
-export VITE_PORT=14073
-export KONG_HTTP_PORT=63221
-# ... etc
+export DEV_PORT=6200
+export DB_PORT=8632
+# ... (based on your worktree-ports.conf)
 ```
 
 ### Worktree Lifecycle
@@ -2938,21 +2909,24 @@ The script checks for `codex` availability, then emits `-c mcp_servers.<name>=<c
 
 #### Injected Servers
 
-| Server       | Transport | Auth                                                 | Skip Condition         |
-| ------------ | --------- | ---------------------------------------------------- | ---------------------- |
-| context7     | HTTP      | None                                                 | Never skipped          |
-| svelte       | stdio     | None                                                 | Never skipped          |
-| shadcn       | stdio     | None                                                 | Never skipped          |
-| supabase-dev | stdio     | `SUPABASE_ACCESS_TOKEN` + `SUPABASE_DEV_PROJECT_REF` | Either env var missing |
+The servers injected by `codex-mcp-overrides.sh` depend on your project's `.mcp.json` configuration. The script reads from `.mcp.json` and emits `-c` flags for each server that has its required auth credentials available.
 
-**Intentionally excluded:** github (already in Codex global config), figma (low review value), supabase-local (needs running instance), supabase-prod (safety).
+Common patterns:
+
+| Server Type            | Transport | Auth                              | Skip Condition             |
+| ---------------------- | --------- | --------------------------------- | -------------------------- |
+| Documentation (e.g., context7) | HTTP | None                           | Never skipped              |
+| Framework tools        | stdio     | None                              | Never skipped              |
+| Cloud services         | stdio     | Service-specific env vars         | Env vars missing           |
+
+**Intentionally excluded from injection:** Servers already in Codex global config, servers needing a running local instance, and production servers (safety).
 
 #### Skip Behavior
 
-Per repo no-fallback policy, every skip produces an explicit stderr message:
+Per no-fallback policy, every skip produces an explicit stderr message:
 
 ```
-codex-mcp-overrides: skipping supabase-dev (SUPABASE_ACCESS_TOKEN not set)
+codex-mcp-overrides: skipping <server> (<ENV_VAR> not set)
 codex-mcp-overrides: codex not found, no MCP overrides emitted
 ```
 
@@ -2960,10 +2934,11 @@ Stderr goes to the terminal (visible to Claude/user). Stdout contains only `-c` 
 
 #### Auth-Required Servers
 
-For supabase-dev, ensure env vars are exported before running Codex:
+For servers requiring credentials, ensure env vars are exported before running Codex:
 
 ```bash
-eval "$(make env-export)"
+# Export project environment variables
+eval "$(make env-export)"  # or source your .env file
 ```
 
 #### MCP Is Optional

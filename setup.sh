@@ -223,7 +223,7 @@ fi
 
 PREFIX_LOWER=$(prompt_with_default "Short prefix, lowercase (e.g. hov, myapp)" "")
 PREFIX_UPPER=$(echo "$PREFIX_LOWER" | tr '[:lower:]' '[:upper:]')
-DISPLAY_NAME=$(prompt_with_default "Display name (e.g. House of Voi)" "$OWNER")
+DISPLAY_NAME=$(prompt_with_default "Display name (e.g. My Project)" "$OWNER")
 TEST_COMMAND=$(prompt_with_default "Test command (run before PR/review)" "make test")
 SETUP_COMMAND=$(prompt_with_default "Setup command (bootstrap environment)" "make setup")
 DEV_COMMAND=$(prompt_with_default "Dev command (start dev server)" "make dev")
@@ -479,7 +479,15 @@ apply_replacements_to_file() {
 
     if [[ -n "$value" ]]; then
       # Use awk for reliable cross-platform replacement (no regex escaping issues)
-      awk -v ph="$placeholder" -v val="$value" '{gsub(ph, val)} 1' "$tmp" > "${tmp}.awk" && mv "${tmp}.awk" "$tmp"
+      # Use awk with index() for fixed-string matching (no regex interpretation)
+      awk -v ph="$placeholder" -v val="$value" '
+        {
+          while (idx = index($0, ph)) {
+            $0 = substr($0, 1, idx-1) val substr($0, idx+length(ph))
+          }
+          print
+        }
+      ' "$tmp" > "${tmp}.awk" && mv "${tmp}.awk" "$tmp"
     fi
     # If value is empty, the placeholder remains — the summary will warn about it
   done

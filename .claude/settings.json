@@ -3,9 +3,7 @@
     "name": "{{DISPLAY_NAME}}",
     "type": "monorepo"
   },
-  "enabledPlugins": {
-    "postgres-best-practices@supabase-agent-skills": true
-  },
+  "enabledPlugins": {},
   "plansDirectory": ".claude/plans",
   "hooks": {
     "PreToolUse": [

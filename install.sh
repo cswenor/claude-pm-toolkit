@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install.sh - Install claude-pm-toolkit files into an existing repository
+# install.sh - Install or update claude-pm-toolkit in an existing repository
 #
-# Copies template files (with placeholders replaced) into a target repo.
-# Does NOT overwrite files that already exist, except for special merge
-# logic applied to .claude/settings.json and CLAUDE.md.
+# Modes:
+#   Fresh install:  Prompts for config, discovers field IDs, copies files
+#   Update:         Reads saved config, overwrites toolkit files, preserves customizations
 #
 # Usage:
-#   ./install.sh /path/to/existing/repo
+#   ./install.sh /path/to/existing/repo           # Fresh install
+#   ./install.sh --update /path/to/existing/repo   # Update from latest toolkit
 #   ./install.sh --help
 
 # ---------------------------------------------------------------------------
@@ -31,23 +32,38 @@ log_section() { printf "\n${BOLD}%s${RESET}\n%s\n" "$*" "$(printf '%0.s-' {1..60
 # ---------------------------------------------------------------------------
 # Help
 # ---------------------------------------------------------------------------
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+show_help() {
   cat <<EOF
-install.sh - Install claude-pm-toolkit into an existing repository
+install.sh - Install or update claude-pm-toolkit in an existing repository
 
 USAGE
-  ./install.sh /path/to/target/repo
+  ./install.sh /path/to/target/repo              # Fresh install
+  ./install.sh --update /path/to/target/repo      # Update existing installation
 
-DESCRIPTION
-  Prompts for project configuration, discovers GitHub Projects v2 field IDs,
-  then copies template files (with placeholders replaced) into the target repo.
+MODES
+  Fresh install (default):
+    - Prompts for project configuration
+    - Discovers GitHub Projects v2 field IDs via GraphQL
+    - Copies template files with replacements applied
+    - Creates .claude-pm-toolkit.json metadata file
 
-  Copy rules:
+  Update (--update):
+    - Reads config from existing .claude-pm-toolkit.json
+    - Overwrites toolkit-managed files (scripts, skills, docs)
+    - Preserves user customizations (ports.conf, urls.conf, PM_PROJECT_CONFIG.md)
+    - Refreshes CLAUDE.md sentinel block and settings.json hooks
+
+  Copy rules (fresh install):
     - New files:              copied with replacements applied
     - Existing files:         skipped (not clobbered)
-    - .claude/settings.json:  merged (hooks from template added to existing)
-    - CLAUDE.md:              content from claude-md-sections.md appended
-                              between sentinel comments (or created fresh)
+    - .claude/settings.json:  merged (hooks from template added)
+    - CLAUDE.md:              content appended between sentinel comments
+
+  Copy rules (update):
+    - Toolkit-managed files:  overwritten with latest version
+    - User config files:      preserved (never overwritten)
+    - .claude/settings.json:  merged (new hooks added)
+    - CLAUDE.md:              sentinel block replaced
 
 PREREQUISITES
   - gh CLI (authenticated, with 'project' scope)
@@ -55,10 +71,24 @@ PREREQUISITES
   - Target directory must be a git repository
 
 ARGUMENTS
-  /path/to/target/repo   Path to the existing repository to install into
+  /path/to/target/repo   Path to the existing repository
 EOF
   exit 0
-fi
+}
+
+# ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+UPDATE_MODE=false
+TARGET=""
+
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h) show_help ;;
+    --update)  UPDATE_MODE=true ;;
+    *)         TARGET="$arg" ;;
+  esac
+done
 
 # ---------------------------------------------------------------------------
 # Prerequisites
@@ -97,9 +127,8 @@ fi
 # ---------------------------------------------------------------------------
 # Validate target argument
 # ---------------------------------------------------------------------------
-TARGET="${1:-}"
 if [[ -z "$TARGET" ]]; then
-  log_error "Usage: ./install.sh /path/to/existing/repo"
+  log_error "Usage: ./install.sh [--update] /path/to/existing/repo"
   exit 1
 fi
 
@@ -117,6 +146,26 @@ fi
 log_ok "Target is a git repo: $TARGET"
 
 TOOLKIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+METADATA_FILE="$TARGET/.claude-pm-toolkit.json"
+
+# ---------------------------------------------------------------------------
+# User config files (NEVER overwritten in update mode)
+# ---------------------------------------------------------------------------
+USER_CONFIG_FILES=(
+  "tools/scripts/worktree-ports.conf"
+  "tools/scripts/worktree-urls.conf"
+  "docs/PM_PROJECT_CONFIG.md"
+)
+
+is_user_config() {
+  local rel="$1"
+  for ucf in "${USER_CONFIG_FILES[@]}"; do
+    if [[ "$rel" == "$ucf" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 # ---------------------------------------------------------------------------
 # Helper: prompt with default
@@ -157,106 +206,138 @@ detect_git_remote_repo() {
 }
 
 # ---------------------------------------------------------------------------
-# Gather inputs
+# UPDATE MODE: Read config from existing metadata
 # ---------------------------------------------------------------------------
-log_section "Project configuration"
+if $UPDATE_MODE; then
+  log_section "Update mode — reading existing configuration"
 
-DETECTED_OWNER=$(detect_git_remote_owner)
-DETECTED_REPO=$(detect_git_remote_repo)
+  if [[ ! -f "$METADATA_FILE" ]]; then
+    log_error "No .claude-pm-toolkit.json found in target."
+    log_error "Run a fresh install first: ./install.sh $TARGET"
+    exit 1
+  fi
 
-OWNER=$(prompt_with_default "GitHub owner (org or user)" "$DETECTED_OWNER")
-REPO=$(prompt_with_default "GitHub repo name" "$DETECTED_REPO")
-PROJECT_NUMBER=$(prompt_with_default "GitHub Project number (Projects v2, or 'new' to create)" "")
+  # Read all values from metadata
+  OWNER=$(jq -r '.owner' "$METADATA_FILE")
+  REPO=$(jq -r '.repo' "$METADATA_FILE")
+  PROJECT_NUMBER=$(jq -r '.project_number' "$METADATA_FILE")
+  PROJECT_ID=$(jq -r '.project_id' "$METADATA_FILE")
+  PREFIX_LOWER=$(jq -r '.prefix_lower' "$METADATA_FILE")
+  PREFIX_UPPER=$(jq -r '.prefix_upper' "$METADATA_FILE")
+  DISPLAY_NAME=$(jq -r '.display_name' "$METADATA_FILE")
+  TEST_COMMAND=$(jq -r '.test_command' "$METADATA_FILE")
+  SETUP_COMMAND=$(jq -r '.setup_command' "$METADATA_FILE")
+  DEV_COMMAND=$(jq -r '.dev_command' "$METADATA_FILE")
 
-# If user entered "new", create a project board with all required fields
-if [[ "$PROJECT_NUMBER" == "new" ]]; then
-  log_section "Creating GitHub Projects v2 board"
-  PROJECT_TITLE=$(prompt_with_default "Project board title" "$REPO")
-  log_info "Creating project '$PROJECT_TITLE'..."
-  CREATE_RESULT=$(gh project create --owner "$OWNER" --title "$PROJECT_TITLE" --format json 2>&1) || {
-    # Fallback for personal accounts (--owner @me)
-    CREATE_RESULT=$(gh project create --owner @me --title "$PROJECT_TITLE" --format json 2>&1) || {
-      log_error "Failed to create project: $CREATE_RESULT"
-      exit 1
+  log_ok "Loaded config: $OWNER/$REPO (project #$PROJECT_NUMBER)"
+  log_info "Prefix: $PREFIX_LOWER / $PREFIX_UPPER"
+  log_info "Display: $DISPLAY_NAME"
+fi
+
+# ---------------------------------------------------------------------------
+# FRESH INSTALL: Gather inputs interactively
+# ---------------------------------------------------------------------------
+if ! $UPDATE_MODE; then
+  log_section "Project configuration"
+
+  DETECTED_OWNER=$(detect_git_remote_owner)
+  DETECTED_REPO=$(detect_git_remote_repo)
+
+  OWNER=$(prompt_with_default "GitHub owner (org or user)" "$DETECTED_OWNER")
+  REPO=$(prompt_with_default "GitHub repo name" "$DETECTED_REPO")
+  PROJECT_NUMBER=$(prompt_with_default "GitHub Project number (Projects v2, or 'new' to create)" "")
+
+  # If user entered "new", create a project board with all required fields
+  if [[ "$PROJECT_NUMBER" == "new" ]]; then
+    log_section "Creating GitHub Projects v2 board"
+    PROJECT_TITLE=$(prompt_with_default "Project board title" "$REPO")
+    log_info "Creating project '$PROJECT_TITLE'..."
+    CREATE_RESULT=$(gh project create --owner "$OWNER" --title "$PROJECT_TITLE" --format json 2>&1) || {
+      # Fallback for personal accounts (--owner @me)
+      CREATE_RESULT=$(gh project create --owner @me --title "$PROJECT_TITLE" --format json 2>&1) || {
+        log_error "Failed to create project: $CREATE_RESULT"
+        exit 1
+      }
     }
-  }
-  PROJECT_NUMBER=$(echo "$CREATE_RESULT" | jq -r '.number')
-  log_ok "Created project #$PROJECT_NUMBER"
+    PROJECT_NUMBER=$(echo "$CREATE_RESULT" | jq -r '.number')
+    log_ok "Created project #$PROJECT_NUMBER"
 
-  log_info "Adding Workflow field..."
-  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Workflow" --data-type "SINGLE_SELECT" \
-    --single-select-options "Backlog,Ready,Active,Review,Rework,Done" 2>/dev/null || \
-  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Workflow" --data-type "SINGLE_SELECT" \
-    --single-select-options "Backlog,Ready,Active,Review,Rework,Done" 2>/dev/null
-  log_ok "  Workflow: Backlog, Ready, Active, Review, Rework, Done"
+    log_info "Adding Workflow field..."
+    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Workflow" --data-type "SINGLE_SELECT" \
+      --single-select-options "Backlog,Ready,Active,Review,Rework,Done" 2>/dev/null || \
+    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Workflow" --data-type "SINGLE_SELECT" \
+      --single-select-options "Backlog,Ready,Active,Review,Rework,Done" 2>/dev/null
+    log_ok "  Workflow: Backlog, Ready, Active, Review, Rework, Done"
 
-  log_info "Adding Priority field..."
-  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Priority" --data-type "SINGLE_SELECT" \
-    --single-select-options "Critical,High,Normal" 2>/dev/null || \
-  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Priority" --data-type "SINGLE_SELECT" \
-    --single-select-options "Critical,High,Normal" 2>/dev/null
-  log_ok "  Priority: Critical, High, Normal"
+    log_info "Adding Priority field..."
+    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Priority" --data-type "SINGLE_SELECT" \
+      --single-select-options "Critical,High,Normal" 2>/dev/null || \
+    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Priority" --data-type "SINGLE_SELECT" \
+      --single-select-options "Critical,High,Normal" 2>/dev/null
+    log_ok "  Priority: Critical, High, Normal"
 
-  log_info "Adding Area field..."
-  read -r -p "$(printf "${CYAN}Area options (comma-separated)${RESET} [${BOLD}Frontend,Backend,Infra,Docs${RESET}]: ")" AREA_OPTS
-  AREA_OPTS="${AREA_OPTS:-Frontend,Backend,Infra,Docs}"
-  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Area" --data-type "SINGLE_SELECT" \
-    --single-select-options "$AREA_OPTS" 2>/dev/null || \
-  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Area" --data-type "SINGLE_SELECT" \
-    --single-select-options "$AREA_OPTS" 2>/dev/null
-  log_ok "  Area: $AREA_OPTS"
+    log_info "Adding Area field..."
+    read -r -p "$(printf "${CYAN}Area options (comma-separated)${RESET} [${BOLD}Frontend,Backend,Infra,Docs${RESET}]: ")" AREA_OPTS
+    AREA_OPTS="${AREA_OPTS:-Frontend,Backend,Infra,Docs}"
+    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Area" --data-type "SINGLE_SELECT" \
+      --single-select-options "$AREA_OPTS" 2>/dev/null || \
+    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Area" --data-type "SINGLE_SELECT" \
+      --single-select-options "$AREA_OPTS" 2>/dev/null
+    log_ok "  Area: $AREA_OPTS"
 
-  log_info "Adding Issue Type field..."
-  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Issue Type" --data-type "SINGLE_SELECT" \
-    --single-select-options "Bug,Feature,Spike,Epic,Chore" 2>/dev/null || \
-  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Issue Type" --data-type "SINGLE_SELECT" \
-    --single-select-options "Bug,Feature,Spike,Epic,Chore" 2>/dev/null
-  log_ok "  Issue Type: Bug, Feature, Spike, Epic, Chore"
+    log_info "Adding Issue Type field..."
+    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Issue Type" --data-type "SINGLE_SELECT" \
+      --single-select-options "Bug,Feature,Spike,Epic,Chore" 2>/dev/null || \
+    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Issue Type" --data-type "SINGLE_SELECT" \
+      --single-select-options "Bug,Feature,Spike,Epic,Chore" 2>/dev/null
+    log_ok "  Issue Type: Bug, Feature, Spike, Epic, Chore"
 
-  log_info "Adding Risk field..."
-  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Risk" --data-type "SINGLE_SELECT" \
-    --single-select-options "Low,Medium,High" 2>/dev/null || \
-  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Risk" --data-type "SINGLE_SELECT" \
-    --single-select-options "Low,Medium,High" 2>/dev/null
-  log_ok "  Risk: Low, Medium, High"
+    log_info "Adding Risk field..."
+    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Risk" --data-type "SINGLE_SELECT" \
+      --single-select-options "Low,Medium,High" 2>/dev/null || \
+    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Risk" --data-type "SINGLE_SELECT" \
+      --single-select-options "Low,Medium,High" 2>/dev/null
+    log_ok "  Risk: Low, Medium, High"
 
-  log_info "Adding Estimate field..."
-  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Estimate" --data-type "SINGLE_SELECT" \
-    --single-select-options "Small,Medium,Large" 2>/dev/null || \
-  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Estimate" --data-type "SINGLE_SELECT" \
-    --single-select-options "Small,Medium,Large" 2>/dev/null
-  log_ok "  Estimate: Small, Medium, Large"
+    log_info "Adding Estimate field..."
+    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Estimate" --data-type "SINGLE_SELECT" \
+      --single-select-options "Small,Medium,Large" 2>/dev/null || \
+    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Estimate" --data-type "SINGLE_SELECT" \
+      --single-select-options "Small,Medium,Large" 2>/dev/null
+    log_ok "  Estimate: Small, Medium, Large"
 
-  log_ok "Project board created with all fields!"
+    log_ok "Project board created with all fields!"
+    printf "\n"
+  fi
+
+  PREFIX_LOWER=$(prompt_with_default "Short prefix, lowercase (e.g. hov, myapp)" "")
+  PREFIX_UPPER=$(echo "$PREFIX_LOWER" | tr '[:lower:]' '[:upper:]')
+  DISPLAY_NAME=$(prompt_with_default "Display name (e.g. My Project)" "$OWNER")
+  TEST_COMMAND=$(prompt_with_default "Test command (run before PR/review)" "make test")
+  SETUP_COMMAND=$(prompt_with_default "Setup command (bootstrap environment)" "make setup")
+  DEV_COMMAND=$(prompt_with_default "Dev command (start dev server)" "make dev")
+
   printf "\n"
-fi
-PREFIX_LOWER=$(prompt_with_default "Short prefix, lowercase (e.g. hov, myapp)" "")
-PREFIX_UPPER=$(echo "$PREFIX_LOWER" | tr '[:lower:]' '[:upper:]')
-DISPLAY_NAME=$(prompt_with_default "Display name (e.g. House of Voi)" "$OWNER")
-TEST_COMMAND=$(prompt_with_default "Test command (run before PR/review)" "make test")
-SETUP_COMMAND=$(prompt_with_default "Setup command (bootstrap environment)" "make setup")
-DEV_COMMAND=$(prompt_with_default "Dev command (start dev server)" "make dev")
-
-printf "\n"
-log_info "Owner:          $OWNER"
-log_info "Repo:           $REPO"
-log_info "Project number: $PROJECT_NUMBER"
-log_info "Prefix:         $PREFIX_LOWER / $PREFIX_UPPER"
-log_info "Display name:   $DISPLAY_NAME"
-log_info "Test command:   $TEST_COMMAND"
-log_info "Setup command:  $SETUP_COMMAND"
-log_info "Dev command:    $DEV_COMMAND"
-log_info "Target dir:     $TARGET"
-printf "\n"
-read -r -p "$(printf "${YELLOW}Continue?${RESET} [Y/n] ")" CONFIRM
-CONFIRM="${CONFIRM:-Y}"
-if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-  log_warn "Aborted."
-  exit 0
+  log_info "Owner:          $OWNER"
+  log_info "Repo:           $REPO"
+  log_info "Project number: $PROJECT_NUMBER"
+  log_info "Prefix:         $PREFIX_LOWER / $PREFIX_UPPER"
+  log_info "Display name:   $DISPLAY_NAME"
+  log_info "Test command:   $TEST_COMMAND"
+  log_info "Setup command:  $SETUP_COMMAND"
+  log_info "Dev command:    $DEV_COMMAND"
+  log_info "Target dir:     $TARGET"
+  printf "\n"
+  read -r -p "$(printf "${YELLOW}Continue?${RESET} [Y/n] ")" CONFIRM
+  CONFIRM="${CONFIRM:-Y}"
+  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    log_warn "Aborted."
+    exit 0
+  fi
 fi
 
 # ---------------------------------------------------------------------------
-# GraphQL: discover project fields
+# GraphQL: discover project fields (both modes — update refreshes IDs)
 # ---------------------------------------------------------------------------
 log_section "Discovering GitHub Project fields via GraphQL"
 
@@ -415,8 +496,8 @@ OPT_EST_LARGE=$(get_option_id  "Estimate" "Large")
 # ---------------------------------------------------------------------------
 # Replacement map (stride-3: placeholder, value, fallback)
 # ---------------------------------------------------------------------------
-declare -a SED_PAIRS
-SED_PAIRS=(
+declare -a REPLACE_PAIRS
+REPLACE_PAIRS=(
   "{{OWNER}}"               "$OWNER"               ""
   "{{REPO}}"                "$REPO"                ""
   "{{PROJECT_ID}}"          "$PROJECT_ID"          ""
@@ -463,27 +544,31 @@ SED_PAIRS=(
 )
 
 # ---------------------------------------------------------------------------
-# Apply replacements to a temp copy of a file; output path to tmp file
+# Apply replacements using awk with fixed-string matching
 # ---------------------------------------------------------------------------
 apply_replacements_to_content() {
-  # Reads from $1 (source file), writes replaced content to $2 (dest tmp file)
   local src="$1"
   local dst="$2"
   cp "$src" "$dst"
 
   local i=0
-  while [[ $i -lt ${#SED_PAIRS[@]} ]]; do
-    local placeholder="${SED_PAIRS[$i]}"
-    local value="${SED_PAIRS[$((i+1))]}"
-    local fallback="${SED_PAIRS[$((i+2))]}"
+  while [[ $i -lt ${#REPLACE_PAIRS[@]} ]]; do
+    local placeholder="${REPLACE_PAIRS[$i]}"
+    local value="${REPLACE_PAIRS[$((i+1))]}"
+    local fallback="${REPLACE_PAIRS[$((i+2))]}"
     i=$((i+3))
 
     if [[ -n "$value" ]]; then
-      # Use awk for reliable cross-platform replacement (no regex escaping issues)
-      awk -v ph="$placeholder" -v val="$value" '{gsub(ph, val)} 1' "$dst" > "${dst}.tmp" && mv "${dst}.tmp" "$dst"
+      # Use awk with index() for fixed-string matching (no regex interpretation)
+      awk -v ph="$placeholder" -v val="$value" '
+        {
+          while (idx = index($0, ph)) {
+            $0 = substr($0, 1, idx-1) val substr($0, idx+length(ph))
+          }
+          print
+        }
+      ' "$dst" > "${dst}.tmp" && mv "${dst}.tmp" "$dst"
     fi
-    # If value is empty, the placeholder remains — the summary will warn about it
-    rm -f "${dst}.bak"
   done
 }
 
@@ -496,26 +581,16 @@ merge_settings_json() {
 
   log_info "Merging hooks from template into existing .claude/settings.json ..."
 
-  # Apply replacements to template first
   local tmp_src
   tmp_src=$(mktemp)
   apply_replacements_to_content "$src_file" "$tmp_src"
 
-  # Merge: for each hook type (PreToolUse, PostToolUse, Notification, Stop),
-  # add any hooks from template that are not already present in dst by command value.
   local merged
   merged=$(jq -s '
-    def merge_hook_arrays(existing; incoming):
-      existing + (incoming | map(
-        . as $h |
-        if (existing | any(.command == $h.command)) then empty else $h end
-      ));
-
     def merge_hook_matchers(existing_list; incoming_list):
       existing_list + (incoming_list | map(
         . as $inc |
         if (existing_list | any(.matcher == $inc.matcher)) then
-          # matcher exists — merge hook entries within it
           empty
         else
           $inc
@@ -538,9 +613,6 @@ merge_settings_json() {
 # ---------------------------------------------------------------------------
 # Special handler: append/create CLAUDE.md sections
 # ---------------------------------------------------------------------------
-# The toolkit ships a file called claude-md-sections.md at its root.
-# If the target has no CLAUDE.md, we create it from that file (with replacements).
-# If it does exist, we append the sections between sentinels (idempotent).
 SENTINEL_START="<!-- claude-pm-toolkit:start -->"
 SENTINEL_END="<!-- claude-pm-toolkit:end -->"
 SECTIONS_FILE="$TOOLKIT_DIR/claude-md-sections.md"
@@ -573,7 +645,6 @@ merge_claude_md() {
   # Check if sentinels already present (idempotent: replace block)
   if grep -qF "$SENTINEL_START" "$target_claude_md"; then
     log_info "Updating existing claude-pm-toolkit section in CLAUDE.md ..."
-    # Use awk to replace between sentinels
     local tmp_md
     tmp_md=$(mktemp)
     awk -v start="$SENTINEL_START" -v end="$SENTINEL_END" \
@@ -605,19 +676,18 @@ merge_claude_md() {
 }
 
 # ---------------------------------------------------------------------------
-# Copy all template files to target
+# Copy files to target
 # ---------------------------------------------------------------------------
 log_section "Copying files to target"
 
 COUNT_COPIED=0
 COUNT_SKIPPED=0
 COUNT_MERGED=0
+COUNT_UPDATED=0
 COUNT_CREATED_DIRS=0
 
 # Files to skip from the toolkit root (not part of the install payload)
-SKIP_FILES=("setup.sh" "install.sh" "claude-md-sections.md" ".gitignore" "README.md" "LICENSE")
-
-# We also skip CLAUDE.md in the loop — it has special handling below
+SKIP_FILES=("setup.sh" "install.sh" "validate.sh" "claude-md-sections.md" ".gitignore" "README.md" "LICENSE")
 SKIP_FILES+=("CLAUDE.md")
 
 while IFS= read -r src_file; do
@@ -643,7 +713,7 @@ while IFS= read -r src_file; do
   dst_file="$TARGET/$rel"
   dst_dir="$(dirname "$dst_file")"
 
-  # Special case: .claude/settings.json
+  # Special case: .claude/settings.json — always merge
   if [[ "$rel" == ".claude/settings.json" ]]; then
     mkdir -p "$dst_dir"
     if [[ -f "$dst_file" ]]; then
@@ -660,7 +730,34 @@ while IFS= read -r src_file; do
     continue
   fi
 
-  # Generic files: skip if exists
+  # In update mode: overwrite toolkit-managed files, skip user configs
+  if $UPDATE_MODE; then
+    if is_user_config "$rel"; then
+      log_skip "Preserved (user config): $rel"
+      COUNT_SKIPPED=$((COUNT_SKIPPED+1))
+      continue
+    fi
+
+    # Overwrite with latest version
+    if [[ ! -d "$dst_dir" ]]; then
+      mkdir -p "$dst_dir"
+      COUNT_CREATED_DIRS=$((COUNT_CREATED_DIRS+1))
+    fi
+    tmp_dst=$(mktemp)
+    apply_replacements_to_content "$src_file" "$tmp_dst"
+    cp "$tmp_dst" "$dst_file"
+    rm -f "$tmp_dst"
+    if [[ -f "$dst_file" ]]; then
+      log_ok "Updated: $rel"
+      COUNT_UPDATED=$((COUNT_UPDATED+1))
+    else
+      log_ok "Created: $rel"
+      COUNT_COPIED=$((COUNT_COPIED+1))
+    fi
+    continue
+  fi
+
+  # Fresh install: skip if exists
   if [[ -f "$dst_file" ]]; then
     log_skip "Exists (skipping): $rel"
     COUNT_SKIPPED=$((COUNT_SKIPPED+1))
@@ -700,7 +797,6 @@ GITIGNORE_FILE="$TARGET/.gitignore"
 if [[ -f "$GITIGNORE_FILE" ]] && grep -qx '\.claude' "$GITIGNORE_FILE"; then
   log_section "Updating .gitignore"
   log_info ".claude directory is fully gitignored — switching to selective ignoring"
-  # Replace blanket .claude with selective ignores
   awk '
     /^\.claude$/ {
       print ".claude/settings.local.json"
@@ -710,7 +806,6 @@ if [[ -f "$GITIGNORE_FILE" ]] && grep -qx '\.claude' "$GITIGNORE_FILE"; then
     { print }
   ' "$GITIGNORE_FILE" > "${GITIGNORE_FILE}.tmp" && mv "${GITIGNORE_FILE}.tmp" "$GITIGNORE_FILE"
 
-  # Add .codex-work/ if not present (for collaborative planning)
   if ! grep -qF '.codex-work/' "$GITIGNORE_FILE"; then
     echo '.codex-work/' >> "$GITIGNORE_FILE"
   fi
@@ -733,6 +828,32 @@ done < <(find "$TARGET" \
   -type f | sort)
 
 # ---------------------------------------------------------------------------
+# Save metadata for future updates
+# ---------------------------------------------------------------------------
+log_section "Saving configuration metadata"
+
+TOOLKIT_VERSION=$(cd "$TOOLKIT_DIR" && git log --oneline -1 --format='%h' 2>/dev/null || echo "unknown")
+
+cat > "$METADATA_FILE" <<METADATA_EOF
+{
+  "toolkit_version": "$TOOLKIT_VERSION",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "owner": "$OWNER",
+  "repo": "$REPO",
+  "project_number": "$PROJECT_NUMBER",
+  "project_id": "$PROJECT_ID",
+  "prefix_lower": "$PREFIX_LOWER",
+  "prefix_upper": "$PREFIX_UPPER",
+  "display_name": "$DISPLAY_NAME",
+  "test_command": "$TEST_COMMAND",
+  "setup_command": "$SETUP_COMMAND",
+  "dev_command": "$DEV_COMMAND"
+}
+METADATA_EOF
+
+log_ok "Saved .claude-pm-toolkit.json (used by --update mode)"
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 log_section "Install complete"
@@ -750,6 +871,9 @@ printf "${GREEN}%-20s${RESET} %s\n" "Setup command:"  "$SETUP_COMMAND"
 printf "${GREEN}%-20s${RESET} %s\n" "Dev command:"    "$DEV_COMMAND"
 printf "\n"
 printf "${GREEN}%-20s${RESET} %d\n" "Files copied:"   "$COUNT_COPIED"
+if $UPDATE_MODE; then
+  printf "${GREEN}%-20s${RESET} %d\n" "Files updated:" "$COUNT_UPDATED"
+fi
 printf "${GREEN}%-20s${RESET} %d\n" "Files merged:"   "$COUNT_MERGED"
 printf "${YELLOW}%-20s${RESET} %d\n" "Files skipped:" "$COUNT_SKIPPED"
 
@@ -764,4 +888,18 @@ if grep -rqF '{{' "$TARGET/tools" "$TARGET/.claude" \
   log_warn "  grep -r '{{' $TARGET --include='*.sh' --include='*.md' --include='*.json'"
 fi
 
-printf "\n${GREEN}Done.${RESET} The pm-toolkit files have been installed into:\n  $TARGET\n\n"
+if $UPDATE_MODE; then
+  printf "\n${GREEN}Update complete.${RESET} Toolkit files refreshed in:\n  $TARGET\n"
+  printf "\nUser config files were preserved:\n"
+  for ucf in "${USER_CONFIG_FILES[@]}"; do
+    printf "  - %s\n" "$ucf"
+  done
+  printf "\nRun ./validate.sh $TARGET to verify the installation.\n\n"
+else
+  printf "\n${GREEN}Done.${RESET} The PM toolkit has been installed into:\n  $TARGET\n"
+  printf "\nNext steps:\n"
+  printf "  1. Review and customize: docs/PM_PROJECT_CONFIG.md\n"
+  printf "  2. Configure port services: tools/scripts/worktree-ports.conf\n"
+  printf "  3. Validate: (cd $TOOLKIT_DIR && ./validate.sh $TARGET)\n"
+  printf "  4. Commit the new files\n\n"
+fi
