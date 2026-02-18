@@ -37,14 +37,33 @@ for arg in "$@"; do
   case "$arg" in
     --fix) FIX_MODE=true ;;
     --help|-h)
-      echo "Usage: validate.sh [--fix] [/path/to/repo]"
-      echo ""
-      echo "Validates a claude-pm-toolkit installation."
-      echo ""
-      echo "Options:"
-      echo "  --fix    Auto-fix issues where possible (chmod, missing dirs)"
-      echo ""
-      echo "If no path is given, validates the current directory."
+      cat <<'HELPEOF'
+validate.sh - Post-install validation for claude-pm-toolkit
+
+USAGE
+  validate.sh [/path/to/repo]       Validate installation (defaults to cwd)
+  validate.sh --fix [/path/to/repo]  Auto-fix issues where possible
+
+CHECKS PERFORMED
+  1. Required/optional files exist
+  2. Script permissions (executable)
+  3. Placeholder resolution (no remaining {{...}} tokens)
+  4. pm.config.sh values (non-empty, no TODOs, no unreplaced placeholders)
+  5. CLAUDE.md sentinel block integrity
+  6. settings.json validity and hook configuration
+  7. .gitignore rules (.claude, .codex-work/)
+  8. Metadata file (.claude-pm-toolkit.json) validity
+  9. GitHub connectivity (optional, non-blocking)
+
+AUTO-FIX (--fix)
+  - Script permissions: chmod +x on non-executable .sh files
+  - .gitignore: convert blanket .claude → selective entries
+  - .gitignore: add .codex-work/ if missing
+
+EXIT CODES
+  0 - All checks passed
+  1 - One or more checks failed
+HELPEOF
       exit 0
       ;;
     *) TARGET="$arg" ;;
@@ -404,9 +423,13 @@ printf "\n\n"
 if [[ $FAIL -gt 0 ]]; then
   printf "${RED}Validation failed.${RESET} Fix the issues above"
   if ! $FIX_MODE; then
-    printf " or re-run with --fix"
+    printf " or re-run with ${BOLD}--fix${RESET}"
   fi
   printf ".\n"
+  if ! $FIX_MODE; then
+    printf "\n${DIM}Tip: ./validate.sh --fix %s  (auto-fixes permissions and .gitignore)${RESET}\n" "$TARGET"
+    printf "${DIM}     install.sh --update %s   (re-discovers project field IDs)${RESET}\n" "$TARGET"
+  fi
   exit 1
 elif [[ $WARN -gt 0 ]]; then
   printf "${YELLOW}Validation passed with warnings.${RESET} Review warnings above.\n"
