@@ -139,7 +139,7 @@ if [ -z "$ITEM_ID" ]; then
   # Retry loop with exponential backoff (GitHub project index propagation delay)
   MAX_RETRIES=8
   DELAY=1
-  for i in $(seq 1 $MAX_RETRIES); do
+  for (( i=1; i<=MAX_RETRIES; i++ )); do
     ITEM_ID=$(pm_get_item_id "$ISSUE_NUM" 2>/dev/null || echo "")
     if [ -n "$ITEM_ID" ]; then break; fi
     echo "Waiting for project item... (attempt $i/$MAX_RETRIES, next retry in ${DELAY}s)"

@@ -5,6 +5,11 @@
 #
 # This is SEPARATE from claude-command-guard.sh — it has fail-closed parse
 # logic (deny on errors) instead of the command guard's fail-open design.
+#
+# Fail-closed means: empty/missing command field → deny (not allow).
+# This is intentional — the guard blocks any Bash invocation it cannot parse,
+# including malformed or empty commands. The PostToolUse scanner provides a
+# secondary defense layer for anything that bypasses this guard.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
