@@ -107,6 +107,7 @@ TOOLKIT_FILES=(
   "tools/scripts/claude-secret-detect.sh"
   "tools/scripts/claude-secret-check-path.sh"
   "tools/scripts/codex-mcp-overrides.sh"
+  "tools/scripts/pm-dashboard.sh"
   "tools/config/command-guard.conf"
   "tools/config/secret-patterns.json"
   "tools/config/secret-paths.conf"
