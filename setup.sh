@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# setup.sh - DEPRECATED: use install.sh instead
+#
+# This script is preserved for backward compatibility with existing
+# documentation and template repos. New users should use install.sh:
+#
+#   ./install.sh /path/to/your/repo            # Install into existing repo
+#   ./install.sh --update /path/to/your/repo   # Update existing installation
+#
+# For template mode (this repo IS your project), use:
+#   ./install.sh .
+#
+# setup.sh still works for in-place template configuration but will be
+# removed in a future version.
+
+echo ""
+echo "NOTE: setup.sh is deprecated. Prefer install.sh instead:"
+echo "  ./install.sh /path/to/repo        # Install into existing repo"
+echo "  ./install.sh .                     # Template mode (this repo)"
+echo ""
+echo "Continuing with setup.sh..."
+echo ""
+
+# Original setup.sh follows:
 # setup.sh - Configure this repository by replacing template placeholders
 #
 # Run this script after cloning or using the template.

@@ -51,7 +51,15 @@ The installer will:
 ### Template Mode (new repo)
 
 1. Use this repo as a GitHub template
-2. Clone and run `./setup.sh`
+2. Clone and run `./install.sh .`
+
+### Uninstall
+
+```bash
+cd claude-pm-toolkit
+./uninstall.sh /path/to/your/repo             # Dry run (show what would be removed)
+./uninstall.sh --confirm /path/to/your/repo   # Actually remove
+```
 
 ### Update to Latest
 
@@ -67,7 +75,7 @@ Update mode:
 - Reads your saved config from `.claude-pm-toolkit.json` (no re-prompting)
 - Refreshes field IDs from GitHub (catches project board changes)
 - Overwrites toolkit-managed files with the latest versions
-- **Preserves your customizations**: `worktree-ports.conf`, `worktree-urls.conf`, `PM_PROJECT_CONFIG.md`
+- **Preserves your customizations**: `worktree-ports.conf`, `worktree-urls.conf`, `command-guard.conf`, `secret-paths.conf`, `secret-patterns.json`, `PM_PROJECT_CONFIG.md`
 - Updates CLAUDE.md sentinel block and settings.json hooks
 
 ### Validate
@@ -168,24 +176,30 @@ Running `--update` replaces only this block. Your custom CLAUDE.md content outsi
 docs/
 ├── PM_PLAYBOOK.md               # Workflow definitions, field IDs, transitions
 └── PM_PROJECT_CONFIG.md         # Your project's doc paths, libraries, port services
-tools/scripts/
-├── pm.config.sh                 # Central config (all field/option IDs)
-├── project-add.sh               # Add issue to project board
-├── project-move.sh              # Move issue between workflow states
-├── project-status.sh            # Check issue's workflow state
-├── project-archive-done.sh      # Archive completed issues
-├── worktree-setup.sh            # Create worktree with port isolation
-├── worktree-detect.sh           # Detect worktree status
-├── worktree-cleanup.sh          # Clean up after merge
-├── worktree-ports.conf          # Port service configuration (user-editable)
-├── worktree-urls.conf           # URL exports from ports (user-editable)
-├── tmux-session.sh              # Portfolio manager
-├── portfolio-notify.sh          # Hook notification handler
-├── find-plan.sh                 # Find plan files by issue number
-├── claude-command-guard.sh      # Block dangerous bash commands
-├── claude-secret-guard.sh       # Block reading secret files
-├── claude-secret-bash-guard.sh  # Block secret patterns in bash
-└── claude-secret-detect.sh      # Detect secrets in tool output
+tools/
+├── config/
+│   ├── command-guard.conf       # Blocked command patterns (user-editable)
+│   ├── secret-patterns.json     # Token detection regexes (user-editable)
+│   └── secret-paths.conf        # Custom sensitive paths (user-editable)
+└── scripts/
+    ├── pm.config.sh             # Central config (all field/option IDs)
+    ├── project-add.sh           # Add issue to project board
+    ├── project-move.sh          # Move issue between workflow states
+    ├── project-status.sh        # Check issue's workflow state
+    ├── project-archive-done.sh  # Archive completed issues
+    ├── worktree-setup.sh        # Create worktree with port isolation
+    ├── worktree-detect.sh       # Detect worktree status
+    ├── worktree-cleanup.sh      # Clean up after merge
+    ├── worktree-ports.conf      # Port service configuration (user-editable)
+    ├── worktree-urls.conf       # URL exports from ports (user-editable)
+    ├── tmux-session.sh          # Portfolio manager
+    ├── portfolio-notify.sh      # Hook notification handler
+    ├── find-plan.sh             # Find plan files by issue number
+    ├── claude-command-guard.sh  # Block dangerous bash commands (reads config/)
+    ├── claude-secret-guard.sh   # Block reading secret files
+    ├── claude-secret-bash-guard.sh  # Block secret patterns in bash
+    ├── claude-secret-check-path.sh  # Shared path sensitivity checker
+    └── claude-secret-detect.sh  # Detect secrets in tool output
 reports/weekly/                   # Weekly report snapshots
 └── analysis/                    # AI-generated narrative reports
 ```
