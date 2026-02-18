@@ -123,8 +123,7 @@ pm_get_repo() {
 pm_get_item_id() {
   local issue_num="$1"
   local repo
-  repo=$(pm_get_repo)
-  if [ $? -ne 0 ]; then
+  if ! repo=$(pm_get_repo); then
     return 1
   fi
 
@@ -143,8 +142,9 @@ pm_get_item_id() {
       }
     }
   ' -f owner="$PM_OWNER" -f repo="$repo" -F issue="$issue_num" 2>&1)
+  local gql_exit=$?
 
-  if [ $? -ne 0 ]; then
+  if [ $gql_exit -ne 0 ]; then
     echo "Error: GraphQL query failed: $result" >&2
     return 1
   fi
