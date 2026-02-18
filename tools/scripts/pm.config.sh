@@ -63,7 +63,7 @@ pm_validate_config() {
   # Check required IDs
   [ -z "$PM_PROJECT_ID" ] && missing+=("PM_PROJECT_ID")
   [ -z "$PM_FIELD_WORKFLOW" ] && missing+=("PM_FIELD_WORKFLOW")
-  [ "$PM_WORKFLOW_ACTIVE" = "<NEW_ID>" ] && missing+=("PM_WORKFLOW_ACTIVE (run Step 1: create Active option in GitHub UI first)")
+  [ -z "$PM_WORKFLOW_ACTIVE" ] && missing+=("PM_WORKFLOW_ACTIVE (re-run install.sh --update to discover field IDs)")
 
   # Check gh CLI auth
   if ! gh auth status &>/dev/null; then
@@ -80,7 +80,10 @@ pm_validate_config() {
 
   # Check jq installed
   if ! command -v jq &>/dev/null; then
-    echo "Error: jq not installed. Run: brew install jq" >&2
+    echo "Error: jq not installed." >&2
+    echo "  macOS:  brew install jq" >&2
+    echo "  Ubuntu: sudo apt-get install jq" >&2
+    echo "  Fedora: sudo dnf install jq" >&2
     return 1
   fi
 

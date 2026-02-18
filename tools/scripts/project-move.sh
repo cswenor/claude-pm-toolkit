@@ -164,42 +164,44 @@ gh project item-edit --project-id "$PM_PROJECT_ID" --id "$ITEM_ID" \
 
 echo "Issue #$ISSUE_NUM -> $STATE"
 
-# Post-Done cleanup: tear down worktree Docker containers
+# Post-Done cleanup
 if [ "$STATE" = "Done" ]; then
-  COMPOSE_PROJECT="{{prefix}}-$ISSUE_NUM"
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-  echo "Checking Docker resources for project '$COMPOSE_PROJECT'..."
+  # Docker cleanup: only if project has a Makefile with docker-check target
+  if [ -f "$REPO_ROOT/Makefile" ] && grep -q 'docker-check' "$REPO_ROOT/Makefile" 2>/dev/null; then
+    COMPOSE_PROJECT="{{prefix}}-$ISSUE_NUM"
+    echo "Checking Docker resources for project '$COMPOSE_PROJECT'..."
 
-  # Gate: is Docker available?
-  if ! make -C "$REPO_ROOT" --no-print-directory docker-check 2>/dev/null; then
-    echo "Note: Docker is not available. Skipping container cleanup for '$COMPOSE_PROJECT'."
-  else
-    # Detection: do containers exist? (prints: found|empty|error)
-    CHECK_STDERR=$(mktemp)
-    CHECK_STATUS=$(COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT" make -C "$REPO_ROOT" --no-print-directory compose-check 2>"$CHECK_STDERR") || true
+    # Gate: is Docker available?
+    if ! make -C "$REPO_ROOT" --no-print-directory docker-check 2>/dev/null; then
+      echo "Note: Docker is not available. Skipping container cleanup for '$COMPOSE_PROJECT'."
+    else
+      # Detection: do containers exist? (prints: found|empty|error)
+      CHECK_STDERR=$(mktemp)
+      CHECK_STATUS=$(COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT" make -C "$REPO_ROOT" --no-print-directory compose-check 2>"$CHECK_STDERR") || true
 
-    case "$CHECK_STATUS" in
-      found)
-        # Containers found -- clean them up
-        echo "Found Docker containers for project '$COMPOSE_PROJECT', cleaning up..."
-        if CLEANUP_OUTPUT=$(COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT" make -C "$REPO_ROOT" --no-print-directory down-clean 2>&1); then
-          echo "$CLEANUP_OUTPUT"
-          echo "Docker cleanup complete for '$COMPOSE_PROJECT'."
-        else
-          echo "Warning: Docker cleanup failed for '$COMPOSE_PROJECT' (non-fatal)."
-          echo "$CLEANUP_OUTPUT"
-        fi
-        ;;
-      empty)
-        echo "No Docker containers found for project '$COMPOSE_PROJECT'."
-        ;;
-      *)
-        echo "Warning: Could not check containers for '$COMPOSE_PROJECT' (non-fatal)."
-        cat "$CHECK_STDERR" 2>/dev/null
-        ;;
-    esac
-    rm -f "$CHECK_STDERR"
+      case "$CHECK_STATUS" in
+        found)
+          echo "Found Docker containers for project '$COMPOSE_PROJECT', cleaning up..."
+          if CLEANUP_OUTPUT=$(COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT" make -C "$REPO_ROOT" --no-print-directory down-clean 2>&1); then
+            echo "$CLEANUP_OUTPUT"
+            echo "Docker cleanup complete for '$COMPOSE_PROJECT'."
+          else
+            echo "Warning: Docker cleanup failed for '$COMPOSE_PROJECT' (non-fatal)."
+            echo "$CLEANUP_OUTPUT"
+          fi
+          ;;
+        empty)
+          echo "No Docker containers found for project '$COMPOSE_PROJECT'."
+          ;;
+        *)
+          echo "Warning: Could not check containers for '$COMPOSE_PROJECT' (non-fatal)."
+          cat "$CHECK_STDERR" 2>/dev/null
+          ;;
+      esac
+      rm -f "$CHECK_STDERR"
+    fi
   fi
 
   # Inform about worktree (do NOT auto-remove -- per non-goals)

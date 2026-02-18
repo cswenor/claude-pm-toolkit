@@ -37,7 +37,7 @@ fi
 log "Archiving items Done before: $CUTOFF_DATE (${{PREFIX}}_ARCHIVE_DAYS days ago)"
 log "Dry run: ${{PREFIX}}_ARCHIVE_DRY_RUN"
 
-# Get project ID
+# Get project ID (try org first, then user)
 PROJECT_ID=$(gh api graphql -f query='
   query($owner: String!, $number: Int!) {
     organization(login: $owner) {
@@ -46,10 +46,23 @@ PROJECT_ID=$(gh api graphql -f query='
       }
     }
   }
-' -f owner="$OWNER" -F number="$PROJECT_NUMBER" --jq '.data.organization.projectV2.id')
+' -f owner="$OWNER" -F number="$PROJECT_NUMBER" --jq '.data.organization.projectV2.id' 2>/dev/null || echo "")
 
 if [[ -z "$PROJECT_ID" ]]; then
-  err "Could not find project $PROJECT_NUMBER for $OWNER"
+  # Try user query (for personal accounts)
+  PROJECT_ID=$(gh api graphql -f query='
+    query($owner: String!, $number: Int!) {
+      user(login: $owner) {
+        projectV2(number: $number) {
+          id
+        }
+      }
+    }
+  ' -f owner="$OWNER" -F number="$PROJECT_NUMBER" --jq '.data.user.projectV2.id' 2>/dev/null || echo "")
+fi
+
+if [[ -z "$PROJECT_ID" ]]; then
+  err "Could not find project $PROJECT_NUMBER for $OWNER (tried both org and user queries)"
   exit 1
 fi
 
