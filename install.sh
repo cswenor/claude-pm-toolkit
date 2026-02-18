@@ -648,9 +648,9 @@ merge_claude_md() {
     local tmp_md
     tmp_md=$(mktemp)
     awk -v start="$SENTINEL_START" -v end="$SENTINEL_END" \
-        -v new_content="$(cat "$tmp_sections")" \
-        'BEGIN { printing=1; found_start=0 }
-         $0 == start { printing=0; found_start=1; print; print new_content; next }
+        -v replacement_file="$tmp_sections" \
+        'BEGIN { printing=1 }
+         $0 == start { printing=0; print; while ((getline line < replacement_file) > 0) print line; close(replacement_file); next }
          $0 == end   { printing=1 }
          printing    { print }
         ' "$target_claude_md" > "$tmp_md"
@@ -812,6 +812,19 @@ if [[ -f "$GITIGNORE_FILE" ]] && grep -qx '\.claude' "$GITIGNORE_FILE"; then
 
   log_ok "Updated .gitignore: .claude/settings.json and .claude/skills/ now trackable"
 fi
+
+# ---------------------------------------------------------------------------
+# Clean up unresolved optional placeholders (area options not in project)
+# ---------------------------------------------------------------------------
+while IFS= read -r file_with_opt; do
+  # Replace any remaining {{OPT_*}} placeholders with empty strings
+  awk '{
+    while (match($0, /\{\{OPT_[A-Z_]+\}\}/)) {
+      $0 = substr($0, 1, RSTART-1) substr($0, RSTART+RLENGTH)
+    }
+    print
+  }' "$file_with_opt" > "${file_with_opt}.tmp" && mv "${file_with_opt}.tmp" "$file_with_opt"
+done < <(grep -rl '{{OPT_' "$TARGET" --include='*.sh' --include='*.json' --include='*.md' 2>/dev/null || true)
 
 # ---------------------------------------------------------------------------
 # Make shell scripts executable in target
