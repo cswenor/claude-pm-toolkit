@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-02-18
+
+### Fixed
+- `project-move.sh`: Use dynamic `DEFAULT_BRANCH` instead of hardcoded `origin/main` for fetch/rebase
+- `validate.sh`: Replace `eval` with `printf -v` for safe config parsing (security hardening)
+- `pm.config.sh`: Use idiomatic exit code capture instead of fragile `$?` checks
+- `pm.config.sh`: Validate `PM_PROJECT_NUMBER` is numeric before passing to jq `--argjson`
+- `tmux-session.sh`: Quote path variables in tmux `new-window` command string (spaces in paths)
+- `install.sh`: Add EXIT trap for temp file cleanup (8 mktemp calls registered)
+- `install.sh`/`setup.sh`: Log warning before falling back to `@me` for project creation
+- `setup.sh`: Add prefix validation (2-10 lowercase alphanumeric) matching install.sh
+- `setup.sh`: Remove dead `existing_value()` function
+- `worktree-setup.sh`: Use `BASH_SOURCE[0]` instead of `$0` for symlink/sourcing portability
+- `claude-secret-check-path.sh`: Only expand `~` and `~/...`, not `~user/...` form
+- `project-add.sh`: Replace `seq` with C-style for loop (word-splitting, POSIX portability)
+
+### Changed
+- All scripts: Standardized shebang to `#!/usr/bin/env bash` (11 scripts updated)
+- `tmux-session.sh`: Replace fragile `shift || true` with explicit arg count check
+- `claude-secret-bash-guard.sh`: Added documentation comment explaining fail-closed empty-command behavior
+
 ## [0.3.0] - 2026-02-18
 
 ### Added
