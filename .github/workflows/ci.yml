@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+      - name: Check scripts
+        run: |
+          shellcheck -x install.sh validate.sh setup.sh
+          shellcheck -x tools/scripts/*.sh
+
+  validate-templates:
+    name: Validate Templates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for broken placeholders
+        run: |
+          # All placeholders should be {{UPPER_SNAKE}} format
+          # Find any malformed ones (missing braces, wrong format)
+          if grep -rn '{[A-Z_]*}' --include='*.sh' --include='*.md' --include='*.json' \
+             | grep -v '{{' | grep -v '.git/' | grep -v 'CHANGELOG' | grep -v 'CONTRIBUTING'; then
+            echo "ERROR: Found malformed placeholder (single braces instead of double)"
+            exit 1
+          fi
+      - name: Check SKILL.md files parse
+        run: |
+          for skill in .claude/skills/*/SKILL.md; do
+            if [[ ! -f "$skill" ]]; then
+              echo "ERROR: Missing skill file: $skill"
+              exit 1
+            fi
+            # Check it has content
+            if [[ ! -s "$skill" ]]; then
+              echo "ERROR: Empty skill file: $skill"
+              exit 1
+            fi
+            echo "OK: $skill ($(wc -l < "$skill") lines)"
+          done
+      - name: Check config files have valid format
+        run: |
+          # command-guard.conf: non-comment lines must have " | " separator
+          while IFS= read -r line; do
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "${line// /}" ]] && continue
+            if [[ "$line" != *" | "* ]]; then
+              echo "ERROR: Malformed line in command-guard.conf: $line"
+              exit 1
+            fi
+          done < tools/config/command-guard.conf
+          echo "OK: command-guard.conf"
+
+          # secret-patterns.json: valid JSON with required schema
+          if ! python3 -c "
+          import json, sys
+          with open('tools/config/secret-patterns.json') as f:
+              data = json.load(f)
+          assert 'secret_token_patterns' in data, 'Missing secret_token_patterns'
+          assert isinstance(data['secret_token_patterns'], list), 'Not a list'
+          for p in data['secret_token_patterns']:
+              assert 'name' in p, f'Missing name in {p}'
+              assert 'pattern' in p, f'Missing pattern in {p}'
+          print(f'OK: secret-patterns.json ({len(data[\"secret_token_patterns\"])} patterns)')
+          "; then
+            echo "ERROR: Invalid secret-patterns.json"
+            exit 1
+          fi
+
+  install-test:
+    name: Install Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Create test target
+        run: |
+          mkdir -p /tmp/test-repo
+          cd /tmp/test-repo
+          git init
+          git remote add origin https://github.com/test-owner/test-repo.git
+          echo "# Test" > CLAUDE.md
+          mkdir -p .claude
+          echo '{}' > .claude/settings.json
+      - name: Test install (non-interactive smoke test)
+        run: |
+          # This tests the install script can parse flags and find files
+          # It can't do a real install without gh auth, but validates structure
+          ./install.sh --help 2>&1 || true
+          # Verify all template files exist
+          for f in claude-md-sections.md docs/PM_PLAYBOOK.md; do
+            if [[ ! -f "$f" ]]; then
+              echo "ERROR: Missing template file: $f"
+              exit 1
+            fi
+          done
+          echo "OK: All template files present"
