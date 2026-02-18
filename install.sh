@@ -772,16 +772,18 @@ while IFS= read -r src_file; do
       mkdir -p "$dst_dir"
       COUNT_CREATED_DIRS=$((COUNT_CREATED_DIRS+1))
     fi
+    local is_new=false
+    [[ ! -f "$dst_file" ]] && is_new=true
     tmp_dst=$(mktemp)
     apply_replacements_to_content "$src_file" "$tmp_dst"
     cp "$tmp_dst" "$dst_file"
     rm -f "$tmp_dst"
-    if [[ -f "$dst_file" ]]; then
-      log_ok "Updated: $rel"
-      COUNT_UPDATED=$((COUNT_UPDATED+1))
-    else
+    if $is_new; then
       log_ok "Created: $rel"
       COUNT_COPIED=$((COUNT_COPIED+1))
+    else
+      log_ok "Updated: $rel"
+      COUNT_UPDATED=$((COUNT_UPDATED+1))
     fi
     continue
   fi

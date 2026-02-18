@@ -79,9 +79,20 @@ if [ "$STATE" = "Review" ]; then
     echo "ERROR: Detached HEAD state. Switch to a feature branch before moving to Review."
     exit 1
   fi
-  if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
+  # Detect default branch dynamically (falls back to main/master check)
+  DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "")
+  if [ -z "$DEFAULT_BRANCH" ]; then
+    # Fallback: check common names
+    for candidate in main master; do
+      if git rev-parse --verify "refs/heads/$candidate" &>/dev/null; then
+        DEFAULT_BRANCH="$candidate"
+        break
+      fi
+    done
+  fi
+  if [ -n "$DEFAULT_BRANCH" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
     echo ""
-    echo "ERROR: Cannot rebase and force-push the '$CURRENT_BRANCH' branch."
+    echo "ERROR: Cannot rebase and force-push the '$CURRENT_BRANCH' branch (default branch)."
     echo "Switch to a feature branch first."
     exit 1
   fi
