@@ -772,7 +772,7 @@ while IFS= read -r src_file; do
       mkdir -p "$dst_dir"
       COUNT_CREATED_DIRS=$((COUNT_CREATED_DIRS+1))
     fi
-    local is_new=false
+    is_new=false
     [[ ! -f "$dst_file" ]] && is_new=true
     tmp_dst=$(mktemp)
     apply_replacements_to_content "$src_file" "$tmp_dst"
