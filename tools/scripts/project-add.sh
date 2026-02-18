@@ -19,12 +19,50 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pm.config.sh"
 
+show_help() {
+  cat <<'HELPEOF'
+project-add.sh - Add an issue to the project board
+
+USAGE
+  project-add.sh <issue-number> <priority>
+
+PRIORITY
+  critical    Drop everything — production outage, security issue
+  high        Address before normal work
+  normal      Standard priority (most issues)
+
+WHAT IT DOES
+  1. Adds the issue to the project board (idempotent)
+  2. Sets Workflow to Backlog
+  3. Sets Priority based on argument
+  4. Sets Area based on the issue's area:* label
+
+PREREQUISITES
+  - Issue must have exactly one area:* label
+  - gh CLI authenticated with 'project' scope
+  - jq installed
+
+EXAMPLES
+  project-add.sh 123 normal       # Add with normal priority
+  project-add.sh 456 critical     # Add as critical
+
+NOTES
+  Safe to run multiple times on the same issue.
+HELPEOF
+}
+
 ISSUE_NUM="${1:-}"
 PRIORITY="${2:-}"
+
+if [ "$ISSUE_NUM" = "--help" ] || [ "$ISSUE_NUM" = "-h" ]; then
+  show_help
+  exit 0
+fi
 
 if [ -z "$ISSUE_NUM" ] || [ -z "$PRIORITY" ]; then
   echo "Usage: project-add.sh <issue-number> <priority>"
   echo "Priority: critical | high | normal"
+  echo "Run project-add.sh --help for details"
   exit 1
 fi
 

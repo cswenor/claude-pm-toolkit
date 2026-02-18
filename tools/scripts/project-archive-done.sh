@@ -12,6 +12,41 @@
 
 set -euo pipefail
 
+show_help() {
+  cat <<'HELPEOF'
+project-archive-done.sh - Archive project items that have been Done for too long
+
+USAGE
+  project-archive-done.sh
+  project-archive-done.sh --help
+
+ENVIRONMENT VARIABLES
+  <PREFIX>_ARCHIVE_DAYS      Archive items Done for more than N days (default: 7)
+  <PREFIX>_ARCHIVE_DRY_RUN   If "true", list items but don't archive (default: false)
+
+WHAT IT DOES
+  1. Queries all items in the project with "Done" workflow state
+  2. Filters to items closed before the cutoff date
+  3. Archives matching items (or lists them in dry-run mode)
+
+EXAMPLES
+  project-archive-done.sh                           # Archive items Done > 7 days
+  APP_ARCHIVE_DRY_RUN=true project-archive-done.sh  # Preview what would be archived
+  APP_ARCHIVE_DAYS=14 project-archive-done.sh       # Archive items Done > 14 days
+
+NOTES
+  Requires: gh CLI with 'project' scope, jq
+  Uses GraphQL pagination to handle large projects.
+HELPEOF
+}
+
+# Check for --help before loading config
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h) show_help; exit 0 ;;
+  esac
+done
+
 # Load centralized PM config
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pm.config.sh"

@@ -8,14 +8,51 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pm.config.sh"
 
+show_help() {
+  cat <<'HELPEOF'
+project-move.sh - Move an issue to a workflow state
+
+USAGE
+  project-move.sh <issue-number> <state>
+
+STATES
+  Backlog   Issue is documented, not yet prioritized
+  Ready     Prioritized and spec-ready
+  Active    Work in progress (coding permitted)
+  Review    PR opened, awaiting review
+  Rework    Changes requested, needs fixes
+  Done      PR merged, issue closed
+
+EXAMPLES
+  project-move.sh 123 Active        # Start work
+  project-move.sh 123 Review        # PR opened, ready for review
+  project-move.sh 123 Rework        # Changes requested, needs fixes
+  project-move.sh 123 Done          # PR merged
+
+NOTES
+  The "Review" transition runs a pre-review gate:
+    1. Fetches and rebases on origin/main
+    2. Runs the test suite
+    3. Force-pushes the rebased branch
+  All three must pass before the state change occurs.
+
+  Requires: gh CLI with 'project' scope, jq
+HELPEOF
+}
+
 ISSUE_NUM=""
 STATE=""
 
 for arg in "$@"; do
   case "$arg" in
+    --help|-h)
+      show_help
+      exit 0
+      ;;
     -*)
       echo "Error: Unknown flag '$arg'"
       echo "Usage: project-move.sh <issue-number> <state>"
+      echo "Run project-move.sh --help for details"
       exit 1
       ;;
     *)
@@ -36,11 +73,7 @@ if [ -z "$ISSUE_NUM" ] || [ -z "$STATE" ]; then
   echo "Usage: project-move.sh <issue-number> <state>"
   echo "States: Backlog | Ready | Active | Review | Rework | Done"
   echo ""
-  echo "Examples:"
-  echo "  project-move.sh 123 Active        # Start work"
-  echo "  project-move.sh 123 Review        # PR opened, ready for review"
-  echo "  project-move.sh 123 Rework        # Changes requested, needs fixes"
-  echo "  project-move.sh 123 Done          # PR merged"
+  echo "Run project-move.sh --help for full documentation"
   exit 1
 fi
 

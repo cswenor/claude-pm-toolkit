@@ -7,10 +7,35 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pm.config.sh"
 
+show_help() {
+  cat <<'HELPEOF'
+project-status.sh - Show current workflow state and labels for an issue
+
+USAGE
+  project-status.sh <issue-number>
+
+OUTPUT
+  JSON object with: title, state, assignees, labels, workflow
+
+EXAMPLES
+  project-status.sh 123
+  project-status.sh 123 | jq -r '.workflow'
+
+NOTES
+  Requires: gh CLI with 'project' scope, jq
+HELPEOF
+}
+
 ISSUE_NUM="${1:-}"
+
+if [ "$ISSUE_NUM" = "--help" ] || [ "$ISSUE_NUM" = "-h" ]; then
+  show_help
+  exit 0
+fi
 
 if [ -z "$ISSUE_NUM" ]; then
   echo "Usage: project-status.sh <issue-number>"
+  echo "Run project-status.sh --help for details"
   exit 1
 fi
 

@@ -8,6 +8,36 @@ set -euo pipefail
 #
 # Usage: pm-dashboard.sh [--json]
 
+show_help() {
+  cat <<'HELPEOF'
+pm-dashboard.sh - Health dashboard for claude-pm-toolkit
+
+USAGE
+  pm-dashboard.sh
+  pm-dashboard.sh --json
+
+OPTIONS
+  --json    Output as JSON instead of formatted text
+
+SECTIONS
+  1. Toolkit Info       - Version, install date, project identity
+  2. Health Checks      - Config validation, gh auth, required tools
+  3. Active Worktrees   - Git worktree status for parallel development
+  4. Portfolio State    - tmux session status (if portfolio manager active)
+  5. Project Board      - Workflow distribution and active/review items
+
+EXAMPLES
+  pm-dashboard.sh                    # Show formatted dashboard
+  pm-dashboard.sh --json | jq .      # JSON output for scripting
+HELPEOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h) show_help; exit 0 ;;
+  esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pm.config.sh"
 

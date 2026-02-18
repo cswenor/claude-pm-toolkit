@@ -27,24 +27,53 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORTS_CONF="$SCRIPT_DIR/worktree-ports.conf"
 URLS_CONF="$SCRIPT_DIR/worktree-urls.conf"
 
+show_help() {
+  cat <<'HELPEOF'
+worktree-setup.sh - Create a worktree with port isolation for parallel development
+
+USAGE
+  worktree-setup.sh <issue-number> <branch-name>
+  worktree-setup.sh <issue-number> --print-env
+
+OPTIONS
+  --print-env  Only print shell export statements (for eval)
+
+ENVIRONMENT
+  WORKTREE_PORT_OFFSET  Override the calculated port offset (optional)
+                        Must be in range 3200-11000
+
+PORT ISOLATION
+  Each worktree gets a unique port offset: (issue_number % 79) * 100 + 3200
+  This gives 79 unique slots covering ports 3200-11000.
+  All services (Vite, Supabase, Postgres, Algod, etc.) are offset by this value.
+
+EXAMPLES
+  worktree-setup.sh 294 feat/worktree-support      # Create worktree
+  eval "$(./tools/scripts/worktree-setup.sh 294 --print-env)"  # Apply ports
+
+NOTES
+  Worktree is created at ../<prefix>-<issue-number>/ (sibling to main repo).
+  Port services are defined in worktree-ports.conf.
+  URL exports are defined in worktree-urls.conf.
+HELPEOF
+}
+
 ISSUE_NUM="${1:-}"
 BRANCH_NAME="${2:-}"
 PRINT_ENV_ONLY=false
 
-# Check for --print-env flag
+# Check for flags
 for arg in "$@"; do
-  if [ "$arg" = "--print-env" ]; then
-    PRINT_ENV_ONLY=true
-  fi
+  case "$arg" in
+    --help|-h) show_help; exit 0 ;;
+    --print-env) PRINT_ENV_ONLY=true ;;
+  esac
 done
 
 if [ -z "$ISSUE_NUM" ]; then
   echo "Usage: worktree-setup.sh <issue-number> <branch-name>" >&2
   echo "       worktree-setup.sh <issue-number> --print-env" >&2
-  echo "" >&2
-  echo "Example:" >&2
-  echo "  worktree-setup.sh 294 feat/worktree-support" >&2
-  echo "  eval \"\$(./tools/scripts/worktree-setup.sh 294 --print-env)\"" >&2
+  echo "Run worktree-setup.sh --help for details" >&2
   exit 1
 fi
 

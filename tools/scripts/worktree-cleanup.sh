@@ -24,6 +24,39 @@ set -euo pipefail
 #   --check  Only check if cleanup is possible, don't actually clean up
 #   --force  Remove worktree even with uncommitted changes (use with caution)
 
+show_help() {
+  cat <<'HELPEOF'
+worktree-cleanup.sh - Clean up a worktree for a completed issue
+
+USAGE
+  worktree-cleanup.sh <issue-number>
+  worktree-cleanup.sh <issue-number> --check
+  worktree-cleanup.sh <issue-number> --force
+
+OPTIONS
+  --check  Only check if cleanup is possible, don't actually clean up
+  --force  Remove worktree even with uncommitted changes (use with caution)
+
+EXIT CODES
+  0 - Success: Cleanup completed OR no worktree exists (nothing to do)
+  1 - In target worktree: Must leave first before cleanup
+  2 - Uncommitted changes: Worktree has uncommitted work
+
+CHECK MODE OUTPUT (machine-parsable)
+  "no_worktree"              - No worktree found for this issue (exit 0)
+  "stale_metadata:<path>"    - Metadata exists but directory missing (exit 0)
+  "can_cleanup:<path>"       - Not in worktree, can clean up (exit 0)
+  "has_plans:<count>"        - Plan files exist (informational, follows can_cleanup)
+  "in_target_worktree:<path>" - In the target worktree (exit 1)
+  "has_uncommitted:<path>"   - Uncommitted changes present (exit 2)
+
+EXAMPLES
+  worktree-cleanup.sh 294              # Clean up issue #294 worktree
+  worktree-cleanup.sh 294 --check      # Check if cleanup is possible
+  worktree-cleanup.sh 294 --force      # Force cleanup despite uncommitted changes
+HELPEOF
+}
+
 ISSUE_NUM="${1:-}"
 CHECK_ONLY=false
 FORCE=false
@@ -31,20 +64,17 @@ FORCE=false
 # Parse flags
 for arg in "$@"; do
   case "$arg" in
+    --help|-h) show_help; exit 0 ;;
     --check) CHECK_ONLY=true ;;
     --force) FORCE=true ;;
   esac
 done
 
-if [ -z "$ISSUE_NUM" ]; then
+if [ -z "$ISSUE_NUM" ] || [ "$ISSUE_NUM" = "--help" ] || [ "$ISSUE_NUM" = "-h" ]; then
   echo "Usage: worktree-cleanup.sh <issue-number>" >&2
   echo "       worktree-cleanup.sh <issue-number> --check" >&2
   echo "       worktree-cleanup.sh <issue-number> --force" >&2
-  echo "" >&2
-  echo "Exit codes:" >&2
-  echo "  0 - Success or no worktree exists" >&2
-  echo "  1 - In target worktree (must leave first)" >&2
-  echo "  2 - Uncommitted changes detected" >&2
+  echo "Run worktree-cleanup.sh --help for details" >&2
   exit 1
 fi
 

@@ -19,21 +19,51 @@ set -euo pipefail
 #   0 - Found matching plan file(s)
 #   1 - No plan files found (or missing/invalid argument)
 
+show_help() {
+  cat <<'HELPEOF'
+find-plan.sh - Search plan files by issue number
+
+USAGE
+  find-plan.sh <issue-number>
+  find-plan.sh <issue-number> --latest
+  find-plan.sh <issue-number> --include-global
+
+OPTIONS
+  --latest           Return only the most recently modified match
+  --include-global   Also search ~/.claude/plans/ (may contain plans from other repos)
+
+EXIT CODES
+  0 - Found matching plan file(s)
+  1 - No plan files found (or missing/invalid argument)
+
+EXAMPLES
+  find-plan.sh 305                     # Find all plans for issue #305
+  find-plan.sh 305 --latest            # Just the most recent
+  find-plan.sh 305 --include-global    # Also check global plans dir
+
+NOTES
+  Searches .claude/plans/ in the current project by default.
+  Plan files are matched by #<issue-number> in their content.
+HELPEOF
+}
+
 ISSUE_NUM="${1:-}"
 LATEST_ONLY=false
 INCLUDE_GLOBAL=false
 
 for arg in "$@"; do
   case "$arg" in
+    --help|-h) show_help; exit 0 ;;
     --latest) LATEST_ONLY=true ;;
     --include-global) INCLUDE_GLOBAL=true ;;
   esac
 done
 
-if [ -z "$ISSUE_NUM" ]; then
+if [ -z "$ISSUE_NUM" ] || [ "$ISSUE_NUM" = "--help" ] || [ "$ISSUE_NUM" = "-h" ]; then
   echo "Usage: find-plan.sh <issue-number>" >&2
   echo "       find-plan.sh <issue-number> --latest" >&2
   echo "       find-plan.sh <issue-number> --include-global" >&2
+  echo "Run find-plan.sh --help for details" >&2
   exit 1
 fi
 
