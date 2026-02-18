@@ -85,9 +85,8 @@ Labels are for **taxonomy and workflow flags only**. Workflow state, Priority, R
 | `area:backend`    | Backend services                                   |
 | `area:contracts`  | Smart contracts                                    |
 | `area:infra`      | Tooling, CI/CD, project management, dev experience |
-| `area:compliance` | Compliance and legal                               |
-| `area:growth`     | Growth and marketing                               |
-| `area:data`       | Data and analytics                                 |
+
+> **Note:** These are default areas. Configure your project's areas during `install.sh` setup (or enter `new` to create a project board with custom area options). Add more area labels as needed for your project.
 
 ### Spec Readiness Labels
 
@@ -258,7 +257,7 @@ An issue can be `Ready` + `spec:missing` = "you can start, but clarify scope fir
 
 | Item               | Value                  |
 | ------------------ | ---------------------- |
-| **Project Number** | `2`                    |
+| **Project Number** | `{{PROJECT_NUMBER}}`   |
 | **Project ID**     | `{{PROJECT_ID}}` |
 | **Organization**   | `{{OWNER}}`         |
 
@@ -805,10 +804,10 @@ gh issue create --title "feat: description" \
 - [ ] Tests passing"
 
 # Add issue to project (low-level, prefer helper script above)
-gh project item-add 2 --owner {{OWNER}} --url <issue-url>
+gh project item-add {{PROJECT_NUMBER}} --owner {{OWNER}} --url <issue-url>
 
 # Get item ID for an issue
-gh project item-list 2 --owner {{OWNER}} --format json | jq -r '.items[] | select(.content.number == <ISSUE_NUMBER>) | .id'
+gh project item-list {{PROJECT_NUMBER}} --owner {{OWNER}} --format json | jq -r '.items[] | select(.content.number == <ISSUE_NUMBER>) | .id'
 ```
 
 ### Setting Project Fields
@@ -854,24 +853,31 @@ gh pr create --title "chore: description" --body "## Summary
 
 ```bash
 # List all project items with key fields
-gh project item-list 2 --owner {{OWNER}} --format json | jq '.items[] | {number: .content.number, title: .title, workflow: .workflow, priority: .priority, area: .area}'
+gh project item-list {{PROJECT_NUMBER}} --owner {{OWNER}} --format json | jq '.items[] | {number: .content.number, title: .title, workflow: .workflow, priority: .priority, area: .area}'
 
 # Check specific issue's project fields
-gh project item-list 2 --owner {{OWNER}} --format json | jq '.items[] | select(.content.number == <ISSUE_NUMBER>)'
+gh project item-list {{PROJECT_NUMBER}} --owner {{OWNER}} --format json | jq '.items[] | select(.content.number == <ISSUE_NUMBER>)'
 ```
 
 ---
 
 ## Setup
 
-To configure GitHub with labels and project:
+The GitHub Project board and field IDs are configured during toolkit installation.
+
+To set up a new project or reconfigure an existing one, run:
 
 ```bash
-./tools/scripts/setup-github-pm.sh
+# Fresh install (enter 'new' for project number to create a board)
+cd /path/to/claude-pm-toolkit
+./install.sh /path/to/your/repo
+
+# Update existing installation (re-discovers field IDs)
+./install.sh --update /path/to/your/repo
 ```
 
-This will:
+The installer will:
 
-1. Create all labels
-2. Create the GitHub Project with fields
-3. Create default views
+1. Create the GitHub Project with all required fields (if 'new')
+2. Auto-discover field IDs via GraphQL
+3. Configure all scripts with the correct IDs

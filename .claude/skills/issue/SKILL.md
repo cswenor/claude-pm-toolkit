@@ -1570,7 +1570,7 @@ As a {user_type}, I want {goal} so that {benefit}.
 
 ### Worktree Support
 
-- [ ] `/issue <num>` in START mode from main repo creates worktree at `../hov-<num>/`
+- [ ] `/issue <num>` in START mode from main repo creates worktree at `../{{prefix}}-<num>/`
 - [ ] Worktree setup prints shell exports for port offsets (via `--print-env`)
 - [ ] If worktree already exists + tmux, spawns/focuses tmux window (not recreated)
 - [ ] If worktree already exists + no tmux, user is directed there (not recreated)
