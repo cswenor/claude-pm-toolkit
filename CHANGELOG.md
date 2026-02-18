@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - All scripts: Standardized shebang to `#!/usr/bin/env bash` (11 scripts updated)
 - `tmux-session.sh`: Replace fragile `shift || true` with explicit arg count check
 - `claude-secret-bash-guard.sh`: Added documentation comment explaining fail-closed empty-command behavior
+- `project-add.sh`: Use centralized `pm_validate_config` instead of duplicated auth/jq checks
 
 ## [0.3.0] - 2026-02-18
 
