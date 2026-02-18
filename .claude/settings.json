@@ -1,7 +1,6 @@
 {
   "project": {
-    "name": "{{DISPLAY_NAME}}",
-    "type": "monorepo"
+    "name": "{{DISPLAY_NAME}}"
   },
   "enabledPlugins": {},
   "plansDirectory": ".claude/plans",

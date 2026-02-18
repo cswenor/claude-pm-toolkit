@@ -132,12 +132,13 @@ if [[ -z "$TARGET" ]]; then
   exit 1
 fi
 
-TARGET="$(cd "$TARGET" && pwd)"
-
 if [[ ! -d "$TARGET" ]]; then
   log_error "Target directory does not exist: $TARGET"
   exit 1
 fi
+
+# Resolve to absolute path (after existence check)
+TARGET="$(cd "$TARGET" && pwd)"
 
 if ! git -C "$TARGET" rev-parse --git-dir &>/dev/null; then
   log_error "Target is not a git repository: $TARGET"
@@ -314,6 +315,11 @@ if ! $UPDATE_MODE; then
   fi
 
   PREFIX_LOWER=$(prompt_with_default "Short prefix, lowercase (e.g. hov, myapp)" "")
+  # Validate prefix: must be 2-10 lowercase alphanumeric chars
+  if [[ ! "$PREFIX_LOWER" =~ ^[a-z][a-z0-9]{1,9}$ ]]; then
+    log_error "Prefix must be 2-10 lowercase alphanumeric characters starting with a letter"
+    exit 1
+  fi
   PREFIX_UPPER=$(echo "$PREFIX_LOWER" | tr '[:lower:]' '[:upper:]')
   DISPLAY_NAME=$(prompt_with_default "Display name (e.g. My Project)" "$OWNER")
   TEST_COMMAND=$(prompt_with_default "Test command (run before PR/review)" "make test")
@@ -456,6 +462,15 @@ report_field "Area"       "$FIELD_AREA"
 report_field "Issue Type" "$FIELD_ISSUE_TYPE"
 report_field "Risk"       "$FIELD_RISK"
 report_field "Estimate"   "$FIELD_ESTIMATE"
+
+# Workflow field is required — everything else is optional
+if [[ -z "$FIELD_WORKFLOW" ]]; then
+  log_error "Workflow field not found in project #$PROJECT_NUMBER."
+  log_error "This is required for the toolkit to function."
+  log_error "Add a 'Workflow' single-select field to your project with options:"
+  log_error "  Backlog, Ready, Active, Review, Rework, Done"
+  exit 1
+fi
 
 # Workflow options
 OPT_WF_BACKLOG=$(get_option_id "Workflow" "Backlog")
@@ -635,6 +650,12 @@ merge_claude_md() {
   if [[ ! -f "$target_claude_md" ]]; then
     log_info "Creating CLAUDE.md in target repo from claude-md-sections.md ..."
     {
+      echo "# CLAUDE.md"
+      echo ""
+      echo "This file provides guidance to Claude Code when working with this project."
+      echo ""
+      echo "---"
+      echo ""
       echo "$SENTINEL_START"
       cat "$tmp_sections"
       echo ""
@@ -797,6 +818,19 @@ merge_claude_md
 # Fix .gitignore if .claude is fully ignored
 # ---------------------------------------------------------------------------
 GITIGNORE_FILE="$TARGET/.gitignore"
+
+# Create .gitignore if it doesn't exist
+if [[ ! -f "$GITIGNORE_FILE" ]]; then
+  log_section "Creating .gitignore"
+  cat > "$GITIGNORE_FILE" <<'GITIGNORE'
+# Claude Code
+.claude/settings.local.json
+.claude/plans/
+.codex-work/
+GITIGNORE
+  log_ok "Created .gitignore with Claude Code entries"
+fi
+
 if [[ -f "$GITIGNORE_FILE" ]] && grep -qx '\.claude' "$GITIGNORE_FILE"; then
   log_section "Updating .gitignore"
   log_info ".claude directory is fully gitignored — switching to selective ignoring"
@@ -814,6 +848,15 @@ if [[ -f "$GITIGNORE_FILE" ]] && grep -qx '\.claude' "$GITIGNORE_FILE"; then
   fi
 
   log_ok "Updated .gitignore: .claude/settings.json and .claude/skills/ now trackable"
+fi
+
+# Ensure essential ignore entries exist (even if no .claude wildcard)
+if [[ -f "$GITIGNORE_FILE" ]]; then
+  for entry in '.claude/settings.local.json' '.claude/plans/' '.codex-work/'; do
+    if ! grep -qF "$entry" "$GITIGNORE_FILE"; then
+      echo "$entry" >> "$GITIGNORE_FILE"
+    fi
+  done
 fi
 
 # ---------------------------------------------------------------------------
