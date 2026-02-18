@@ -716,8 +716,8 @@ COUNT_UPDATED=0
 COUNT_CREATED_DIRS=0
 
 # Files to skip from the toolkit root (not part of the install payload)
-SKIP_FILES=("setup.sh" "install.sh" "validate.sh" "claude-md-sections.md" ".gitignore" "README.md" "LICENSE")
-SKIP_FILES+=("CLAUDE.md")
+SKIP_FILES=("setup.sh" "install.sh" "validate.sh" "uninstall.sh" "claude-md-sections.md" ".gitignore" "README.md" "LICENSE")
+SKIP_FILES+=("CLAUDE.md" "CONTRIBUTING.md" "CHANGELOG.md" "VERSION")
 
 while IFS= read -r src_file; do
   # Get path relative to toolkit
@@ -734,8 +734,8 @@ while IFS= read -r src_file; do
   done
   $skip && continue
 
-  # Skip .git internals
-  if [[ "$rel" == .git/* || "$rel" == ".git" ]]; then
+  # Skip .git internals and .github (toolkit CI, not installable)
+  if [[ "$rel" == .git/* || "$rel" == ".git" || "$rel" == .github/* ]]; then
     continue
   fi
 

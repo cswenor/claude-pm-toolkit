@@ -114,6 +114,7 @@ TOOLKIT_FILES=(
   "tools/config/secret-paths.conf"
   "docs/PM_PLAYBOOK.md"
   "docs/PM_PROJECT_CONFIG.md"
+  "AGENTS.md"
   ".claude-pm-toolkit.json"
 )
 
