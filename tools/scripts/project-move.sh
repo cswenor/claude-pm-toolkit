@@ -138,7 +138,13 @@ if [ "$STATE" = "Review" ]; then
       fi
     done
   fi
-  if [ -n "$DEFAULT_BRANCH" ] && [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
+  if [ -z "$DEFAULT_BRANCH" ]; then
+    echo ""
+    echo "ERROR: Could not detect default branch (tried symbolic-ref, main, master)."
+    echo "Ensure your remote has a default branch configured."
+    exit 1
+  fi
+  if [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
     echo ""
     echo "ERROR: Cannot rebase and force-push the '$CURRENT_BRANCH' branch (default branch)."
     echo "Switch to a feature branch first."
@@ -159,19 +165,19 @@ if [ "$STATE" = "Review" ]; then
     exit 1
   fi
 
-  # Step 2: Fetch latest main
-  echo "==> git fetch origin main"
-  if ! git fetch origin main; then
+  # Step 2: Fetch latest default branch
+  echo "==> git fetch origin $DEFAULT_BRANCH"
+  if ! git fetch origin "$DEFAULT_BRANCH"; then
     echo ""
-    echo "ERROR: Failed to fetch origin/main. Check your network connection."
+    echo "ERROR: Failed to fetch origin/$DEFAULT_BRANCH. Check your network connection."
     exit 1
   fi
 
-  # Step 3: Rebase on main
-  echo "==> git rebase origin/main"
-  if ! git rebase origin/main; then
+  # Step 3: Rebase on default branch
+  echo "==> git rebase origin/$DEFAULT_BRANCH"
+  if ! git rebase "origin/$DEFAULT_BRANCH"; then
     echo ""
-    echo "ERROR: Rebase on origin/main failed."
+    echo "ERROR: Rebase on origin/$DEFAULT_BRANCH failed."
 
     CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null) || true
     if [ -n "$CONFLICTS" ]; then
