@@ -67,13 +67,18 @@ case "$EVENT_TYPE" in
       printf '\a' 2>/dev/null || true
     fi
 
-    # macOS notification (optional, non-blocking)
+    # Desktop notification (optional, non-blocking)
+    LABEL="needs input"
+    if [ "$EVENT_TYPE" = "needs-permission" ]; then
+      LABEL="needs permission"
+    fi
+
     if command -v osascript &>/dev/null; then
-      LABEL="needs input"
-      if [ "$EVENT_TYPE" = "needs-permission" ]; then
-        LABEL="needs permission"
-      fi
+      # macOS
       osascript -e "display notification \"Issue #$ISSUE_NUM $LABEL\" with title \"Claude Code\" sound name \"Blow\"" 2>/dev/null &
+    elif command -v notify-send &>/dev/null; then
+      # Linux (libnotify / GNOME / KDE)
+      notify-send -u normal -a "Claude Code" "Claude Code" "Issue #$ISSUE_NUM $LABEL" 2>/dev/null &
     fi
     ;;
 
