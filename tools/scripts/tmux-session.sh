@@ -268,7 +268,7 @@ cmd_start() {
   #   3. Evals port isolation exports
   #   4. Starts claude interactively
   tmux new-window -t "$SESSION_NAME" -n "$window_name" \
-    "export {{PREFIX}}_ISSUE_NUM=$issue_num; cd $worktree_path && eval \"\$(./tools/scripts/worktree-setup.sh $issue_num --print-env)\" && claude; echo 'Claude exited. Press enter to close.'; read"
+    "export {{PREFIX}}_ISSUE_NUM='${issue_num}'; cd '${worktree_path}' && eval \"\$(./tools/scripts/worktree-setup.sh '${issue_num}' --print-env)\" && claude; echo 'Claude exited. Press enter to close.'; read"
 
   # Best-effort PID capture (the shell running in tmux)
   # We write "pending" and let the first hook event confirm it's alive
