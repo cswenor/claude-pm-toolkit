@@ -19,8 +19,8 @@ fi
 
 FILE_PATH="$1"
 
-# Resolve to absolute path for consistent matching
-if [[ "$FILE_PATH" == ~* ]]; then
+# Resolve to absolute path for consistent matching (only expand ~ and ~/..., not ~user/...)
+if [[ "$FILE_PATH" == "~/"* || "$FILE_PATH" == "~" ]]; then
     FILE_PATH="${HOME}${FILE_PATH#\~}"
 fi
 

@@ -126,16 +126,6 @@ REPO_ROOT="$SCRIPT_DIR"
 # ---------------------------------------------------------------------------
 CONFIG_FILE="$REPO_ROOT/tools/scripts/pm.config.sh"
 
-existing_value() {
-  local placeholder="$1"
-  if [[ -f "$CONFIG_FILE" ]]; then
-    # Return the raw value if it doesn't look like an unset placeholder
-    local val
-    val=$(grep -m1 "PM_OWNER\|PM_PROJECT_NUMBER\|PM_PROJECT_ID" "$CONFIG_FILE" 2>/dev/null | true)
-  fi
-  echo ""
-}
-
 # Try to detect owner/repo from git remote
 detect_git_remote_owner() {
   local url

@@ -23,7 +23,7 @@ set -euo pipefail
 # Environment:
 #   WORKTREE_PORT_OFFSET - Override the calculated port offset (optional)
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORTS_CONF="$SCRIPT_DIR/worktree-ports.conf"
 URLS_CONF="$SCRIPT_DIR/worktree-urls.conf"
 

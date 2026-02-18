@@ -548,7 +548,7 @@ EOF
 # --- Main ---
 
 SUBCOMMAND="${1:-help}"
-shift 2>/dev/null || true
+[ $# -gt 0 ] && shift
 
 case "$SUBCOMMAND" in
   init-and-run) cmd_init_and_run ;;
