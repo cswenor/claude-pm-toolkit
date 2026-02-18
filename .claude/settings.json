@@ -5,6 +5,18 @@
   "enabledPlugins": {},
   "plansDirectory": ".claude/plans",
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./tools/scripts/pm-session-context.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",

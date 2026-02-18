@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 - `install.sh`: Displays PROJECT_WRITE_TOKEN setup instructions during install
 - `validate.sh`: Optional file checks for `pm-post-merge.yml` and `pm-pr-check.yml`
 - `docs/RESEARCH-DYNAMIC-INTELLIGENCE.md`: Research synthesis — MCP servers, memory, GitHub automation, competitive analysis, P0-P10 roadmap
+- `pm-session-context.sh`: SessionStart hook — injects worktree context, recent decisions/outcomes, and cached board state at session start
+- `pm-record.sh`: CLI utility for recording decisions (`decision`), outcomes (`outcome`), and board state (`board`) to `.claude/memory/` JSONL files
+- `.claude/memory/`: Persistent memory directory for cross-session learning (decisions.jsonl, outcomes.jsonl, board-cache.json)
+- `settings.json`: SessionStart hook configuration (5-second timeout, fires on all session types)
 
 ## [0.4.0] - 2026-02-18
 

@@ -3,3 +3,4 @@ node_modules/
 *.bak
 .codex-work/
 .claude/plans/
+.claude/memory/board-cache.json
