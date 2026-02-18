@@ -1162,6 +1162,55 @@ if [[ -f "$TARGET_MAKEFILE" ]] && [[ -f "$MAKEFILE_TARGETS" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# GitHub Actions workflows (optional — requires PROJECT_WRITE_TOKEN secret)
+# ---------------------------------------------------------------------------
+WORKFLOW_TEMPLATES="$TOOLKIT_DIR/templates/github-workflows"
+WORKFLOW_TARGET="$TARGET/.github/workflows"
+COUNT_WORKFLOWS=0
+
+if [[ -d "$WORKFLOW_TEMPLATES" ]]; then
+  log_section "GitHub Actions Workflows"
+
+  mkdir -p "$WORKFLOW_TARGET"
+
+  for wf_src in "$WORKFLOW_TEMPLATES"/*.yml; do
+    [[ ! -f "$wf_src" ]] && continue
+    wf_basename="$(basename "$wf_src")"
+    wf_dst="$WORKFLOW_TARGET/$wf_basename"
+
+    if [[ -f "$wf_dst" ]] && ! $UPDATE_MODE; then
+      log_skip "Exists (skipping): .github/workflows/$wf_basename"
+      continue
+    fi
+
+    # Apply placeholder replacements
+    tmp_wf=$(mktemp)
+    TEMP_FILES+=("$tmp_wf")
+    apply_replacements_to_content "$wf_src" "$tmp_wf"
+    cp "$tmp_wf" "$wf_dst"
+
+    if [[ -f "$wf_dst" ]] && $UPDATE_MODE; then
+      log_ok "Updated: .github/workflows/$wf_basename"
+    else
+      log_ok "Created: .github/workflows/$wf_basename"
+    fi
+    COUNT_WORKFLOWS=$((COUNT_WORKFLOWS+1))
+  done
+
+  if [[ $COUNT_WORKFLOWS -gt 0 ]]; then
+    printf "\n"
+    log_warn "GitHub Actions workflows require a repository secret:"
+    log_warn "  Secret name: PROJECT_WRITE_TOKEN"
+    log_warn "  Type: Classic PAT with 'project' scope (read:org if org project)"
+    log_warn "  Set at: https://github.com/$OWNER/$REPO/settings/secrets/actions"
+    printf "\n"
+    log_info "Workflows installed:"
+    log_info "  pm-post-merge.yml — Auto-move issues to Done when PRs merge"
+    log_info "  pm-pr-check.yml   — Validate PR conventions and issue links"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 log_section "Install complete"
@@ -1185,6 +1234,9 @@ if $UPDATE_MODE; then
 fi
 printf "${GREEN}%-20s${RESET} %d\n" "Files merged:"   "$COUNT_MERGED"
 printf "${YELLOW}%-20s${RESET} %d\n" "Files skipped:" "$COUNT_SKIPPED"
+if [[ "${COUNT_WORKFLOWS:-0}" -gt 0 ]]; then
+  printf "${CYAN}%-20s${RESET} %d\n" "Workflows:"     "$COUNT_WORKFLOWS"
+fi
 
 if grep -rqF '{{' "$TARGET/tools" "$TARGET/.claude" \
     --include="*.sh" \
@@ -1241,7 +1293,9 @@ else
   printf "  1. Review and customize: docs/PM_PROJECT_CONFIG.md\n"
   printf "  2. Configure port services: tools/scripts/worktree-ports.conf\n"
   printf "  3. Validate: (cd $TOOLKIT_DIR && ./validate.sh $TARGET)\n"
-  printf "  4. Commit the new files\n"
+  printf "  4. Add PROJECT_WRITE_TOKEN secret (classic PAT with 'project' scope):\n"
+  printf "     https://github.com/$OWNER/$REPO/settings/secrets/actions\n"
+  printf "  5. Commit the new files\n"
   printf "\n${BOLD}Set up Board view (manual — GitHub API doesn't support view creation):${RESET}\n"
   printf "  5. Open the project URL above in your browser\n"
   printf "  6. Click '+ New view' → select 'Board'\n"

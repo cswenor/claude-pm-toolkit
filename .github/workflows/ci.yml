@@ -121,6 +121,28 @@ jobs:
           done
           echo "OK: All template files present"
 
+          # Verify GitHub Actions workflow templates exist
+          WORKFLOW_TEMPLATES=(
+            "templates/github-workflows/pm-post-merge.yml"
+            "templates/github-workflows/pm-pr-check.yml"
+          )
+          for f in "${WORKFLOW_TEMPLATES[@]}"; do
+            if [[ ! -f "$f" ]]; then
+              echo "ERROR: Missing workflow template: $f"
+              exit 1
+            fi
+          done
+          echo "OK: All workflow templates present"
+
+          # Verify workflow templates contain required placeholders
+          for f in "${WORKFLOW_TEMPLATES[@]}"; do
+            if ! grep -q '{{PROJECT_NUMBER}}' "$f"; then
+              echo "ERROR: $f missing {{PROJECT_NUMBER}} placeholder"
+              exit 1
+            fi
+          done
+          echo "OK: Workflow templates have required placeholders"
+
           # Verify all scripts are executable
           NON_EXEC=$(find tools/scripts -name "*.sh" ! -executable 2>/dev/null | head -5)
           if [[ -n "$NON_EXEC" ]]; then

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-02-18
+
+### Added
+- `pm-post-merge.yml`: GitHub Actions workflow — auto-moves issues to Done when PRs merge with `Fixes #N`
+- `pm-pr-check.yml`: GitHub Actions workflow — validates conventional commit format, issue link, workflow state, project board membership
+- `install.sh`: Copies GitHub Actions workflow templates to target `.github/workflows/` with placeholder replacement
+- `install.sh`: Displays PROJECT_WRITE_TOKEN setup instructions during install
+- `validate.sh`: Optional file checks for `pm-post-merge.yml` and `pm-pr-check.yml`
+- `docs/RESEARCH-DYNAMIC-INTELLIGENCE.md`: Research synthesis — MCP servers, memory, GitHub automation, competitive analysis, P0-P10 roadmap
+
 ## [0.4.0] - 2026-02-18
 
 ### Added

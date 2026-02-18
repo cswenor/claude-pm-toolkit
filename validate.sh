@@ -152,6 +152,8 @@ OPTIONAL_FILES=(
   "tools/config/secret-paths.conf"
   "reports/weekly/.gitkeep"
   "reports/weekly/analysis/.gitkeep"
+  ".github/workflows/pm-post-merge.yml"
+  ".github/workflows/pm-pr-check.yml"
 )
 
 for f in "${OPTIONAL_FILES[@]}"; do

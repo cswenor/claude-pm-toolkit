@@ -49,6 +49,15 @@ cd claude-pm-toolkit
 | **Security** | `claude-command-guard.sh`, `claude-secret-*.sh` | Block dangerous commands, detect secrets |
 | **Utilities** | `find-plan.sh`, `pm-dashboard.sh`, `pm.config.sh`, `codex-mcp-overrides.sh` | Plan discovery, health dashboard, config |
 
+### GitHub Actions (Automated)
+
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| **`pm-post-merge.yml`** | PR merged with `Fixes #N` | Moves issue to Done, posts completion comment |
+| **`pm-pr-check.yml`** | PR opened/edited | Validates conventional commit, issue link, workflow state |
+
+Requires a `PROJECT_WRITE_TOKEN` repository secret (classic PAT with `project` scope).
+
 ### Workflow Docs
 
 | Doc | Purpose |
@@ -156,6 +165,9 @@ make claude            # Start tmux session
 
 ```
 .claude-pm-toolkit.json              # Install metadata (enables --update)
+.github/workflows/
+├── pm-post-merge.yml                # Auto-move issues to Done on merge
+└── pm-pr-check.yml                  # PR quality gate (conventions, issue link)
 .claude/
 ├── settings.json                    # Hooks: security guards, portfolio notifications
 └── skills/
@@ -205,6 +217,7 @@ tools/
 | Category | Examples | Install | Update |
 |----------|---------|---------|--------|
 | **Managed** | SKILL.md, scripts, PM_PLAYBOOK.md | Copied | Overwritten |
+| **Workflows** | pm-post-merge.yml, pm-pr-check.yml | Copied | Overwritten |
 | **User Config** | PM_PROJECT_CONFIG.md, *.conf | Copied | **Preserved** |
 | **Merged** | settings.json | Created | Hooks merged |
 | **Sentinel** | CLAUDE.md PM sections | Appended | Block replaced |
