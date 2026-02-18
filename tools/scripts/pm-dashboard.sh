@@ -76,10 +76,15 @@ METADATA="$REPO_ROOT/.claude-pm-toolkit.json"
 if [[ -f "$METADATA" ]]; then
   TOOLKIT_VER=$(jq -r '.toolkit_version // "unknown"' "$METADATA")
   INSTALLED_AT=$(jq -r '.installed_at // "unknown"' "$METADATA")
+  UPDATED_AT=$(jq -r '.updated_at // empty' "$METADATA")
   DISPLAY_NAME=$(jq -r '.display_name // "unknown"' "$METADATA")
   ok "Project: $DISPLAY_NAME"
   ok "Owner: $PM_OWNER | Project #$PM_PROJECT_NUMBER"
-  dim "Installed: $INSTALLED_AT (toolkit: $TOOLKIT_VER)"
+  if [[ -n "$UPDATED_AT" ]] && [[ "$UPDATED_AT" != "$INSTALLED_AT" ]]; then
+    dim "Installed: $INSTALLED_AT | Updated: $UPDATED_AT (toolkit: $TOOLKIT_VER)"
+  else
+    dim "Installed: $INSTALLED_AT (toolkit: $TOOLKIT_VER)"
+  fi
 else
   warn "No .claude-pm-toolkit.json found — toolkit may not be installed"
 fi

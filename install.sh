@@ -511,6 +511,68 @@ OPT_EST_MEDIUM=$(get_option_id "Estimate" "Medium")
 OPT_EST_LARGE=$(get_option_id  "Estimate" "Large")
 
 # ---------------------------------------------------------------------------
+# Validate required workflow options (scripts fail at runtime without these)
+# ---------------------------------------------------------------------------
+MISSING_WF_OPTS=()
+for opt_pair in "Backlog:$OPT_WF_BACKLOG" "Ready:$OPT_WF_READY" "Active:$OPT_WF_ACTIVE" \
+                "Review:$OPT_WF_REVIEW" "Rework:$OPT_WF_REWORK" "Done:$OPT_WF_DONE"; do
+  opt_name="${opt_pair%%:*}"
+  opt_value="${opt_pair#*:}"
+  if [[ -z "$opt_value" ]]; then
+    MISSING_WF_OPTS+=("$opt_name")
+  fi
+done
+
+if [[ ${#MISSING_WF_OPTS[@]} -gt 0 ]]; then
+  log_warn "Missing Workflow options: ${MISSING_WF_OPTS[*]}"
+  log_warn "project-move.sh will fail for these states."
+  log_warn "Add them to your project's Workflow field, then re-run --update."
+else
+  log_ok "  All 6 Workflow options found (Backlog, Ready, Active, Review, Rework, Done)"
+fi
+
+# Count discovered fields/options for summary
+FIELDS_FOUND=0
+FIELDS_MISSING=0
+OPTIONS_FOUND=0
+OPTIONS_MISSING=0
+
+for fval in "$FIELD_WORKFLOW" "$FIELD_PRIORITY" "$FIELD_AREA" "$FIELD_ISSUE_TYPE" "$FIELD_RISK" "$FIELD_ESTIMATE"; do
+  if [[ -n "$fval" ]]; then
+    FIELDS_FOUND=$((FIELDS_FOUND+1))
+  else
+    FIELDS_MISSING=$((FIELDS_MISSING+1))
+  fi
+done
+
+for oval in "$OPT_WF_BACKLOG" "$OPT_WF_READY" "$OPT_WF_ACTIVE" "$OPT_WF_REVIEW" "$OPT_WF_REWORK" "$OPT_WF_DONE" \
+            "$OPT_PRI_CRITICAL" "$OPT_PRI_HIGH" "$OPT_PRI_NORMAL" \
+            "$OPT_AREA_FRONTEND" "$OPT_AREA_BACKEND" "$OPT_AREA_CONTRACTS" "$OPT_AREA_INFRA" "$OPT_AREA_DESIGN" "$OPT_AREA_DOCS" "$OPT_AREA_PM" \
+            "$OPT_TYPE_BUG" "$OPT_TYPE_FEATURE" "$OPT_TYPE_SPIKE" "$OPT_TYPE_EPIC" "$OPT_TYPE_CHORE" \
+            "$OPT_RISK_LOW" "$OPT_RISK_MEDIUM" "$OPT_RISK_HIGH" \
+            "$OPT_EST_SMALL" "$OPT_EST_MEDIUM" "$OPT_EST_LARGE"; do
+  if [[ -n "$oval" ]]; then
+    OPTIONS_FOUND=$((OPTIONS_FOUND+1))
+  else
+    OPTIONS_MISSING=$((OPTIONS_MISSING+1))
+  fi
+done
+
+log_info "Fields: $FIELDS_FOUND found, $FIELDS_MISSING missing"
+log_info "Options: $OPTIONS_FOUND found, $OPTIONS_MISSING not configured"
+
+# ---------------------------------------------------------------------------
+# In update mode: detect field ID changes from previous installation
+# ---------------------------------------------------------------------------
+if $UPDATE_MODE; then
+  OLD_PROJECT_ID=$(jq -r '.project_id // empty' "$METADATA_FILE")
+  if [[ -n "$OLD_PROJECT_ID" ]] && [[ "$OLD_PROJECT_ID" != "$PROJECT_ID" ]]; then
+    log_warn "Project ID changed: $OLD_PROJECT_ID → $PROJECT_ID"
+    log_warn "This usually means the project was recreated."
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Replacement map (stride-3: placeholder, value, fallback)
 # ---------------------------------------------------------------------------
 declare -a REPLACE_PAIRS
@@ -900,9 +962,18 @@ log_section "Saving configuration metadata"
 
 TOOLKIT_VERSION=$(cd "$TOOLKIT_DIR" && git log --oneline -1 --format='%h' 2>/dev/null || echo "unknown")
 
+# Preserve original install timestamp on updates
+if $UPDATE_MODE && [[ -f "$METADATA_FILE" ]]; then
+  ORIGINAL_INSTALLED_AT=$(jq -r '.installed_at // empty' "$METADATA_FILE")
+  PREVIOUS_VERSION=$(jq -r '.toolkit_version // empty' "$METADATA_FILE")
+fi
+ORIGINAL_INSTALLED_AT="${ORIGINAL_INSTALLED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
 jq -n \
   --arg toolkit_version "$TOOLKIT_VERSION" \
-  --arg installed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg installed_at "$ORIGINAL_INSTALLED_AT" \
+  --arg updated_at "$NOW" \
   --arg owner "$OWNER" \
   --arg repo "$REPO" \
   --arg project_number "$PROJECT_NUMBER" \
@@ -916,6 +987,7 @@ jq -n \
   '{
     toolkit_version: $toolkit_version,
     installed_at: $installed_at,
+    updated_at: $updated_at,
     owner: $owner,
     repo: $repo,
     project_number: $project_number,
@@ -1007,12 +1079,40 @@ fi
 
 if $UPDATE_MODE; then
   printf "\n${GREEN}Update complete.${RESET} Toolkit files refreshed in:\n  $TARGET\n"
-  printf "\nUser config files were preserved:\n"
+
+  # Show version change if applicable
+  if [[ -n "${PREVIOUS_VERSION:-}" ]] && [[ "$PREVIOUS_VERSION" != "$TOOLKIT_VERSION" ]]; then
+    printf "\n${CYAN}%-20s${RESET} %s → %s\n" "Toolkit version:" "$PREVIOUS_VERSION" "$TOOLKIT_VERSION"
+  elif [[ -n "${PREVIOUS_VERSION:-}" ]]; then
+    printf "\n${CYAN}%-20s${RESET} %s (unchanged)\n" "Toolkit version:" "$TOOLKIT_VERSION"
+  fi
+
+  # Field discovery summary
+  printf "\n${BOLD}Field Discovery:${RESET}\n"
+  printf "  Fields: %d found, %d missing\n" "$FIELDS_FOUND" "$FIELDS_MISSING"
+  printf "  Options: %d found, %d not configured\n" "$OPTIONS_FOUND" "$OPTIONS_MISSING"
+  if [[ ${#MISSING_WF_OPTS[@]} -gt 0 ]]; then
+    printf "  ${YELLOW}WARNING: Missing Workflow options: %s${RESET}\n" "${MISSING_WF_OPTS[*]}"
+  fi
+
+  printf "\n${BOLD}Preserved user config files:${RESET}\n"
   for ucf in "${USER_CONFIG_FILES[@]}"; do
-    printf "  - %s\n" "$ucf"
+    if [[ -f "$TARGET/$ucf" ]]; then
+      printf "  ${GREEN}✓${RESET} %s\n" "$ucf"
+    else
+      printf "  ${YELLOW}–${RESET} %s (not present)\n" "$ucf"
+    fi
   done
   printf "\nRun ./validate.sh $TARGET to verify the installation.\n\n"
 else
+  # Field discovery summary
+  printf "\n${BOLD}Field Discovery:${RESET}\n"
+  printf "  Fields: %d found, %d missing\n" "$FIELDS_FOUND" "$FIELDS_MISSING"
+  printf "  Options: %d found, %d not configured\n" "$OPTIONS_FOUND" "$OPTIONS_MISSING"
+  if [[ ${#MISSING_WF_OPTS[@]} -gt 0 ]]; then
+    printf "  ${YELLOW}WARNING: Missing Workflow options: %s${RESET}\n" "${MISSING_WF_OPTS[*]}"
+  fi
+
   printf "\n${GREEN}Done.${RESET} The PM toolkit has been installed into:\n  $TARGET\n"
   printf "\nNext steps:\n"
   printf "  1. Review and customize: docs/PM_PROJECT_CONFIG.md\n"
