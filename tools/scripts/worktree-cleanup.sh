@@ -212,7 +212,16 @@ fi
 # Optionally delete the branch if it was merged
 if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
   # Check if branch is fully merged to main
-  DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+  DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "")
+  if [ -z "$DEFAULT_BRANCH" ]; then
+    for candidate in main master; do
+      if git rev-parse --verify "refs/heads/$candidate" &>/dev/null; then
+        DEFAULT_BRANCH="$candidate"
+        break
+      fi
+    done
+  fi
+  DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
   if git branch --merged "$DEFAULT_BRANCH" 2>/dev/null | grep -q "^\s*$BRANCH\$"; then
     echo ""
     echo "Note: Branch '$BRANCH' is fully merged to $DEFAULT_BRANCH."
