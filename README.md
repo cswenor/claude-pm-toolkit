@@ -243,3 +243,126 @@ If you don't have a board yet, the installer can create one for you (enter `new`
 - **Estimate**: Small, Medium, Large
 
 Field IDs are auto-discovered via GraphQL — you never look up IDs manually.
+
+## Troubleshooting
+
+### `Error: gh CLI token missing 'project' scope`
+
+The `gh` CLI needs the `project` scope for GitHub Projects v2 operations.
+
+```bash
+gh auth refresh -s project --hostname github.com
+```
+
+### `Error: Issue #X not found in project`
+
+The issue hasn't been added to the project board yet.
+
+```bash
+./tools/scripts/project-add.sh 123 normal    # Add with normal priority
+```
+
+### `Error: pm.config.sh contains unreplaced {{placeholders}}`
+
+The installer didn't finish replacing template values. Re-run:
+
+```bash
+./install.sh --update /path/to/your/repo
+```
+
+### `Error: Could not find project #N for owner 'X'`
+
+Common causes:
+- **Owner misspelled** — check `PM_OWNER` in `tools/scripts/pm.config.sh`
+- **Project number wrong** — verify at `https://github.com/orgs/YOUR_ORG/projects`
+- **Missing scope** — run `gh auth refresh -s project`
+- **Org vs user** — if the project is under your user account, the owner should be your username
+
+Verify manually:
+```bash
+gh project view 2 --owner YOUR_OWNER
+```
+
+### `validate.sh` shows failures
+
+Run with `--fix` to auto-repair permissions and .gitignore:
+
+```bash
+./validate.sh --fix /path/to/your/repo
+```
+
+If config values are empty, re-run the installer:
+
+```bash
+./install.sh --update /path/to/your/repo
+```
+
+### Worktree already exists
+
+If you get "worktree already exists" errors but the directory is gone:
+
+```bash
+git worktree prune     # Clean up stale metadata
+```
+
+### Port conflicts
+
+Check what's using the port:
+
+```bash
+lsof -i :5173          # Replace with conflicting port number
+```
+
+Each worktree gets a port offset calculated as `(issue_number % 79) * 100 + 3200`. Override with:
+
+```bash
+WORKTREE_PORT_OFFSET=5000 ./tools/scripts/worktree-setup.sh 294 feat/my-feature
+```
+
+### `settings.json` is corrupted
+
+If `.claude/settings.json` has invalid JSON (can happen from failed merge):
+
+```bash
+# Check validity
+jq empty .claude/settings.json
+
+# If it fails, restore from git
+git checkout .claude/settings.json
+./install.sh --update /path/to/your/repo     # Re-merge hooks
+```
+
+### tmux "portfolio session not found"
+
+Start the session first:
+
+```bash
+make claude    # Creates tmux session and launches Claude
+```
+
+### Placeholder Convention
+
+The toolkit uses two placeholder cases with distinct meanings:
+
+| Placeholder | Case | Purpose | Example After Install |
+|------------|------|---------|----------------------|
+| `{{prefix}}` | lowercase | Directory names, session names, file paths | `hov`, `myapp` |
+| `{{PREFIX}}` | UPPERCASE | Environment variable names | `HOV`, `MYAPP` |
+
+So `{{prefix}}-294` becomes `hov-294` (worktree directory) and `{{PREFIX}}_ISSUE_NUM` becomes `HOV_ISSUE_NUM` (env var).
+
+## Script Reference
+
+Every script supports `--help`:
+
+```bash
+./tools/scripts/project-move.sh --help
+./tools/scripts/project-add.sh --help
+./tools/scripts/project-status.sh --help
+./tools/scripts/project-archive-done.sh --help
+./tools/scripts/worktree-setup.sh --help
+./tools/scripts/worktree-detect.sh --help
+./tools/scripts/worktree-cleanup.sh --help
+./tools/scripts/find-plan.sh --help
+./tools/scripts/pm-dashboard.sh --help
+```
