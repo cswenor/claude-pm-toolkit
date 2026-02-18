@@ -331,9 +331,38 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 8. GitHub connectivity (optional, non-blocking)
+# 8. Metadata file validation
 # ---------------------------------------------------------------------------
-log_section "8. GitHub Connectivity (optional)"
+log_section "8. Metadata File"
+
+METADATA_FILE="$TARGET/.claude-pm-toolkit.json"
+if [[ -f "$METADATA_FILE" ]]; then
+  if jq empty "$METADATA_FILE" 2>/dev/null; then
+    pass ".claude-pm-toolkit.json is valid JSON"
+    # Check required fields
+    TK_VERSION=$(jq -r '.toolkit_version // empty' "$METADATA_FILE")
+    if [[ -n "$TK_VERSION" ]]; then
+      pass "toolkit_version: $TK_VERSION"
+    else
+      warn "toolkit_version not set in metadata"
+    fi
+    TK_OWNER=$(jq -r '.owner // empty' "$METADATA_FILE")
+    if [[ -n "$TK_OWNER" ]]; then
+      pass "owner: $TK_OWNER"
+    else
+      warn "owner not set in metadata"
+    fi
+  else
+    fail ".claude-pm-toolkit.json is not valid JSON — may be corrupted"
+  fi
+else
+  warn ".claude-pm-toolkit.json not found — toolkit may not be fully installed"
+fi
+
+# ---------------------------------------------------------------------------
+# 9. GitHub connectivity (optional, non-blocking)
+# ---------------------------------------------------------------------------
+log_section "9. GitHub Connectivity (optional)"
 
 if command -v gh &>/dev/null && gh auth status &>/dev/null; then
   if [[ -f "$CONFIG_FILE" ]]; then
