@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-02-18
+
+### Added
+- `install.sh --update`: Workflow option validation (warns on missing Backlog/Ready/Active/Review/Rework/Done options)
+- `install.sh --update`: Field/option counting summary shows discovered vs missing items
+- `install.sh --update`: Project ID change detection
+- `install.sh --update`: Separate `updated_at` timestamp in metadata (preserves `installed_at`)
+- `validate.sh`: Quick inline validation in `pm-validate` Makefile target (file presence + placeholder check)
+- `project-move.sh`: EXIT trap for temp file cleanup (prevents leak on early exit)
+- `worktree-setup.sh`: Numeric validation for issue number
+- `worktree-setup.sh`: Port offset bounds validation (3200-11000 range)
+- `claude-secret-check-path.sh`: Regex validation for custom patterns from `secret-paths.conf`
+- `claude-secret-detect.sh`: Comprehensive grep exit code handling for pattern validation
+
+### Fixed
+- `uninstall.sh`: Replaced python3 with jq for hook removal (fewer dependencies)
+- `uninstall.sh`: Added EXIT trap for temp file cleanup
+- `project-move.sh`: Temp file leak on early exit due to `set -e`
+- `makefile-targets.mk`: `pm-validate` now performs actual validation, not just dashboard
+
+### Changed
+- CI: Replaced python3 with jq for `secret-patterns.json` validation
+- CI: Added `uninstall.sh` to ShellCheck linting
+- CI: Expanded install-test job (--help checks, template/permission/skill verification)
+- `setup.sh`: Strengthened deprecation notice (WARNING + 3s delay + Ctrl-C hint)
+- `claude-command-guard.sh`: Added documentation comment explaining fail-open vs fail-closed design
+- `makefile-targets.mk`: Standardized help text (removed duplicate comments above targets)
+
 ## [0.2.0] - 2026-02-18
 
 ### Added
