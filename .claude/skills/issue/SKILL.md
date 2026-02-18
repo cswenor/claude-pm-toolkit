@@ -1248,19 +1248,9 @@ For **Small** changes: Run one Codex review pass. If APPROVED, proceed. If findi
 
 ### Flow
 
-#### Step 0: Compute Diff
-
-Generate the diff that Codex will review:
-
-```bash
-git diff main...HEAD > /tmp/codex-diff-<issue_num>.patch
-```
-
-This captures the diff reliably. The patch file is passed to Codex via prompt rather than relying on the `review` subcommand (which has known issues with `-o` capture and flag exclusion).
-
 #### Step 1: Initial Review
 
-Use `exec` with a structured review prompt instead of the `review` subcommand. This avoids 0-byte output issues, flag mutual-exclusion problems, and stdin delivery uncertainty.
+Codex has full filesystem access in `-s read-only` mode. It can run `git diff`, `git log`, read any file, and browse the codebase. **Do NOT pre-generate a diff or patch file** — Codex decides what context it needs.
 
 ```bash
 set -o pipefail
@@ -1271,13 +1261,13 @@ codex exec \
   -s read-only \
   --skip-git-repo-check \
   -o /tmp/codex-impl-review-<issue_num>-${ITER}.txt \
-  "You are an adversarial code reviewer for issue #<issue_num>. Review the diff at /tmp/codex-diff-<issue_num>.patch against the issue's acceptance criteria. For each finding, you MUST cite the specific file:line. Categorize findings as BLOCKING (must fix) or SUGGESTION (improvement). End with APPROVED if no blocking findings remain, or CHANGES_NEEDED with a summary." \
+  "You are an adversarial code reviewer for issue #<issue_num>. The branch is based on main. Review the implementation against the issue's acceptance criteria. Use git diff, git log, and file reads as needed. For each finding, you MUST cite the specific file:line. Categorize findings as BLOCKING (must fix) or SUGGESTION (improvement). End with APPROVED if no blocking findings remain, or CHANGES_NEEDED with a summary." \
   2>/tmp/codex-impl-stderr-<issue_num>-${ITER}.txt \
   | tee /tmp/codex-impl-events-<issue_num>-${ITER}.jsonl
 CODEX_EXIT=${PIPESTATUS[0]}
 ```
 
-**Why `exec` instead of `review --base main`:** The `review` subcommand has documented issues: 0-byte `-o` output, mutual flag exclusion with `--base`/`--uncommitted`/`[PROMPT]`, and unreliable stdin consumption. Using `exec` with an explicit prompt is more reliable and allows richer review instructions.
+**Why `exec` instead of `review --base main`:** The `review` subcommand has documented issues: 0-byte `-o` output, mutual flag exclusion with `--base`/`--uncommitted`/`[PROMPT]`, and unreliable stdin consumption. Using `exec` lets Codex explore freely — it can read full files for context around changes, check related tests, inspect configs, and run any git command it needs. This produces higher-quality review than feeding a raw patch.
 
 **Session ID capture:**
 
@@ -1289,6 +1279,7 @@ CODEX_SESSION_ID=$(head -1 /tmp/codex-impl-events-<issue_num>-${ITER}.jsonl | jq
 - `-s read-only` enforces read-only sandbox (never write mode)
 - `--json` outputs JSONL events for session ID capture
 - `-o` is on `exec` level, before prompt
+- Codex has full codebase access — no pre-generated diff needed
 - Stderr captured to file (not discarded) for error diagnostics
 - Per-iteration output files prevent collision across iterations
 
@@ -1367,9 +1358,7 @@ After handling suggestions and addressing findings, Claude resumes the Codex ses
 ```bash
 set -o pipefail
 ITER=$((ITER + 1))
-# Regenerate diff after fixes
-git diff main...HEAD > /tmp/codex-diff-<issue_num>.patch
-echo "This is Claude (Anthropic). <respond to Codex — answer questions if asked, explain revisions if findings were raised>" | \
+echo "This is Claude (Anthropic). <respond to Codex — answer questions if asked, explain revisions if findings were raised. Codex can re-run git diff to see the updated code.>" | \
   codex exec \
     $(./tools/scripts/codex-mcp-overrides.sh) \
     --json \
@@ -1772,7 +1761,7 @@ As a {user_type}, I want {goal} so that {benefit}.
 - [ ] Implementation review fires as parallel quality gate (with tests) in Post-Implementation
 - [ ] `-s read-only` on all implementation review invocations (initial + resume)
 - [ ] Uses `exec` with structured review prompt (NOT `review --base main`)
-- [ ] Diff generated as patch file and referenced in prompt
+- [ ] Codex explores codebase freely (no pre-generated patch file)
 - [ ] `resume "$CODEX_SESSION_ID"` for follow-ups (NOT `--last`)
 - [ ] Per-iteration summary with weighted finding categories (Security/Correctness/Performance/Style)
 - [ ] Per-iteration output files (`-<issue_num>-${ITER}.txt`) prevent collision
@@ -2907,22 +2896,20 @@ codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-
 #### Implementation Review Invocations
 
 ```bash
-# Implementation review (initial) — exec with structured review prompt
-# Why exec instead of review: the review subcommand has 0-byte output issues,
-# flag mutual-exclusion problems, and unreliable stdin consumption. exec is reliable.
+# Implementation review (initial) — exec with structured prompt, Codex explores freely
+# No pre-generated diff: Codex has full filesystem access via -s read-only
 set -o pipefail
 ITER=1
-git diff main...HEAD > /tmp/codex-diff-<num>.patch
 codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
   -o /tmp/codex-impl-review-<num>-${ITER}.txt \
-  "You are an adversarial code reviewer for issue #<num>. Review the diff at /tmp/codex-diff-<num>.patch against the issue's acceptance criteria. For each finding, cite the specific file:line. Categorize findings as BLOCKING or SUGGESTION. End with APPROVED if no blocking findings remain, or CHANGES_NEEDED." \
+  "You are an adversarial code reviewer for issue #<num>. The branch is based on main. Review the implementation against the issue's acceptance criteria. Use git diff, git log, and file reads as needed. For each finding, cite the specific file:line. Categorize findings as BLOCKING or SUGGESTION. End with APPROVED if no blocking findings remain, or CHANGES_NEEDED." \
   2>/tmp/codex-impl-stderr-<num>-${ITER}.txt \
   | tee /tmp/codex-impl-events-<num>-${ITER}.jsonl
 
 # Session resume (implementation review follow-up iterations) — dialogue, use session ID, NOT --last
 set -o pipefail
 ITER=$((ITER + 1))
-echo "This is Claude (Anthropic). <respond to Codex — answer questions or explain revisions>" | \
+echo "This is Claude (Anthropic). <respond to Codex — answer questions or explain revisions. Re-run git diff to see updated code.>" | \
   codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
   -o /tmp/codex-impl-review-<num>-${ITER}.txt \
   resume "$CODEX_SESSION_ID" \
@@ -2940,11 +2927,11 @@ echo "This is Claude (Anthropic). <respond to Codex — answer questions or expl
 | Iterative review (Phase 3) | `-s read-only`       | Fresh each round         | Codex reads plan file only                    |
 | Implementation review      | `-s read-only`       | Resume-based             | Session continuity for dialogue               |
 
-**Why `exec` instead of `review` for implementation review:** The `review` subcommand (`review --base main`) has documented issues:
-- 0-byte `-o` output files (the gate can never pass)
-- `--base`, `--uncommitted`, and `[PROMPT]` are mutually exclusive
-- Stdin prompt consumption is best-effort (unreliable)
-Using `exec` with a structured prompt avoids all three issues while giving richer review instructions.
+**Why `exec` instead of `review` for implementation review:**
+1. **Full codebase access:** Codex can read any file, run `git diff`, `git log`, check tests — not limited to a pre-generated patch
+2. **Better context:** Codex sees the full function around a change, not just `+`/`-` lines in a diff
+3. **Reliable output:** The `review` subcommand has 0-byte `-o` output issues, flag mutual-exclusion, and unreliable stdin
+4. **Richer prompt:** `exec` accepts a structured review prompt; `review` does not accept `[PROMPT]` with `--base`
 
 **Why session IDs for implementation review, not `--last`:** Multiple worktrees may run Codex reviews concurrently. `resume --last` resumes the globally most recent session, which could belong to a different worktree. `resume "$CODEX_SESSION_ID"` is concurrency-safe.
 
@@ -2978,16 +2965,16 @@ codex --version 2>/dev/null
 
 Exit 0 → available. Non-zero → unavailable. Checked once in Step 1e, stored as `codex_available`.
 
-### Review Approach: exec with Structured Prompt
+### Review Approach: exec with Full Codebase Access
 
-**Implementation review uses `exec` with a structured prompt** instead of the `review` subcommand. The diff is generated as a patch file (`git diff main...HEAD > /tmp/codex-diff-<num>.patch`) and referenced in the prompt.
+**Implementation review uses `exec` with a structured prompt** instead of the `review` subcommand. Codex has full filesystem access in `-s read-only` mode — it runs its own `git diff`, reads full files for context, checks tests, and inspects configs. No pre-generated diff is needed.
 
-**Why not `review --base main`:** The `review` subcommand has known issues in Codex CLI v0.101.0:
-- 0-byte `-o` output files (the output gate can never pass)
-- `--base`, `--uncommitted`, and `[PROMPT]` are mutually exclusive
-- Stdin prompt consumption is best-effort and unreliable
+**Why not `review --base main`:**
+1. **Limited context:** `review` only gives Codex the diff — it can't read the full function around a change or check related files
+2. **Reliability issues:** 0-byte `-o` output files, flag mutual-exclusion (`--base`/`--uncommitted`/`[PROMPT]`), unreliable stdin
+3. **No custom prompt:** Can't add adversarial framing, evidence requirements, or structured output format
 
-**The `exec` approach gives full control:** custom prompts with adversarial framing, evidence requirements (file:line citations), and structured output format requests. The diff is always available as a file path, not dependent on CLI flag behavior.
+**The `exec` approach is better in every dimension:** Codex decides what context it needs, the prompt can include adversarial framing and evidence requirements (file:line citations), and output capture is reliable.
 
 ### Output Parsing
 
@@ -3033,7 +3020,6 @@ Codex output is parsed into weighted finding categories:
 
 #### Implementation Review
 
-- Diff file: `/tmp/codex-diff-<issue_num>.patch`
 - Review output (per iteration): `/tmp/codex-impl-review-<issue_num>-<ITER>.txt`
 - JSONL events (per iteration): `/tmp/codex-impl-events-<issue_num>-<ITER>.jsonl`
 - Stderr (per iteration): `/tmp/codex-impl-stderr-<issue_num>-<ITER>.txt`
