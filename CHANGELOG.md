@@ -11,8 +11,10 @@ All notable changes to this project will be documented in this file.
 - `/issue` SKILL.md: Evidence requirement — Codex review findings must cite `file:line` or are downgraded to advisory
 - `/issue` SKILL.md: AC Traceability Table — mandatory plan section mapping acceptance criteria to implementation and test files
 - `/issue` SKILL.md: Parallel quality gates — tests and Codex review run concurrently in Post-Implementation Sequence
-- `/issue` SKILL.md: Structural convergence detection for collaborative planning (replaces subjective "Codex agrees")
-- `/issue` SKILL.md: Artifact cleanup step — deletes Plan B files and temp files after planning completes
+- `/issue` SKILL.md: Plan Ledger — JSON file tracking proposals across collaborative planning iterations (open/accepted/rejected); prevents re-litigation of settled decisions
+- `/issue` SKILL.md: Review Ledger — JSON file tracking findings across implementation review iterations (open/fixed/justified/withdrawn); ledger-based convergence replaces subjective "Codex agrees"
+- `/issue` SKILL.md: JSON schema for Codex review output — structured findings with id, category, severity, file, line, description, suggestion; deterministic parsing replaces prose interpretation
+- `/issue` SKILL.md: Artifact cleanup step — deletes Plan B files, temp files, and ledger files after completion
 - `/issue` SKILL.md: 5-iteration hard cap on implementation review loop (prevents infinite loops)
 - `/issue` SKILL.md: Per-iteration output/stderr/event files for both collaborative planning and implementation review
 - `/pm-review` SKILL.md: Draft PR detection in Step 2 (warns and offers analysis-only for draft PRs)
@@ -20,7 +22,9 @@ All notable changes to this project will be documented in this file.
 - `/pm-review` SKILL.md: AC Traceability Table verification in Step 4
 
 ### Changed
+- `/issue` SKILL.md: Implementation review uses `exec -s workspace-write` — Codex can write tests and verification scripts to prove findings ("agents that prove, not guess")
 - `/issue` SKILL.md: Implementation review uses `exec` with structured prompt instead of `review --base main` (fixes 0-byte output, flag exclusion, unreliable stdin issues)
+- `/issue` SKILL.md: No pre-generated patch file — Codex explores codebase freely with full filesystem access
 - `/issue` SKILL.md: Post-Implementation Sequence reduced from 6 steps to 5 (parallel quality gates merge Codex + tests)
 - `/issue` SKILL.md: REWORK mode reordered — fetch review comments BEFORE mutating state (prevents state change on fetch failure)
 - `/issue` SKILL.md: Collaborative planning Phase 3 captures stderr per iteration (was `2>/dev/null`)

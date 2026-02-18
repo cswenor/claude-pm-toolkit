@@ -1119,68 +1119,121 @@ After both plans exist, Claude reads Plan B from `.codex-work/plan-<issue_num>-$
 
 ### Phase 3: Iterative Refinement on Claude's Plan
 
-This is the core loop. Claude reads Codex's plan, incorporates good ideas, then iterates with Codex on Claude's plan.
+This is the core loop. Claude reads Codex's plan, incorporates good ideas, then iterates with Codex on Claude's plan. A **Plan Ledger** on disk tracks all proposals and decisions, preventing re-litigation.
+
+#### Plan Ledger
+
+The Plan Ledger is a JSON file at `/tmp/codex-plan-ledger-<issue_num>.json` that tracks every proposal across iterations. Claude creates it before the first iteration and updates it after each.
+
+```json
+{
+  "issue": <issue_num>,
+  "iterations": 0,
+  "items": [
+    {
+      "id": "P1",
+      "source": "codex",
+      "iteration": 1,
+      "proposal": "Use adapter pattern for chain abstraction",
+      "section": "Architecture",
+      "status": "accepted",
+      "reason": "Aligns with existing blockchain/ abstraction layer"
+    },
+    {
+      "id": "P2",
+      "source": "codex",
+      "iteration": 1,
+      "proposal": "Add Redis caching layer",
+      "section": "Performance",
+      "status": "rejected",
+      "reason": "Out of scope — no caching in acceptance criteria"
+    },
+    {
+      "id": "P3",
+      "source": "codex",
+      "iteration": 2,
+      "proposal": "Split migration into two steps",
+      "section": "Implementation",
+      "status": "open",
+      "reason": null
+    }
+  ]
+}
+```
+
+**Statuses:** `open` (unresolved), `accepted` (incorporated into Plan A), `rejected` (with reason).
+
+**Why a ledger:** Without it, iteration 3's Codex session might re-propose something rejected in iteration 1 (it's a fresh session with no memory). The ledger is included in the prompt so Codex can see what's already been decided. This eliminates the single biggest source of non-convergence: re-litigation of settled decisions.
 
 #### Step 1: Incorporate and Prompt Codex
 
 1. Claude reads both plans and incorporates good ideas from Plan B into Plan A
 2. Claude updates the plan file on disk
-3. Claude prompts Codex (fresh session, `-s read-only`):
+3. Claude updates the Plan Ledger — marking items as `accepted` or `rejected` with reasons
+4. Claude prompts Codex (fresh session, `-s read-only`), including the ledger:
 
 ```bash
 set -o pipefail
 COLLAB_ITER=1  # Increment each iteration
 codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
   -o /tmp/codex-collab-review-<issue_num>-${COLLAB_ITER}.txt \
-  "Review my updated plan for issue #<issue_num> at <plan_a_path>. I incorporated [X, Y] from your plan. I didn't take [Z] because [reason]. Read the plan file and either agree or suggest specific changes." \
+  "Review my updated plan for issue #<issue_num> at <plan_a_path>. The decision ledger at /tmp/codex-plan-ledger-<issue_num>.json shows what has already been proposed, accepted, and rejected. Do NOT re-propose rejected items. If you have NEW suggestions, propose them. If all your concerns are addressed, respond with CONVERGED. Otherwise list your specific change proposals." \
   2>/tmp/codex-collab-stderr-<issue_num>-${COLLAB_ITER}.txt \
   | tee /tmp/codex-collab-events-<issue_num>-${COLLAB_ITER}.jsonl
 ```
 
-4. Read Codex's response from `-o` output
-5. Check for failures (same pattern as Phase 1 Step 1.3)
+5. Read Codex's response from `-o` output
+6. Parse new proposals from Codex's response, add them to the ledger as `open`
+7. Check for failures (same pattern as Phase 1 Step 1.3)
 
 #### Step 2: Per-Iteration Display
 
 ```markdown
 ### Collaborative Planning — Iteration N
 
-**Incorporated from Codex:** [list of ideas taken]
-**Not incorporated (with reasons):** [list with justification]
-**Codex response:** [agrees / suggests specific changes]
+**Ledger:** X items total (Y accepted, Z rejected, W open)
+
+**New proposals from Codex:**
+- P4: [proposal] → [accepted/rejected/open]
+
+**Resolved this iteration:**
+- P3: [proposal] → accepted (reason) / rejected (reason)
+
+**Codex response:** CONVERGED / [new proposals]
 ```
 
 #### Step 3: Evaluate Convergence
 
-Convergence is determined by **structural signals**, not subjective judgment:
+Convergence is determined by the **Plan Ledger**, not subjective judgment:
 
-- **CONVERGED:** Codex's response contains no specific change proposals (only agreement, minor wording, or "looks good"). This is detectable by checking if Codex proposed any concrete file/section modifications.
-- **NOT CONVERGED:** Codex proposes specific changes to approach, file list, or implementation steps.
+- **CONVERGED:** Codex responds with "CONVERGED" AND the ledger has zero items with status `open`.
+- **NOT CONVERGED:** Codex proposed new items (added to ledger as `open`), OR existing `open` items remain unresolved.
 
 **Decision:**
 - If CONVERGED → Clean up artifacts (Step 5), then proceed to ExitPlanMode.
-- If NOT CONVERGED → Claude evaluates suggestions, incorporates good ones into Plan A, updates the plan file, then launches a NEW fresh Codex session (repeat from Step 1).
+- If NOT CONVERGED → Claude resolves `open` items (accept or reject with reason), updates Plan A, then launches a NEW fresh Codex session (repeat from Step 1).
 
 #### Step 4: 3-Iteration Checkpoint
 
-After 3 iterations without convergence, display status and AskUserQuestion:
+After 3 iterations without convergence, display the ledger summary and AskUserQuestion:
 
 ```
-question: "Collaborative planning has iterated 3 times without convergence. How to proceed?"
+question: "Collaborative planning has iterated 3 times. Ledger: X accepted, Y rejected, Z still open. How to proceed?"
 header: "Plan Review"
 options:
   - label: "Continue iterating (Recommended)"
-    description: "Keep refining until Codex agrees"
+    description: "Keep refining until ledger has no open items"
   - label: "Accept Claude's current plan"
     description: "Stop iterating and use Claude's plan as-is"
   - label: "Use Codex's plan instead"
     description: "Replace Claude's plan with Codex's Plan B"
-  - label: "Show full Codex output"
-    description: "Display the complete Codex response"
+  - label: "Show full ledger"
+    description: "Display the complete decision ledger"
 ```
 
 On "Use Codex's plan instead": Copy Plan B content to the plan file, replacing Plan A.
 On "Accept Claude's current plan": Stop iterating, proceed to ExitPlanMode.
+On "Show full ledger": Display the JSON ledger formatted as a table, then re-prompt.
 
 #### Step 5: Artifact Cleanup
 
@@ -1194,6 +1247,8 @@ rm -f /tmp/codex-collab-output-<issue_num>.txt
 rm -f /tmp/codex-collab-events-<issue_num>*.jsonl
 rm -f /tmp/codex-collab-review-<issue_num>*.txt
 rm -f /tmp/codex-collab-stderr-<issue_num>*.txt
+# Remove plan ledger (decisions are captured in Plan A)
+rm -f /tmp/codex-plan-ledger-<issue_num>.json
 ```
 
 **Why cleanup matters:** Leftover Plan B files in `.codex-work/` confuse Claude during implementation — it may interpret them as late-arriving background work or unfinished planning. Structural cleanup (delete files when done) is more reliable than behavioral instructions ("ignore these files").
@@ -1210,7 +1265,8 @@ User can override at any iteration display (Step 2) by choosing to accept or swi
 | **No user arbitration**         | Agents iterate until Codex agrees. User only sees the final result via ExitPlanMode. User CAN override at checkpoints. |
 | **Ordering-based independence** | Codex writes Plan B first. Plan A doesn't exist when Codex runs.                                                       |
 | **One canonical plan**          | Claude's plan evolves. No separate "merged plan."                                                                      |
-| **Sandbox modes**               | `-s workspace-write` ONLY for Plan B creation. `-s read-only` for all iterations.                                      |
+| **Sandbox modes**               | `-s workspace-write` for Plan B creation. `-s read-only` for plan iterations.                                          |
+| **Plan Ledger**                 | JSON file tracking proposals across iterations. Prevents re-litigation of settled decisions.                            |
 | **Plan B location**             | `.codex-work/plan-<issue_num>-<prefix>.md` — gitignored, outside `find-plan.sh` scope.                                 |
 
 ---
@@ -1250,7 +1306,7 @@ For **Small** changes: Run one Codex review pass. If APPROVED, proceed. If findi
 
 #### Step 1: Initial Review
 
-Codex has full filesystem access in `-s read-only` mode. It can run `git diff`, `git log`, read any file, and browse the codebase. **Do NOT pre-generate a diff or patch file** — Codex decides what context it needs.
+Codex has full filesystem access in `-s workspace-write` mode. It can run `git diff`, read files, browse the codebase, **and write verification artifacts** — test scripts, reproduction cases, or validation helpers. **Do NOT pre-generate a diff or patch file** — Codex decides what context it needs and how to verify.
 
 ```bash
 set -o pipefail
@@ -1258,14 +1314,16 @@ ITER=1
 codex exec \
   $(./tools/scripts/codex-mcp-overrides.sh) \
   --json \
-  -s read-only \
+  -s workspace-write \
   --skip-git-repo-check \
   -o /tmp/codex-impl-review-<issue_num>-${ITER}.txt \
-  "You are an adversarial code reviewer for issue #<issue_num>. The branch is based on main. Review the implementation against the issue's acceptance criteria. Use git diff, git log, and file reads as needed. For each finding, you MUST cite the specific file:line. Categorize findings as BLOCKING (must fix) or SUGGESTION (improvement). End with APPROVED if no blocking findings remain, or CHANGES_NEEDED with a summary." \
+  "You are an adversarial code reviewer for issue #<issue_num>. The branch is based on main. Review the implementation against the issue's acceptance criteria. Use git diff, git log, and file reads as needed. You CAN write and run test scripts to verify claims — prefer proving over guessing. Output your findings as JSON: {\"verdict\": \"APPROVED\"|\"CHANGES_NEEDED\", \"findings\": [{\"id\": \"F1\", \"category\": \"security\"|\"correctness\"|\"performance\"|\"style\", \"severity\": \"high\"|\"medium\"|\"low\", \"file\": \"path\", \"line\": N, \"description\": \"...\", \"suggestion\": \"...\"}], \"summary\": \"...\"}. Every finding MUST include file and line. End with APPROVED if no blocking findings, or CHANGES_NEEDED." \
   2>/tmp/codex-impl-stderr-<issue_num>-${ITER}.txt \
   | tee /tmp/codex-impl-events-<issue_num>-${ITER}.jsonl
 CODEX_EXIT=${PIPESTATUS[0]}
 ```
+
+**Why `-s workspace-write`:** The reviewer should be able to **prove** findings, not just claim them. Writing a quick test that demonstrates a null pointer, running a script that exposes a race condition, or creating a reproduction case — these are more valuable than prose opinions. This is the Google ADK "agents that prove, not guess" principle taken to its logical conclusion. The sandbox still prevents network access and system modifications.
 
 **Why `exec` instead of `review --base main`:** The `review` subcommand has documented issues: 0-byte `-o` output, mutual flag exclusion with `--base`/`--uncommitted`/`[PROMPT]`, and unreliable stdin consumption. Using `exec` lets Codex explore freely — it can read full files for context around changes, check related tests, inspect configs, and run any git command it needs. This produces higher-quality review than feeding a raw patch.
 
@@ -1276,21 +1334,53 @@ CODEX_SESSION_ID=$(head -1 /tmp/codex-impl-events-<issue_num>-${ITER}.jsonl | jq
 ```
 
 **Key properties:**
-- `-s read-only` enforces read-only sandbox (never write mode)
+- `-s workspace-write` lets Codex read AND write (tests, scripts, verification artifacts)
 - `--json` outputs JSONL events for session ID capture
 - `-o` is on `exec` level, before prompt
 - Codex has full codebase access — no pre-generated diff needed
 - Stderr captured to file (not discarded) for error diagnostics
 - Per-iteration output files prevent collision across iterations
+- Any files Codex creates during review are visible to Claude for evaluation
 
 #### Step 2: Check for Failures
 
 1. If `CODEX_EXIT` is non-zero: read stderr from `/tmp/codex-impl-stderr-<issue_num>-${ITER}.txt`. Surface via AskUserQuestion with "Retry" / "Override" / "Show error".
 2. If output file is missing or 0 bytes (`[ ! -s /tmp/codex-impl-review-<issue_num>-${ITER}.txt ]`): context exhaustion. Surface via AskUserQuestion with "Retry" / "Override".
 
-#### Step 3: Classify and Weight Findings
+#### Step 3: Parse Findings via JSON Schema
 
-Parse Codex output and classify each finding:
+Codex is instructed (via the prompt in Step 1) to output findings as JSON. Claude parses the structured output deterministically — no regex, no prose interpretation.
+
+**Finding schema (what Codex outputs):**
+
+```json
+{
+  "verdict": "CHANGES_NEEDED",
+  "findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "high",
+      "file": "src/auth.ts",
+      "line": 45,
+      "description": "Unsanitized user input passed to query builder",
+      "suggestion": "Use parameterized query via db.query(sql, [param])"
+    }
+  ],
+  "summary": "1 security issue found in auth module"
+}
+```
+
+**Schema fields:**
+- `verdict`: `"APPROVED"` | `"CHANGES_NEEDED"`
+- `findings[].id`: Stable identifier (F1, F2, ...) for ledger tracking
+- `findings[].category`: `"security"` | `"correctness"` | `"performance"` | `"style"`
+- `findings[].severity`: `"high"` | `"medium"` | `"low"`
+- `findings[].file` + `findings[].line`: Evidence citation (REQUIRED for blocking/suggestion)
+- `findings[].description`: What's wrong
+- `findings[].suggestion`: How to fix it (optional)
+
+**Blocking thresholds (applied by Claude after parsing):**
 
 | Category | Weight | Blocking Threshold |
 |----------|--------|--------------------|
@@ -1299,23 +1389,85 @@ Parse Codex output and classify each finding:
 | **Performance** | 0.15 | Never auto-blocks (advisory) |
 | **Style** | 0.05 | Never blocks |
 
-**Evidence requirement:** Each finding MUST include a file:line citation. Findings without citations are downgraded to advisory (Claude notes this in the display). This is the structural guarantee that review is evidence-based, not opinion-based.
+**Evidence enforcement:** If a finding has `file: null` or `line: null`, Claude automatically downgrades it to advisory regardless of category/severity. This is structural — no interpretation needed.
+
+**If Codex outputs prose instead of JSON:** Fall back to prose parsing (regex for file:line, keyword matching for categories). Log a warning: "Codex did not output structured JSON — falling back to prose parsing." This is degraded mode, not a failure.
+
+#### Review Ledger
+
+The Review Ledger is a JSON file at `/tmp/codex-review-ledger-<issue_num>.json` that tracks all findings across iterations, their current status, and how they were resolved. This is the source of truth for convergence — not Codex's verdict.
+
+```json
+{
+  "issue": <issue_num>,
+  "iteration": 2,
+  "findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "high",
+      "file": "src/auth.ts",
+      "line": 45,
+      "description": "Unsanitized user input passed to query builder",
+      "raised_iteration": 1,
+      "status": "fixed",
+      "resolution": "Switched to parameterized query in commit abc123"
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "lib/parse.ts",
+      "line": 12,
+      "description": "Missing null check on optional field",
+      "raised_iteration": 1,
+      "status": "justified",
+      "resolution": "Field is validated at API boundary (middleware.ts:30), null is impossible here"
+    },
+    {
+      "id": "F3",
+      "category": "performance",
+      "severity": "low",
+      "file": "src/query.ts",
+      "line": 88,
+      "description": "N+1 query in loop",
+      "raised_iteration": 2,
+      "status": "open",
+      "resolution": null
+    }
+  ]
+}
+```
+
+**Statuses:** `open` (unresolved), `fixed` (code changed), `justified` (skipped with reason), `withdrawn` (Codex retracted in later iteration).
+
+**Why a review ledger:**
+1. **Prevents re-raising:** On resume, Codex sees the ledger and knows what's already fixed or justified
+2. **Structural convergence:** Loop terminates when ledger has zero `open` items in blocking categories — not when Codex says "APPROVED"
+3. **Audit trail:** The user can see exactly what was raised, how it was resolved, and when
+4. **Prevents re-litigation:** "Justified" items with reasons don't get re-raised (same principle as the Plan Ledger)
+
+**Claude updates the ledger** after each iteration:
+- New findings from Codex → added as `open`
+- Findings Claude fixed → status changes to `fixed` with commit reference
+- Findings Claude justified → status changes to `justified` with explanation
+- Findings Codex withdrew → status changes to `withdrawn`
 
 Display format:
 
 ```markdown
 ### Codex Review — Iteration N
 
-**Verdict:** APPROVED / CHANGES_NEEDED
-**Findings:** X total (Y blocking, Z suggestions)
+**Ledger:** X findings total (Y open, Z fixed, W justified)
+**Blocking:** N open findings in blocking categories
 
-| # | Category | Severity | File:Line | Finding | Evidence |
-|---|----------|----------|-----------|---------|----------|
-| 1 | Security | HIGH | src/auth.ts:45 | Unsanitized input | BLOCKING |
-| 2 | Correctness | MED | lib/parse.ts:12 | Missing null check | BLOCKING |
-| 3 | Style | LOW | — | Naming convention | Advisory |
+| ID | Category | Severity | File:Line | Finding | Status | Resolution |
+|----|----------|----------|-----------|---------|--------|------------|
+| F1 | Security | HIGH | src/auth.ts:45 | Unsanitized input | fixed | Parameterized query (abc123) |
+| F2 | Correctness | MED | lib/parse.ts:12 | Missing null check | justified | Validated at API boundary |
+| F3 | Performance | LOW | src/query.ts:88 | N+1 query | open | — |
 
-**Claude's response:** [what will be revised/fixed, with justification for any skipped suggestions]
+**This iteration:** 1 new finding (F3), 2 resolved (F1 fixed, F2 justified)
 ```
 
 #### Step 4: User Choice
@@ -1358,11 +1510,11 @@ After handling suggestions and addressing findings, Claude resumes the Codex ses
 ```bash
 set -o pipefail
 ITER=$((ITER + 1))
-echo "This is Claude (Anthropic). <respond to Codex — answer questions if asked, explain revisions if findings were raised. Codex can re-run git diff to see the updated code.>" | \
+echo "This is Claude (Anthropic). <respond to Codex — answer questions if asked, explain revisions if findings were raised. The review ledger at /tmp/codex-review-ledger-<issue_num>.json shows current finding statuses. Re-run git diff to see updated code. You can write verification scripts if needed.>" | \
   codex exec \
     $(./tools/scripts/codex-mcp-overrides.sh) \
     --json \
-    -s read-only \
+    -s workspace-write \
     --skip-git-repo-check \
     -o /tmp/codex-impl-review-<issue_num>-${ITER}.txt \
     resume "$CODEX_SESSION_ID" \
@@ -1389,11 +1541,15 @@ echo "This is Claude (Anthropic). <respond to Codex — answer questions if aske
 
 Loop terminates when:
 
-- Codex says APPROVED with no BLOCKING findings AND Claude has addressed or explicitly justified skipping each SUGGESTION, OR
+- **Review Ledger has zero `open` findings in blocking categories** (Security HIGH, or 2+ Correctness HIGH) AND all SUGGESTION-level findings are `fixed` or `justified`, OR
 - User chooses "Override"
-- **5-iteration hard cap:** If 5 iterations pass without convergence, force AskUserQuestion with "Accept current state" / "Override" / "Show full history". This prevents infinite loops.
+- **5-iteration hard cap:** If 5 iterations pass without convergence, force AskUserQuestion with "Accept current state" / "Override" / "Show full ledger". This prevents infinite loops.
 
-**Anti-shortcut rule (Continue path only — does not apply to Override):** Claude MUST NOT self-certify its revisions are correct. Every revision MUST be re-submitted to Codex. When the user chooses Continue, the loop cannot terminate until Codex reviews the REVISED version and says APPROVED. Claude fixing all findings in one pass and declaring "done" without re-submission is the exact failure mode this loop prevents. This rule does not restrict the Override path — Override terminates the loop immediately regardless of Codex state.
+**Why ledger-based termination:** Previous versions checked if "Codex says APPROVED" — a subjective signal that drifts. The ledger makes convergence structural: count open items in blocking categories. Zero open blockers = done. No interpretation needed.
+
+**Anti-shortcut rule (Continue path only — does not apply to Override):** Claude MUST NOT self-certify its revisions are correct. Every revision MUST be re-submitted to Codex (which may add new findings to the ledger). The loop cannot terminate until the ledger shows zero open blockers AND Codex has reviewed the revised version. Claude fixing all findings in one pass, updating the ledger to "fixed", and declaring "done" without re-submission is the exact failure mode this loop prevents. This rule does not restrict the Override path — Override terminates the loop immediately regardless of ledger state.
+
+**Ledger cleanup:** After termination, the review ledger is preserved at `/tmp/codex-review-ledger-<issue_num>.json` for the /pm-review self-check step (Post-Implementation Step 4). It is cleaned up after the full Post-Implementation Sequence completes.
 
 ---
 
@@ -1724,8 +1880,10 @@ As a {user_type}, I want {goal} so that {benefit}.
 - [ ] Codex Plan B launches BEFORE Claude writes Plan A (ordering-based independence)
 - [ ] Plan B written to `.codex-work/plan-<issue_num>-<prefix>.md` (gitignored)
 - [ ] `-s workspace-write` ONLY for Plan B creation (Phase 1)
-- [ ] `-s read-only` for all iterative review rounds (Phase 3)
-- [ ] No `--full-auto` anywhere (overrides sandbox to workspace-write)
+- [ ] `-s read-only` for collaborative planning iterative review (Phase 3)
+- [ ] Plan Ledger tracks proposals across iterations (open/accepted/rejected)
+- [ ] Convergence based on ledger (zero open items), not subjective "Codex agrees"
+- [ ] No `--full-auto` in collaborative planning (would override read-only to workspace-write)
 - [ ] Each Codex iteration is a fresh session — no resume
 - [ ] `-o` flag always on `exec` level, BEFORE subcommands
 - [ ] `set -o pipefail` on all `codex exec | tee` pipelines
@@ -1759,7 +1917,7 @@ As a {user_type}, I want {goal} so that {benefit}.
 #### Implementation Review
 
 - [ ] Implementation review fires as parallel quality gate (with tests) in Post-Implementation
-- [ ] `-s read-only` on all implementation review invocations (initial + resume)
+- [ ] `-s workspace-write` on all implementation review invocations (Codex can write tests/scripts)
 - [ ] Uses `exec` with structured review prompt (NOT `review --base main`)
 - [ ] Codex explores codebase freely (no pre-generated patch file)
 - [ ] `resume "$CODEX_SESSION_ID"` for follow-ups (NOT `--last`)
@@ -1767,10 +1925,15 @@ As a {user_type}, I want {goal} so that {benefit}.
 - [ ] Per-iteration output files (`-<issue_num>-${ITER}.txt`) prevent collision
 - [ ] Stderr captured per iteration (NOT discarded with `2>/dev/null`)
 - [ ] Evidence requirement: findings must cite file:line or downgrade to advisory
+- [ ] Codex outputs findings as JSON schema (verdict, findings[], summary)
+- [ ] Prose fallback with warning if JSON parsing fails
+- [ ] Review Ledger tracks findings across iterations (open/fixed/justified/withdrawn)
+- [ ] Termination based on ledger (zero open blockers), not Codex verdict
 - [ ] Claude self-identifies when resuming sessions
+- [ ] Resume prompt includes review ledger path
 - [ ] Resume loop supports two-way dialogue (questions + revisions)
 - [ ] SUGGESTION findings addressed or justified (not just BLOCKING)
-- [ ] Termination requires both no BLOCKING findings AND suggestions handled
+- [ ] Ledger preserved for /pm-review self-check step
 - [ ] 5-iteration hard cap with user choice prevents infinite loops
 - [ ] Risk-proportional depth: trivial (skip), small (single-pass), standard (full loop)
 - [ ] Revisions re-submitted to Codex (Claude cannot self-certify)
@@ -2366,8 +2529,8 @@ Execute: `./tools/scripts/project-move.sh <num> Done`
 - `./tools/scripts/codex-mcp-overrides.sh` - Emit `-c` flags to inject MCP servers into codex exec
 - `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s workspace-write ... "Write an implementation plan for issue #<num>. Save to .codex-work/plan-<num>-<prefix>.md"` - Codex independent plan writing (collaborative planning Phase 1)
 - `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ... "Review my updated plan for issue #<num> at <path>. I incorporated [X, Y] from your plan..."` - Codex iterative review (collaborative planning Phase 3, fresh session each round)
-- `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ... "You are an adversarial code reviewer for issue #<num>..."` - Codex implementation review (exec with structured prompt)
-- `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ... resume "$CODEX_SESSION_ID"` - Resume Codex implementation review session (dialogue)
+- `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s workspace-write ... "You are an adversarial code reviewer for issue #<num>..."` - Codex implementation review (can write tests/verification scripts)
+- `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s workspace-write ... resume "$CODEX_SESSION_ID"` - Resume Codex implementation review session (dialogue)
 - `/pm-review <pr-or-issue-number>` - Self-review before Review transition (ANALYSIS_ONLY action)
 
 **Print-only (user must run):**
@@ -2896,21 +3059,20 @@ codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-
 #### Implementation Review Invocations
 
 ```bash
-# Implementation review (initial) — exec with structured prompt, Codex explores freely
-# No pre-generated diff: Codex has full filesystem access via -s read-only
+# Implementation review (initial) — exec with workspace-write so Codex can write tests/scripts
 set -o pipefail
 ITER=1
-codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
+codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s workspace-write --skip-git-repo-check \
   -o /tmp/codex-impl-review-<num>-${ITER}.txt \
-  "You are an adversarial code reviewer for issue #<num>. The branch is based on main. Review the implementation against the issue's acceptance criteria. Use git diff, git log, and file reads as needed. For each finding, cite the specific file:line. Categorize findings as BLOCKING or SUGGESTION. End with APPROVED if no blocking findings remain, or CHANGES_NEEDED." \
+  "You are an adversarial code reviewer for issue #<num>. The branch is based on main. Review the implementation against the issue's acceptance criteria. Use git diff, git log, and file reads as needed. You CAN write and run test scripts to verify claims. Output findings as JSON: {\"verdict\": ..., \"findings\": [...], \"summary\": ...}. End with APPROVED if no blocking findings, or CHANGES_NEEDED." \
   2>/tmp/codex-impl-stderr-<num>-${ITER}.txt \
   | tee /tmp/codex-impl-events-<num>-${ITER}.jsonl
 
-# Session resume (implementation review follow-up iterations) — dialogue, use session ID, NOT --last
+# Session resume (follow-up iterations) — dialogue, use session ID, NOT --last
 set -o pipefail
 ITER=$((ITER + 1))
-echo "This is Claude (Anthropic). <respond to Codex — answer questions or explain revisions. Re-run git diff to see updated code.>" | \
-  codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
+echo "This is Claude (Anthropic). <respond to Codex — answer questions or explain revisions. Review ledger at /tmp/codex-review-ledger-<num>.json. Re-run git diff to see updated code.>" | \
+  codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s workspace-write --skip-git-repo-check \
   -o /tmp/codex-impl-review-<num>-${ITER}.txt \
   resume "$CODEX_SESSION_ID" \
   2>/tmp/codex-impl-stderr-<num>-${ITER}.txt \
@@ -2925,7 +3087,7 @@ echo "This is Claude (Anthropic). <respond to Codex — answer questions or expl
 | -------------------------- | -------------------- | ------------------------ | --------------------------------------------- |
 | Plan B writing (Phase 1)   | `-s workspace-write` | Fresh                    | Codex must create plan file in `.codex-work/` |
 | Iterative review (Phase 3) | `-s read-only`       | Fresh each round         | Codex reads plan file only                    |
-| Implementation review      | `-s read-only`       | Resume-based             | Session continuity for dialogue               |
+| Implementation review      | `-s workspace-write` | Resume-based             | Codex can write tests/scripts to prove findings |
 
 **Why `exec` instead of `review` for implementation review:**
 1. **Full codebase access:** Codex can read any file, run `git diff`, `git log`, check tests — not limited to a pre-generated patch
@@ -2967,7 +3129,7 @@ Exit 0 → available. Non-zero → unavailable. Checked once in Step 1e, stored 
 
 ### Review Approach: exec with Full Codebase Access
 
-**Implementation review uses `exec` with a structured prompt** instead of the `review` subcommand. Codex has full filesystem access in `-s read-only` mode — it runs its own `git diff`, reads full files for context, checks tests, and inspects configs. No pre-generated diff is needed.
+**Implementation review uses `exec` with a structured prompt** instead of the `review` subcommand. Codex has full filesystem access in `-s workspace-write` mode — it runs its own `git diff`, reads full files for context, checks tests, inspects configs, and can write verification scripts to prove findings. No pre-generated diff is needed.
 
 **Why not `review --base main`:**
 1. **Limited context:** `review` only gives Codex the diff — it can't read the full function around a change or check related files
@@ -2988,7 +3150,27 @@ Codex responses in collaborative planning are natural language. Look for:
 
 #### Implementation Review
 
-Codex output is parsed into weighted finding categories:
+**Primary: JSON schema parsing.** Codex is prompted to output structured JSON:
+
+```json
+{
+  "verdict": "APPROVED" | "CHANGES_NEEDED",
+  "findings": [
+    {
+      "id": "F1",
+      "category": "security" | "correctness" | "performance" | "style",
+      "severity": "high" | "medium" | "low",
+      "file": "src/auth.ts",
+      "line": 45,
+      "description": "What's wrong",
+      "suggestion": "How to fix (optional)"
+    }
+  ],
+  "summary": "Brief overall assessment"
+}
+```
+
+**Blocking thresholds (applied by Claude after parsing):**
 
 | Category | Weight | Blocking Rule | Rationale |
 |----------|--------|---------------|-----------|
@@ -2997,14 +3179,11 @@ Codex output is parsed into weighted finding categories:
 | **Performance** | 0.15 | Advisory only | Performance is rarely a merge blocker |
 | **Style** | 0.05 | Never blocks | Style is cosmetic; never gates a merge |
 
-**Finding types:**
-- **BLOCKING** — must fix before proceeding (Security HIGH or 2+ Correctness HIGH)
-- **SUGGESTION** — improvement that MUST be addressed or explicitly justified by Claude. "It's just a suggestion" is not valid justification. Valid skip reasons: conflicts with non-goal, requires out-of-scope work, Codex misunderstood context.
-- **Advisory** — informational (Performance, Style). Document in review display but do not gate.
-- **APPROVED** — look for "APPROVED" with no BLOCKING findings in the response
-- If response contains neither BLOCKING nor APPROVED, treat as unparseable (see Error Handling)
+**Evidence enforcement:** If `file` or `line` is null/missing in a finding, Claude automatically downgrades it to advisory. No interpretation needed — it's a field check.
 
-**Evidence requirement:** Every BLOCKING or SUGGESTION finding must include a `file:line` citation. Findings without citations are automatically downgraded to Advisory. This structural rule prevents vague opinions from blocking merges.
+**Fallback: Prose parsing.** If Codex outputs natural language instead of JSON (it may ignore the schema instruction), Claude falls back to regex-based parsing: look for file:line patterns, keyword-match categories, detect APPROVED/CHANGES_NEEDED. Log a warning: "Codex did not output structured JSON — falling back to prose parsing." Prose mode is degraded but functional.
+
+**Review Ledger integration:** After parsing (JSON or prose), Claude adds each finding to the Review Ledger at `/tmp/codex-review-ledger-<issue_num>.json`. The ledger is the source of truth for convergence, not Codex's verdict field. See Sub-Playbook: Codex Implementation Review → Review Ledger for schema and statuses.
 
 ### Temporary File Paths
 
@@ -3016,6 +3195,7 @@ Codex output is parsed into weighted finding categories:
 - Iterative review output (per iteration): `/tmp/codex-collab-review-<issue_num>-<COLLAB_ITER>.txt`
 - Iterative review events (per iteration): `/tmp/codex-collab-events-<issue_num>-<COLLAB_ITER>.jsonl`
 - Iterative review stderr (per iteration): `/tmp/codex-collab-stderr-<issue_num>-<COLLAB_ITER>.txt`
+- **Plan Ledger:** `/tmp/codex-plan-ledger-<issue_num>.json`
 - Plan B file: `.codex-work/plan-<issue_num>-<PLAN_B_PREFIX>.md`
 
 #### Implementation Review
@@ -3023,6 +3203,7 @@ Codex output is parsed into weighted finding categories:
 - Review output (per iteration): `/tmp/codex-impl-review-<issue_num>-<ITER>.txt`
 - JSONL events (per iteration): `/tmp/codex-impl-events-<issue_num>-<ITER>.jsonl`
 - Stderr (per iteration): `/tmp/codex-impl-stderr-<issue_num>-<ITER>.txt`
+- **Review Ledger:** `/tmp/codex-review-ledger-<issue_num>.json`
 
 ### Session ID Capture (Implementation Review Only)
 
