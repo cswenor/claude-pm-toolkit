@@ -66,25 +66,8 @@ if [ -z "$ISSUE_NUM" ] || [ -z "$PRIORITY" ]; then
   exit 1
 fi
 
-# Check gh CLI auth
-if ! gh auth status &>/dev/null; then
-  echo "Error: gh CLI not authenticated. Run: gh auth login" >&2
-  exit 1
-fi
-
-# Check for project scope (required for project mutations)
-if ! gh auth status 2>&1 | grep -q "'project'"; then
-  echo "Error: gh CLI token missing 'project' scope (required for project board writes)" >&2
-  echo "Run: gh auth refresh -s project --hostname github.com" >&2
-  exit 1
-fi
-
-if ! command -v jq &>/dev/null; then
-  echo "Error: jq not installed." >&2
-  echo "  macOS:  brew install jq" >&2
-  echo "  Ubuntu: sudo apt-get install jq" >&2
-  exit 1
-fi
+# Validate config, auth, and dependencies
+pm_validate_config || exit 1
 
 # --- Get repo from pm.config.sh helper ---
 REPO_NAME=$(pm_get_repo) || {
