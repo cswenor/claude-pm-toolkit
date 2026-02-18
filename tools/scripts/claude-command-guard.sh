@@ -50,7 +50,11 @@ done < "$CONF_FILE"
 # No patterns loaded — allow everything
 [[ ${#PATTERNS[@]} -eq 0 ]] && exit 0
 
-# ---------- read & extract ----------
+# ---------- read & extract (FAIL-OPEN) ----------
+# Fail-open is intentional here: the command guard blocks known-dangerous patterns
+# but MUST NOT block legitimate work if the hook input is missing or malformed.
+# This contrasts with claude-secret-bash-guard.sh which is fail-CLOSED because
+# reading sensitive files is more dangerous than running commands.
 
 input=$(cat) || exit 0
 command=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0

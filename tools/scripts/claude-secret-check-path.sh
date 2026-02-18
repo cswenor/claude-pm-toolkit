@@ -111,6 +111,15 @@ if [[ -f "$CUSTOM_PATTERNS" ]]; then
     while IFS= read -r pattern; do
         # Skip comments and empty lines
         [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+
+        # Validate regex before use (grep returns 2 for invalid regex)
+        echo "" | grep -qE "$pattern" 2>/dev/null
+        _grep_exit=$?
+        if [[ "$_grep_exit" -eq 2 ]]; then
+            echo "Invalid regex in secret-paths.conf: $pattern" >&2
+            continue
+        fi
+
         if echo "$FILE_PATH" | grep -qE "$pattern" 2>/dev/null; then
             echo "Sensitive file detected: $FILE_PATH (matches custom pattern: $pattern)"
             exit 0
