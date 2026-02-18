@@ -694,6 +694,31 @@ log_section "Handling CLAUDE.md"
 merge_claude_md
 
 # ---------------------------------------------------------------------------
+# Fix .gitignore if .claude is fully ignored
+# ---------------------------------------------------------------------------
+GITIGNORE_FILE="$TARGET/.gitignore"
+if [[ -f "$GITIGNORE_FILE" ]] && grep -qx '\.claude' "$GITIGNORE_FILE"; then
+  log_section "Updating .gitignore"
+  log_info ".claude directory is fully gitignored — switching to selective ignoring"
+  # Replace blanket .claude with selective ignores
+  awk '
+    /^\.claude$/ {
+      print ".claude/settings.local.json"
+      print ".claude/plans/"
+      next
+    }
+    { print }
+  ' "$GITIGNORE_FILE" > "${GITIGNORE_FILE}.tmp" && mv "${GITIGNORE_FILE}.tmp" "$GITIGNORE_FILE"
+
+  # Add .codex-work/ if not present (for collaborative planning)
+  if ! grep -qF '.codex-work/' "$GITIGNORE_FILE"; then
+    echo '.codex-work/' >> "$GITIGNORE_FILE"
+  fi
+
+  log_ok "Updated .gitignore: .claude/settings.json and .claude/skills/ now trackable"
+fi
+
+# ---------------------------------------------------------------------------
 # Make shell scripts executable in target
 # ---------------------------------------------------------------------------
 log_section "Making shell scripts executable in target"
