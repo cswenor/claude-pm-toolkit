@@ -969,6 +969,8 @@ done < <(find "$TARGET" \
 log_section "Saving configuration metadata"
 
 TOOLKIT_VERSION=$(cd "$TOOLKIT_DIR" && git log --oneline -1 --format='%h' 2>/dev/null || echo "unknown")
+ORIGINAL_INSTALLED_AT=""
+PREVIOUS_VERSION=""
 
 # Preserve original install timestamp on updates
 if $UPDATE_MODE && [[ -f "$METADATA_FILE" ]]; then

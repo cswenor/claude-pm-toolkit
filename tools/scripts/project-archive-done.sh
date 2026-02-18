@@ -12,6 +12,14 @@
 
 set -euo pipefail
 
+# Guard: detect unsubstituted template placeholders
+if grep -q '{{PREFIX}}' "${BASH_SOURCE[0]}" 2>/dev/null; then
+  echo "ERROR: This script contains unsubstituted {{PREFIX}} placeholders." >&2
+  echo "It must be installed via install.sh before use." >&2
+  echo "Run: ./install.sh /path/to/target/repo" >&2
+  exit 1
+fi
+
 show_help() {
   cat <<'HELPEOF'
 project-archive-done.sh - Archive project items that have been Done for too long
