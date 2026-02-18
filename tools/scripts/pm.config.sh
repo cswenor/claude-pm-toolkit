@@ -65,6 +65,13 @@ pm_validate_config() {
   [ -z "$PM_FIELD_WORKFLOW" ] && missing+=("PM_FIELD_WORKFLOW")
   [ -z "$PM_WORKFLOW_ACTIVE" ] && missing+=("PM_WORKFLOW_ACTIVE (re-run install.sh --update to discover field IDs)")
 
+  # Validate PM_PROJECT_NUMBER is numeric (jq --argjson will fail otherwise)
+  if [ -n "$PM_PROJECT_NUMBER" ] && ! [[ "$PM_PROJECT_NUMBER" =~ ^[0-9]+$ ]]; then
+    echo "Error: PM_PROJECT_NUMBER must be numeric, got: $PM_PROJECT_NUMBER" >&2
+    echo "Check pm.config.sh for unreplaced placeholders or typos." >&2
+    return 1
+  fi
+
   # Check gh CLI auth
   if ! gh auth status &>/dev/null; then
     echo "Error: gh CLI not authenticated. Run: gh auth login" >&2
