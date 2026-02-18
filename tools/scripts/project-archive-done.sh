@@ -116,9 +116,15 @@ ALL_ITEMS="[]"
 HAS_NEXT=true
 CURSOR=""
 PAGE=0
+MAX_PAGES=50  # Safety limit: 50 pages × 100 items = 5000 items max
 
 while [[ "$HAS_NEXT" == "true" ]]; do
   PAGE=$((PAGE + 1))
+
+  if [[ $PAGE -gt $MAX_PAGES ]]; then
+    log "WARNING: Hit max page limit ($MAX_PAGES pages, $((MAX_PAGES * 100)) items). Some items may not be processed."
+    break
+  fi
 
   if [[ -n "$CURSOR" ]]; then
     CURSOR_ARG="-f cursor=$CURSOR"
@@ -163,14 +169,25 @@ while [[ "$HAS_NEXT" == "true" ]]; do
         }
       }
     }
-  ' -f projectId="$PROJECT_ID" $CURSOR_ARG)
+  ' -f projectId="$PROJECT_ID" $CURSOR_ARG 2>&1) || {
+    err "GraphQL query failed on page $PAGE"
+    err "$PAGE_JSON"
+    exit 1
+  }
 
-  PAGE_NODES=$(echo "$PAGE_JSON" | jq '.data.node.items.nodes')
+  # Validate response has expected structure
+  PAGE_NODES=$(echo "$PAGE_JSON" | jq '.data.node.items.nodes // empty' 2>/dev/null)
+  if [[ -z "$PAGE_NODES" || "$PAGE_NODES" == "null" ]]; then
+    err "Unexpected GraphQL response on page $PAGE (no items.nodes)"
+    err "Response: $(echo "$PAGE_JSON" | head -c 500)"
+    exit 1
+  fi
+
   PAGE_COUNT=$(echo "$PAGE_NODES" | jq 'length')
   ALL_ITEMS=$(echo "$ALL_ITEMS" "$PAGE_NODES" | jq -s '.[0] + .[1]')
 
-  HAS_NEXT=$(echo "$PAGE_JSON" | jq -r '.data.node.items.pageInfo.hasNextPage')
-  CURSOR=$(echo "$PAGE_JSON" | jq -r '.data.node.items.pageInfo.endCursor')
+  HAS_NEXT=$(echo "$PAGE_JSON" | jq -r '.data.node.items.pageInfo.hasNextPage // "false"')
+  CURSOR=$(echo "$PAGE_JSON" | jq -r '.data.node.items.pageInfo.endCursor // empty')
 
   log "Page $PAGE: fetched $PAGE_COUNT items (hasNextPage: $HAS_NEXT)"
 done

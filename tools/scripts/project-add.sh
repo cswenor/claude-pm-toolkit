@@ -136,16 +136,25 @@ if [ -z "$ITEM_ID" ]; then
   ISSUE_URL="https://github.com/$PM_OWNER/$REPO_NAME/issues/$ISSUE_NUM"
   gh project item-add "$PM_PROJECT_NUMBER" --owner "$PM_OWNER" --url "$ISSUE_URL"
 
-  # Retry loop for item ID (propagation delay)
-  for i in {1..5}; do
+  # Retry loop with exponential backoff (GitHub project index propagation delay)
+  MAX_RETRIES=8
+  DELAY=1
+  for i in $(seq 1 $MAX_RETRIES); do
     ITEM_ID=$(pm_get_item_id "$ISSUE_NUM" 2>/dev/null || echo "")
     if [ -n "$ITEM_ID" ]; then break; fi
-    echo "Waiting for project item... (attempt $i/5)"
-    sleep 1
+    echo "Waiting for project item... (attempt $i/$MAX_RETRIES, next retry in ${DELAY}s)"
+    sleep "$DELAY"
+    # Exponential backoff: 1, 2, 4, 8, 8, 8, 8, 8 seconds (capped at 8)
+    DELAY=$(( DELAY * 2 ))
+    [ "$DELAY" -gt 8 ] && DELAY=8
   done
 
   if [ -z "$ITEM_ID" ]; then
-    echo "Error: Failed to get item ID for issue #$ISSUE_NUM after 5 attempts" && exit 1
+    echo "Error: Failed to get item ID for issue #$ISSUE_NUM after $MAX_RETRIES attempts" >&2
+    echo "" >&2
+    echo "The issue was added to the project, but the API hasn't propagated yet." >&2
+    echo "Try again in a few seconds: ./tools/scripts/project-add.sh $ISSUE_NUM $PRIORITY" >&2
+    exit 1
   fi
   echo "Added issue #$ISSUE_NUM to project"
 else
