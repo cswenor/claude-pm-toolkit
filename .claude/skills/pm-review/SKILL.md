@@ -2,7 +2,7 @@
 name: pm-review
 description: PM Reviewer persona that analyzes issues/PRs and takes action. Use when reviewing, checking completion, or validating work.
 argument-hint: '[issue-or-pr-number]'
-allowed-tools: Read, Grep, Bash(./tools/scripts/*), Bash(gh issue view *), Bash(gh pr view *), Bash(gh api *), Bash(gh repo view *), Bash(git checkout *), Bash(git pull *), Bash(git show *), Bash(git diff *), mcp__github__get_issue, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_comments, mcp__github__create_pull_request_review, mcp__github__merge_pull_request, mcp__github__add_issue_comment, AskUserQuestion
+allowed-tools: Read, Grep, Bash(./tools/scripts/*), Bash(gh issue view *), Bash(gh pr view *), Bash(gh api *), Bash(gh repo view *), Bash(git checkout *), Bash(git pull *), Bash(git show *), Bash(git diff *), Bash(git rev-parse *), mcp__github__get_issue, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_comments, mcp__github__get_pull_request_status, mcp__github__create_pull_request_review, mcp__github__merge_pull_request, mcp__github__add_issue_comment, AskUserQuestion
 ---
 
 # /pm-review - PM Reviewer Persona
@@ -185,7 +185,11 @@ Input: $ARGUMENTS
 
 ### 1 PR Found:
 
-- Proceed with normal review flow (Step 3)
+- **Check if PR is a draft** via `mcp__github__get_pull_request` (look for `isDraft: true`)
+- If draft: display "PR #X is a draft. Draft PRs are not ready for review." AskUserQuestion:
+  - `ANALYSIS_ONLY` - "Show analysis anyway (draft status noted)"
+  - `SKIP` - "Skip review until PR is ready"
+- If not draft: proceed with normal review flow (Step 3)
 
 ### Multiple PRs Found:
 
@@ -241,8 +245,17 @@ For each violation found:
 1. Get changed files via `mcp__github__get_pull_request_files`
 2. Review PR diff against acceptance criteria
 3. Read the relevant files to understand the changes
-4. Check CI status by examining PR status checks
-5. **Run Critical Analysis Checklist** (see below)
+4. **Check CI status** via `mcp__github__get_pull_request_status`:
+   ```
+   mcp__github__get_pull_request_status {
+     owner: "{{OWNER}}",
+     repo: "{{REPO}}",
+     pull_number: <pr_number>
+   }
+   ```
+   Note: CI passing is necessary but NOT sufficient. Record CI state for the verdict.
+5. **Check for AC Traceability Table** — if the linked issue has a plan (search comments for "AC Traceability" or check `.claude/plans/`), use it as a verification checklist. This is the structural bridge between planning and review.
+6. **Run Critical Analysis Checklist** (see below)
 
 ### If PR is MERGED:
 
@@ -672,12 +685,25 @@ Execute these steps in order:
 7. **Sync local repo with merged changes:**
 
    ```bash
-   # Switch to main and pull the merged changes
+   # Detect if we're in a worktree or main repo
+   GIT_COMMON=$(git rev-parse --git-common-dir)
+   IS_WORKTREE=false
+   if [ "$GIT_COMMON" != ".git" ] && [ "$GIT_COMMON" != "$(git rev-parse --git-dir)" ]; then
+     IS_WORKTREE=true
+   fi
+
    DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
-   git checkout "$DEFAULT" && git pull
+
+   if [ "$IS_WORKTREE" = "true" ]; then
+     # In a worktree: fetch only (can't checkout main — that's the main repo's branch)
+     git fetch origin "$DEFAULT"
+   else
+     # In main repo: switch to main and pull
+     git checkout "$DEFAULT" && git pull
+   fi
    ```
 
-   This ensures the local repo is up-to-date with the merge before any subsequent work.
+   **Why worktree-safe:** In a worktree, `git checkout main` fails because main is checked out in the main repo. Worktrees can only fetch; the cleanup step (Step 8) handles switching back to the main repo if needed.
 
 8. **Worktree cleanup (optional, only when in worktree):**
 

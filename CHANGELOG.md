@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-02-18
+
+### Added
+- `/issue` SKILL.md: Design Principles section documenting structure-over-behavior, evidence-over-opinion, parallel-over-sequential, risk-proportional-depth, one-concern-per-PR, fail-explicit
+- `/issue` SKILL.md: Risk-proportional review depth (trivial/small/standard thresholds skip or simplify Codex review)
+- `/issue` SKILL.md: Weighted finding categories for implementation review (Security 0.45, Correctness 0.35, Performance 0.15, Style 0.05)
+- `/issue` SKILL.md: Evidence requirement — Codex review findings must cite `file:line` or are downgraded to advisory
+- `/issue` SKILL.md: AC Traceability Table — mandatory plan section mapping acceptance criteria to implementation and test files
+- `/issue` SKILL.md: Parallel quality gates — tests and Codex review run concurrently in Post-Implementation Sequence
+- `/issue` SKILL.md: Structural convergence detection for collaborative planning (replaces subjective "Codex agrees")
+- `/issue` SKILL.md: Artifact cleanup step — deletes Plan B files and temp files after planning completes
+- `/issue` SKILL.md: 5-iteration hard cap on implementation review loop (prevents infinite loops)
+- `/issue` SKILL.md: Per-iteration output/stderr/event files for both collaborative planning and implementation review
+- `/pm-review` SKILL.md: Draft PR detection in Step 2 (warns and offers analysis-only for draft PRs)
+- `/pm-review` SKILL.md: CI status check via `mcp__github__get_pull_request_status` in Step 4
+- `/pm-review` SKILL.md: AC Traceability Table verification in Step 4
+
+### Changed
+- `/issue` SKILL.md: Implementation review uses `exec` with structured prompt instead of `review --base main` (fixes 0-byte output, flag exclusion, unreliable stdin issues)
+- `/issue` SKILL.md: Post-Implementation Sequence reduced from 6 steps to 5 (parallel quality gates merge Codex + tests)
+- `/issue` SKILL.md: REWORK mode reordered — fetch review comments BEFORE mutating state (prevents state change on fetch failure)
+- `/issue` SKILL.md: Collaborative planning Phase 3 captures stderr per iteration (was `2>/dev/null`)
+- `/issue` SKILL.md: `allowed-tools` frontmatter now includes `Bash(git diff *)`
+- `/pm-review` SKILL.md: `allowed-tools` frontmatter now includes `Bash(git rev-parse *)` and `mcp__github__get_pull_request_status`
+- `/pm-review` SKILL.md: MERGE_AND_CHECKLIST git sync is now worktree-safe (fetch-only in worktrees vs checkout+pull in main repo)
+
 ## [0.3.1] - 2026-02-18
 
 ### Fixed

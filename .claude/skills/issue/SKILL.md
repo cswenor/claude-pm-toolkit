@@ -2,7 +2,7 @@
 name: issue
 description: Create new issues (PM interview) or work on existing issues. Use without arguments to create, with issue number to execute.
 argument-hint: '[issue-number]'
-allowed-tools: Read, Glob, Bash(./tools/scripts/project-add.sh *), Bash(./tools/scripts/project-move.sh *), Bash(./tools/scripts/project-status.sh *), Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(./tools/scripts/codex-mcp-overrides.sh), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), Bash(codex exec -s read-only *), Bash(codex exec -s workspace-write *), Bash(codex exec -c *), mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, AskUserQuestion, EnterPlanMode, TaskOutput
+allowed-tools: Read, Glob, Bash(./tools/scripts/project-add.sh *), Bash(./tools/scripts/project-move.sh *), Bash(./tools/scripts/project-status.sh *), Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(./tools/scripts/codex-mcp-overrides.sh), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git diff *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), Bash(codex exec -s read-only *), Bash(codex exec -s workspace-write *), Bash(codex exec -c *), mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, AskUserQuestion, EnterPlanMode, TaskOutput
 ---
 
 # /issue - Issue Creation & Execution
@@ -36,6 +36,21 @@ tools:
   prefer: MCP (mcp__github__*)
   fallback: gh CLI (only when MCP lacks capability)
 ```
+
+---
+
+## Design Principles
+
+These principles govern the collaborative AI workflow. They are derived from real failure modes (HOV issues #511-#541) and global research (Block AI adversarial cooperation, Google ADK "agents that prove", CodeX-Verify weighted review, Magentic-One task ledgers).
+
+| Principle | Implication |
+|-----------|-------------|
+| **Structure over behavior** | Behavioral instructions ("be skeptical") drift under token pressure. Structural enforcement (mandatory sections, evidence gates, tool restrictions) does not. Prefer mode flags and required fields over prose instructions. |
+| **Evidence over opinion** | Findings must cite `file:line`. Claims must be verified by reading code. Comments in code are claims, not evidence. Downgrade any finding that lacks a citation. |
+| **Parallel over sequential** | Independent checks (tests, Codex review) run concurrently. Only create sequential dependencies when output of step N is input to step N+1. |
+| **Risk-proportional depth** | Trivial changes skip expensive gates. Small changes get single-pass review. Standard changes get full adversarial loops. The review cost should match the change risk. |
+| **One concern per PR** | Scope mixing couples unrelated risks, blocks independent rollback, and creates review confusion. Discovered work gets its own issue. |
+| **Fail explicit, not silent** | No fallback defaults, no swallowed errors, no `2>/dev/null` on diagnostic output. Capture stderr, surface failures, require human decision on error. |
 
 ---
 
@@ -1114,10 +1129,12 @@ This is the core loop. Claude reads Codex's plan, incorporates good ideas, then 
 
 ```bash
 set -o pipefail
+COLLAB_ITER=1  # Increment each iteration
 codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
-  -o /tmp/codex-collab-review-<issue_num>.txt \
-  "Review my updated plan for issue #<issue_num> at <plan_a_path>. I incorporated [X, Y] from your plan. I didn't take [Z] because [reason]. Read the plan file and either agree or suggest specific changes." 2>/dev/null \
-  | tee /tmp/codex-collab-events-<issue_num>.jsonl
+  -o /tmp/codex-collab-review-<issue_num>-${COLLAB_ITER}.txt \
+  "Review my updated plan for issue #<issue_num> at <plan_a_path>. I incorporated [X, Y] from your plan. I didn't take [Z] because [reason]. Read the plan file and either agree or suggest specific changes." \
+  2>/tmp/codex-collab-stderr-<issue_num>-${COLLAB_ITER}.txt \
+  | tee /tmp/codex-collab-events-<issue_num>-${COLLAB_ITER}.jsonl
 ```
 
 4. Read Codex's response from `-o` output
@@ -1135,8 +1152,14 @@ codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-
 
 #### Step 3: Evaluate Convergence
 
-- **If Codex agrees (no meaningful changes proposed):** Convergence reached. Proceed to ExitPlanMode.
-- **If Codex suggests changes:** Claude evaluates suggestions, incorporates good ones into Plan A, updates the plan file, then launches a NEW fresh Codex session (repeat from Step 1).
+Convergence is determined by **structural signals**, not subjective judgment:
+
+- **CONVERGED:** Codex's response contains no specific change proposals (only agreement, minor wording, or "looks good"). This is detectable by checking if Codex proposed any concrete file/section modifications.
+- **NOT CONVERGED:** Codex proposes specific changes to approach, file list, or implementation steps.
+
+**Decision:**
+- If CONVERGED → Clean up artifacts (Step 5), then proceed to ExitPlanMode.
+- If NOT CONVERGED → Claude evaluates suggestions, incorporates good ones into Plan A, updates the plan file, then launches a NEW fresh Codex session (repeat from Step 1).
 
 #### Step 4: 3-Iteration Checkpoint
 
@@ -1159,9 +1182,25 @@ options:
 On "Use Codex's plan instead": Copy Plan B content to the plan file, replacing Plan A.
 On "Accept Claude's current plan": Stop iterating, proceed to ExitPlanMode.
 
+#### Step 5: Artifact Cleanup
+
+After convergence (or user override), clean up Plan B artifacts to prevent confusion in later phases:
+
+```bash
+# Remove Plan B file (no longer needed — its ideas are incorporated into Plan A)
+rm -f .codex-work/plan-<issue_num>-*.md
+# Remove temp files (all per-iteration outputs, stderr, and events)
+rm -f /tmp/codex-collab-output-<issue_num>.txt
+rm -f /tmp/codex-collab-events-<issue_num>*.jsonl
+rm -f /tmp/codex-collab-review-<issue_num>*.txt
+rm -f /tmp/codex-collab-stderr-<issue_num>*.txt
+```
+
+**Why cleanup matters:** Leftover Plan B files in `.codex-work/` confuse Claude during implementation — it may interpret them as late-arriving background work or unfinished planning. Structural cleanup (delete files when done) is more reliable than behavioral instructions ("ignore these files").
+
 #### User Override
 
-User can override at any iteration display (Step 2) by choosing to accept or switch plans. Override terminates the loop immediately.
+User can override at any iteration display (Step 2) by choosing to accept or switch plans. Override terminates the loop immediately. Artifact cleanup (Step 5) still runs after override.
 
 ### Key Properties
 
@@ -1180,62 +1219,112 @@ User can override at any iteration display (Step 2) by choosing to accept or swi
 
 ### Goal
 
-Adversarial code review from Codex after implementation, before tests and Review transition.
+Adversarial code review from Codex after implementation. Evidence-based: findings must cite specific code locations, not just opinions. Inspired by the "agents that prove, not guess" principle (Google ADK) and Block AI's adversarial cooperation model.
 
 ### Prerequisites
 
 - `codex_available` is true
-- Implementation complete, changes committed (or use `--uncommitted` for pre-commit review without custom prompt)
+- Implementation complete, changes committed
+
+### Risk-Proportional Depth
+
+Before launching the full review loop, assess change size:
+
+```bash
+DIFF_STATS=$(git diff --stat main...HEAD)
+FILES_CHANGED=$(git diff --name-only main...HEAD | wc -l | tr -d ' ')
+LINES_CHANGED=$(git diff --shortstat main...HEAD | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' | paste -sd+ | bc)
+```
+
+| Change Size | Threshold | Review Depth |
+|-------------|-----------|-------------|
+| **Trivial** | ≤ 1 file AND ≤ 20 lines | Skip Codex review entirely (user can override) |
+| **Small** | ≤ 3 files AND ≤ 100 lines | Single-pass review (no iteration loop) |
+| **Standard** | Everything else | Full adversarial review loop |
+
+For **Trivial** changes: AskUserQuestion "Change is trivial (N files, M lines). Skip Codex review?" with "Skip (Recommended)" / "Review anyway". This saves significant wall-clock time on typo fixes, doc updates, and config changes.
+
+For **Small** changes: Run one Codex review pass. If APPROVED, proceed. If findings exist, fix and proceed (no re-submission loop). User can still override.
 
 ### Flow
 
+#### Step 0: Compute Diff
+
+Generate the diff that Codex will review:
+
+```bash
+git diff main...HEAD > /tmp/codex-diff-<issue_num>.patch
+```
+
+This captures the diff reliably. The patch file is passed to Codex via prompt rather than relying on the `review` subcommand (which has known issues with `-o` capture and flag exclusion).
+
 #### Step 1: Initial Review
 
-```bash
-echo "Implementation review for issue #<issue_num>." | \
-  codex exec \
-    $(./tools/scripts/codex-mcp-overrides.sh) \
-    --json \
-    -s read-only \
-    --skip-git-repo-check \
-    -o /tmp/codex-impl-review-<issue_num>.txt \
-    review --base main 2>/dev/null \
-  | tee /tmp/codex-impl-events-<issue_num>.jsonl
-```
-
-**Why a minimal prompt instead of no prompt:** The Post-Implementation Sequence runs Codex review (Step 2) BEFORE PR creation (Step 4). At review time, no PR exists yet, so Codex can't find the issue via a `Fixes #X` link. The minimal prompt gives Codex the issue number so it can look it up on GitHub independently. This doesn't bias the review — it just points to the issue, same as the plan review approach.
-
-**Session ID capture (same pattern as plan review):**
+Use `exec` with a structured review prompt instead of the `review` subcommand. This avoids 0-byte output issues, flag mutual-exclusion problems, and stdin delivery uncertainty.
 
 ```bash
-CODEX_SESSION_ID=$(head -1 /tmp/codex-impl-events-<issue_num>.jsonl | jq -r '.thread_id')
+set -o pipefail
+ITER=1
+codex exec \
+  $(./tools/scripts/codex-mcp-overrides.sh) \
+  --json \
+  -s read-only \
+  --skip-git-repo-check \
+  -o /tmp/codex-impl-review-<issue_num>-${ITER}.txt \
+  "You are an adversarial code reviewer for issue #<issue_num>. Review the diff at /tmp/codex-diff-<issue_num>.patch against the issue's acceptance criteria. For each finding, you MUST cite the specific file:line. Categorize findings as BLOCKING (must fix) or SUGGESTION (improvement). End with APPROVED if no blocking findings remain, or CHANGES_NEEDED with a summary." \
+  2>/tmp/codex-impl-stderr-<issue_num>-${ITER}.txt \
+  | tee /tmp/codex-impl-events-<issue_num>-${ITER}.jsonl
+CODEX_EXIT=${PIPESTATUS[0]}
 ```
 
+**Why `exec` instead of `review --base main`:** The `review` subcommand has documented issues: 0-byte `-o` output, mutual flag exclusion with `--base`/`--uncommitted`/`[PROMPT]`, and unreliable stdin consumption. Using `exec` with an explicit prompt is more reliable and allows richer review instructions.
+
+**Session ID capture:**
+
+```bash
+CODEX_SESSION_ID=$(head -1 /tmp/codex-impl-events-<issue_num>-${ITER}.jsonl | jq -r '.thread_id')
+```
+
+**Key properties:**
 - `-s read-only` enforces read-only sandbox (never write mode)
 - `--json` outputs JSONL events for session ID capture
-- `-o` is on `codex exec` level, before `review` subcommand
-- `review --base main` automatically diffs against main
-- Codex looks up the issue on GitHub, reads the diff from `review --base main`, and reviews independently
-- **Limitation:** Stdin prompt consumption by `review --base` is best-effort in Codex CLI v0.101.0. If Codex does not consume the piped prompt, it falls back to its default review prompt. The minimal prompt ("Implementation review for issue #<num>.") is short enough to avoid context exhaustion but stdin delivery is not guaranteed. Codex still reads AGENTS.md (which defines the output format unconditionally) and browses the codebase regardless.
+- `-o` is on `exec` level, before prompt
+- Stderr captured to file (not discarded) for error diagnostics
+- Per-iteration output files prevent collision across iterations
 
 #### Step 2: Check for Failures
 
-1. If non-zero exit code → Error Handling (Appendix L)
-2. Check output file: if the `-o` output file does not exist OR has size 0 bytes (`[ ! -s /tmp/codex-impl-review-<issue_num>.txt ]`), this indicates context exhaustion (Codex ran out of context window on a large diff/plan). Surface via AskUserQuestion:
-   - "Codex produced empty output (likely context exhaustion on large diff/plan)."
-   - Options: Retry / Override
+1. If `CODEX_EXIT` is non-zero: read stderr from `/tmp/codex-impl-stderr-<issue_num>-${ITER}.txt`. Surface via AskUserQuestion with "Retry" / "Override" / "Show error".
+2. If output file is missing or 0 bytes (`[ ! -s /tmp/codex-impl-review-<issue_num>-${ITER}.txt ]`): context exhaustion. Surface via AskUserQuestion with "Retry" / "Override".
 
-#### Step 3: Per-Iteration Display
+#### Step 3: Classify and Weight Findings
 
-Same format as plan review:
+Parse Codex output and classify each finding:
+
+| Category | Weight | Blocking Threshold |
+|----------|--------|--------------------|
+| **Security** | 0.45 | 1 HIGH finding blocks |
+| **Correctness** | 0.35 | 2 HIGH findings block |
+| **Performance** | 0.15 | Never auto-blocks (advisory) |
+| **Style** | 0.05 | Never blocks |
+
+**Evidence requirement:** Each finding MUST include a file:line citation. Findings without citations are downgraded to advisory (Claude notes this in the display). This is the structural guarantee that review is evidence-based, not opinion-based.
+
+Display format:
 
 ```markdown
 ### Codex Review — Iteration N
 
-**Codex says:** [1-3 sentence summary]
-**Items raised:** X findings (Y blocking, Z suggestions)
-**Suggestions addressed:** [list each suggestion with action taken or justification for skipping]
-**Claude's response:** [what will be revised/fixed]
+**Verdict:** APPROVED / CHANGES_NEEDED
+**Findings:** X total (Y blocking, Z suggestions)
+
+| # | Category | Severity | File:Line | Finding | Evidence |
+|---|----------|----------|-----------|---------|----------|
+| 1 | Security | HIGH | src/auth.ts:45 | Unsanitized input | BLOCKING |
+| 2 | Correctness | MED | lib/parse.ts:12 | Missing null check | BLOCKING |
+| 3 | Style | LOW | — | Naming convention | Advisory |
+
+**Claude's response:** [what will be revised/fixed, with justification for any skipped suggestions]
 ```
 
 #### Step 4: User Choice
@@ -1276,15 +1365,20 @@ This step is skipped entirely when the user chooses "Override" — Override supe
 After handling suggestions and addressing findings, Claude resumes the Codex session **by session ID**:
 
 ```bash
+set -o pipefail
+ITER=$((ITER + 1))
+# Regenerate diff after fixes
+git diff main...HEAD > /tmp/codex-diff-<issue_num>.patch
 echo "This is Claude (Anthropic). <respond to Codex — answer questions if asked, explain revisions if findings were raised>" | \
   codex exec \
     $(./tools/scripts/codex-mcp-overrides.sh) \
     --json \
     -s read-only \
     --skip-git-repo-check \
-    -o /tmp/codex-impl-review-<issue_num>.txt \
-    resume "$CODEX_SESSION_ID" 2>/dev/null \
-  | tee /tmp/codex-impl-events-<issue_num>.jsonl
+    -o /tmp/codex-impl-review-<issue_num>-${ITER}.txt \
+    resume "$CODEX_SESSION_ID" \
+    2>/tmp/codex-impl-stderr-<issue_num>-${ITER}.txt \
+  | tee /tmp/codex-impl-events-<issue_num>-${ITER}.jsonl
 ```
 
 **Dialogue guidance:** This is a two-way conversation, not a one-way submission:
@@ -1294,9 +1388,12 @@ echo "This is Claude (Anthropic). <respond to Codex — answer questions if aske
 - If Codex asked for clarification → provide it
 - Do not include review-content instructions (e.g., "re-review the ENTIRE diff", "check for X") — Codex decides what to review
 
+**Key properties:**
 - Uses `resume "$CODEX_SESSION_ID"` (NOT `resume --last`) for worktree isolation
 - `$CODEX_SESSION_ID` was captured in Step 1
 - `-o` before `resume` subcommand
+- Stderr captured to file per iteration (NOT discarded with `2>/dev/null`)
+- Per-iteration output files: `-<issue_num>-${ITER}.txt`
 - Repeat Steps 2-4 for each iteration
 
 #### Step 6: Termination
@@ -1305,6 +1402,7 @@ Loop terminates when:
 
 - Codex says APPROVED with no BLOCKING findings AND Claude has addressed or explicitly justified skipping each SUGGESTION, OR
 - User chooses "Override"
+- **5-iteration hard cap:** If 5 iterations pass without convergence, force AskUserQuestion with "Accept current state" / "Override" / "Show full history". This prevents infinite loops.
 
 **Anti-shortcut rule (Continue path only — does not apply to Override):** Claude MUST NOT self-certify its revisions are correct. Every revision MUST be re-submitted to Codex. When the user chooses Continue, the loop cannot terminate until Codex reviews the REVISED version and says APPROVED. Claude fixing all findings in one pass and declaring "done" without re-submission is the exact failure mode this loop prevents. This rule does not restrict the Override path — Override terminates the loop immediately regardless of Codex state.
 
@@ -1338,36 +1436,58 @@ git add <specific files>
 git commit -m "<type>(<scope>): <description>"
 ```
 
-#### Step 2: Codex Implementation Review
+#### Step 2: Parallel Quality Gates (Tests + Codex Review)
 
 **⚠️ STOP — do not skip this step.**
 
-If `codex_available` is true:
+Tests and Codex review are independent checks. Run them concurrently for efficiency:
 
-1. Run **Sub-Playbook: Codex Implementation Review** (Codex reviews the diff against main independently)
-2. Address all findings (BLOCKING and SUGGESTION per the Continue path's suggestion handling)
-3. Amend commit or add fixup commit after addressing findings
-4. Loop until Codex APPROVED or user override
+```
+┌─ Codex Implementation Review (background) ─┐
+│  Reads committed diff, reviews adversarially │
+├─────────────────────────────────────────────┤
+│                                             │
+│  ┌─ Tests (foreground) ──────────────┐      │
+│  │  {{TEST_COMMAND}}                 │      │
+│  └───────────────────────────────────┘      │
+│                                             │
+└─ Both must pass before proceeding ──────────┘
+```
+
+**Execution order:**
+
+1. **Launch Codex review in background** (if `codex_available` is true):
+   Run **Sub-Playbook: Codex Implementation Review** Step 0 (compute diff) and Step 1 (initial review) using background execution. Store the task_id.
+
+2. **Run tests in foreground:**
+   `{{TEST_COMMAND}}`
+   Fix any failures immediately. If fixes require code changes, commit the fixes.
+
+3. **Check Codex review result:**
+   After tests pass, check the Codex review result via TaskOutput.
+   - If Codex APPROVED → both gates passed, proceed to Step 3.
+   - If Codex raised findings → address them (per Sub-Playbook Steps 3-6), commit fixes.
+   - If test fixes changed code → re-run Codex review on the updated diff.
+   - If Codex fixes changed code → re-run tests.
+
+**Convergence:** Both gates must pass on the SAME commit. If fixing one gate's findings invalidates the other, iterate until both pass simultaneously.
 
 If `codex_available` is false:
-Display: "Codex not available — skipping implementation review."
+Display: "Codex not available — running tests only."
+Run `{{TEST_COMMAND}}`, fix failures, proceed.
 
-#### Step 3: Run Tests
+**Why parallel:** In practice, Codex review takes 30-90 seconds and tests take 30-120 seconds. Running sequentially doubles wall-clock time. Running in parallel saves the minimum of both durations. The gates are independent — test results don't affect Codex review and vice versa.
 
-`{{TEST_COMMAND}}`
-
-Fix any failures — do NOT bypass. If fixes require code changes, commit the fixes and return to Step 2 (Codex re-review).
-
-#### Step 4: Create or Update PR
+#### Step 3: Create or Update PR
 
 If no PR exists yet: create PR with `Fixes #<issue_num>` in body.
 If PR already exists: push changes.
 
 **Note:** Tests run before PR creation per CLAUDE.md "Before Creating PR" checklist.
 
-#### Step 5: Self-Review with /pm-review
+#### Step 4: Self-Review with /pm-review
 
-Run `/pm-review <pr-or-issue-number>` as a self-check. When invoking /pm-review in this context, select the **ANALYSIS_ONLY** action — do NOT select APPROVE_ONLY, POST_REVIEW_COMMENTS, MERGE_AND_CHECKLIST, or any other mutating action. This step is diagnostic only. State transitions happen in Step 6.
+Run `/pm-review <pr-or-issue-number>` as a self-check. When invoking /pm-review in this context, select the **ANALYSIS_ONLY** action — do NOT select APPROVE_ONLY, POST_REVIEW_COMMENTS, MERGE_AND_CHECKLIST, or any other mutating action. This step is diagnostic only. State transitions happen in Step 5.
 
 **⚠️ Constraint:** When /pm-review prompts for PM-process fixes, select **SKIP_PM_FIXES**. When prompted for a verdict action, select **ANALYSIS_ONLY**. Even if /pm-review's output includes automatic PM-fix actions (workflow moves, label changes, comment posting), Claude MUST NOT execute them during this step. Read the analysis output, discard any mutation recommendations, and act only on the diagnostic findings. Structural enforcement of a non-mutating /pm-review mode is a follow-up enhancement.
 
@@ -1377,11 +1497,11 @@ If /pm-review identifies **code/implementation issues** (missing AC, scope drift
 2. If code changed, commit fixes and return to Step 2
 3. Re-run /pm-review until code findings are resolved
 
-**PM-process findings** (workflow state, labels, project fields, missing issue comments) are NOT code issues — do not loop on them. Step 6 handles the Review transition, and post-merge checklist handles Done.
+**PM-process findings** (workflow state, labels, project fields, missing issue comments) are NOT code issues — do not loop on them. Step 5 handles the Review transition, and post-merge checklist handles Done.
 
-If user overrides: proceed to Step 6 with acknowledgment.
+If user overrides: proceed to Step 5 with acknowledgment.
 
-#### Step 6: Transition to Review
+#### Step 5: Transition to Review
 
 `./tools/scripts/project-move.sh <num> Review`
 
@@ -1389,7 +1509,7 @@ Verify with `./tools/scripts/project-status.sh <num>` that workflow is now "Revi
 
 #### Precedence Note
 
-This sequence deliberately extends CLAUDE.md's generic "After Opening PR → move to Review" (CLAUDE.md §"After Opening PR") and PM_PLAYBOOK.md's Review entry criteria (PM_PLAYBOOK.md §"Review") by inserting a /pm-review quality gate (Step 5) between PR creation (Step 4) and Review transition (Step 6). The purpose is to catch issues BEFORE signaling "ready for human review" — if we moved to Review first, a human reviewer might begin reviewing while /pm-review is still running. This precedence applies ONLY to /issue-managed work; non-skill workflows still follow the generic CLAUDE.md rule.
+This sequence deliberately extends CLAUDE.md's generic "After Opening PR → move to Review" (CLAUDE.md §"After Opening PR") and PM_PLAYBOOK.md's Review entry criteria (PM_PLAYBOOK.md §"Review") by inserting a /pm-review quality gate (Step 4) between PR creation (Step 3) and Review transition (Step 5). The purpose is to catch issues BEFORE signaling "ready for human review" — if we moved to Review first, a human reviewer might begin reviewing while /pm-review is still running. This precedence applies ONLY to /issue-managed work; non-skill workflows still follow the generic CLAUDE.md rule.
 
 ---
 
@@ -1626,9 +1746,13 @@ As a {user_type}, I want {goal} so that {benefit}.
 - [ ] On exec failure: error context surfaced, explicit user choice required (Retry/Claude-only/Show error)
 - [ ] Never auto-skip on failure (no-fallback compliance)
 - [ ] Stderr captured to file on original invocation (`2>/tmp/codex-collab-stderr-<num>.txt`), never via rerun
+- [ ] Phase 3 iterations use per-iteration output files (`-<issue_num>-${COLLAB_ITER}.txt`)
+- [ ] Phase 3 iterations capture stderr to per-iteration files (NOT `2>/dev/null`)
 - [ ] No write-capable (`-s workspace-write`) rerun in error paths
 - [ ] User can override at any iteration
 - [ ] 0-byte output file detected as failure (context exhaustion)
+- [ ] Structural convergence detection (Codex proposes no concrete file/section modifications)
+- [ ] Artifact cleanup runs after convergence or user override (Plan B + temp files deleted)
 
 #### Behavioral Verification (START/CONTINUE flow)
 
@@ -1643,38 +1767,43 @@ As a {user_type}, I want {goal} so that {benefit}.
 - [ ] After 3-iteration checkpoint "Accept Claude's plan": loop terminates, ExitPlanMode called
 - [ ] After 3-iteration checkpoint "Use Codex's plan": Plan B content replaces Plan A in plan file
 
-#### Implementation Review (unchanged)
+#### Implementation Review
 
-- [ ] Implementation Review fires before tests in guardrails and REWORK
+- [ ] Implementation review fires as parallel quality gate (with tests) in Post-Implementation
 - [ ] `-s read-only` on all implementation review invocations (initial + resume)
-- [ ] `resume "$CODEX_SESSION_ID"` for implementation review follow-ups (NOT `--last`)
-- [ ] Per-iteration summary with Continue/Override/Show options
+- [ ] Uses `exec` with structured review prompt (NOT `review --base main`)
+- [ ] Diff generated as patch file and referenced in prompt
+- [ ] `resume "$CODEX_SESSION_ID"` for follow-ups (NOT `--last`)
+- [ ] Per-iteration summary with weighted finding categories (Security/Correctness/Performance/Style)
+- [ ] Per-iteration output files (`-<issue_num>-${ITER}.txt`) prevent collision
+- [ ] Stderr captured per iteration (NOT discarded with `2>/dev/null`)
+- [ ] Evidence requirement: findings must cite file:line or downgrade to advisory
 - [ ] Claude self-identifies when resuming sessions
-- [ ] Implementation review uses minimal issue pointer via stdin with `review --base main`
-- [ ] No review-content instructions in prompts or AGENTS.md
-- [ ] AGENTS.md documents adversarial reviewer principle
 - [ ] Resume loop supports two-way dialogue (questions + revisions)
-- [ ] Resume messages respond to Codex (not just push revisions)
 - [ ] SUGGESTION findings addressed or justified (not just BLOCKING)
 - [ ] Termination requires both no BLOCKING findings AND suggestions handled
+- [ ] 5-iteration hard cap with user choice prevents infinite loops
+- [ ] Risk-proportional depth: trivial (skip), small (single-pass), standard (full loop)
 - [ ] Revisions re-submitted to Codex (Claude cannot self-certify)
-- [ ] Implementation review documents `--uncommitted` flag constraints (can't combine with --base or prompt)
 
 ### Post-Implementation Sequence
 
-- [ ] Sequence enforced: commit → Codex review → tests → PR → /pm-review → Review
+- [ ] Sequence enforced: commit → parallel gates (Codex + tests) → PR → /pm-review → Review
+- [ ] Codex review and tests run concurrently (parallel quality gates)
+- [ ] Both gates must pass on the same commit before proceeding
 - [ ] Tests run before PR creation (aligned with CLAUDE.md "Before Creating PR")
 - [ ] No step can be skipped (each validates the previous)
 - [ ] /pm-review runs as self-check after PR creation (PR or issue number)
 - [ ] Only after /pm-review passes (or user override) does Claude move to Review
 - [ ] START mode "After ExitPlanMode" references Post-Implementation Sequence
 - [ ] CONTINUE mode "After ExitPlanMode" references Post-Implementation Sequence
-- [ ] REWORK mode step 6 references Post-Implementation Sequence
-- [ ] Code changes after test failures trigger return to Codex review
+- [ ] REWORK mode references Post-Implementation Sequence
+- [ ] Code changes from one gate trigger re-run of the other gate
 - [ ] Appendix H guardrails contain full explicit checklist (not indirect reference)
 - [ ] Execution model documented (skill guidance vs Claude Code capabilities)
-- [ ] Post-Implementation Sequence includes Precedence Note re: /pm-review gate vs CLAUDE.md §"After Opening PR"
+- [ ] Post-Implementation Sequence includes Precedence Note re: /pm-review gate
 - [ ] Suggestion handling is in Continue path (not before user choice) in both sub-playbooks
+- [ ] AC Traceability Table present in plan and used during /pm-review verification
 
 ### Regression Prevention
 
@@ -1765,8 +1894,8 @@ The config file maps keywords found in issue bodies/comments to documentation fi
 2. PR body: `Fixes #<num>`
 3. **Post-implementation checklist (MANDATORY — in order, do not skip):**
    a. Commit changes with `<type>(<scope>): <description>`
-   b. Codex Implementation Review — address all BLOCKING and SUGGESTION findings, commit fixes
-   c. Run `{{TEST_COMMAND}}` — fix failures, return to (b) if code changed
+   b. Parallel quality gates: run Codex review (background) + `{{TEST_COMMAND}}` (foreground) concurrently
+   c. Both must pass on the same commit — if fixing one invalidates the other, iterate
    d. Create PR (or push to existing) with `Fixes #<num>`
    e. Run `/pm-review` self-check (ANALYSIS_ONLY action) — address findings, return to (b) if code changed
    f. Move to Review: `./tools/scripts/project-move.sh <num> Review`
@@ -1867,6 +1996,7 @@ step runs on the NEXT /issue <num> invocation from within the worktree.
 
 5. In plan mode, create Plan A that includes:
    - Acceptance criteria as checkboxes
+   - **AC Traceability Table** (see below) — maps each criterion to implementation files and tests
    - Non-goals as DO NOT constraints
    - Inline policy snippets from loaded docs
    - Development guardrails (including port isolation via shell exports)
@@ -1908,6 +2038,28 @@ Before finalizing the plan, explicitly verify:
 
 Include this in the plan output so the user sees and acknowledges scope boundaries.
 
+#### AC Traceability Table (MANDATORY in all plans)
+
+Every plan MUST include a traceability table mapping each acceptance criterion to its planned implementation and test. This makes review verification structural — the reviewer checks the table against the code, not the code against their memory of the AC.
+
+```markdown
+### AC Traceability
+
+| # | Acceptance Criterion | Implementation File(s) | Test File(s) | Notes |
+|---|---------------------|----------------------|-------------|-------|
+| 1 | [criterion text] | `src/auth.ts` | `tests/auth.test.ts` | |
+| 2 | [criterion text] | `src/api/route.ts` | `tests/api.test.ts` | Needs new test |
+| 3 | [criterion text] | — | — | Spike: approach TBD |
+```
+
+**Rules:**
+- Every AC must have a row, even if implementation is "TBD" or "spike needed"
+- Empty Implementation/Test columns flag gaps early (before code is written)
+- During implementation, update the table as files are created
+- During review (/pm-review), the table is the verification checklist
+
+**Why this matters:** The #1 review failure mode is accepting a PR that "looks complete" but silently misses an AC. The traceability table makes gaps visible before implementation starts and provides the reviewer with a structural checklist rather than relying on their thoroughness.
+
 #### After ExitPlanMode (START)
 
 Before beginning implementation, check the background {{SETUP_COMMAND}} result.
@@ -1931,7 +2083,7 @@ Interpret the result and always report to the user:
 - Still running: Report "Setup is still running in the background. You can start
   working. Check back with TaskOutput if needed before running tests."
 
-**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-6). Do NOT skip directly to `{{TEST_COMMAND}}` or `project-move.sh Review`.
+**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `project-move.sh Review`.
 
 ### CONTINUE Mode
 
@@ -2046,7 +2198,7 @@ report that setup was not launched. If task_id exists, call TaskOutput with
 block: false using the task_id from step 3.5. Always report the result to the
 user: ready, failed (with output), or still running.
 
-**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-6). Do NOT skip directly to `{{TEST_COMMAND}}` or `project-move.sh Review`.
+**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `project-move.sh Review`.
 
 ### REVIEW Mode
 
@@ -2102,7 +2254,10 @@ options:
 
 **On "Continue addressing feedback":**
 
-1. **Move to Active:** `./tools/scripts/project-move.sh <num> Active`
+**⚠️ CRITICAL ORDER: Fetch context BEFORE mutating state.** If we move to Active first and the fetch fails, we've changed state without having the feedback to act on.
+
+1. **Fetch review comments FIRST** via `mcp__github__get_pull_request_reviews`
+   Also fetch PR discussion comments: `gh pr view <pr_num> --json comments --jq '.comments[].body'`
 2. **Git sync (MANDATORY):**
 
    ```bash
@@ -2118,10 +2273,10 @@ options:
 
    If git state is not clean, warn the user and ask if they want to proceed anyway.
 
-3. Fetch review comments via `mcp__github__get_pull_request_reviews`
-4. Display feedback summary
+3. **Move to Active:** `./tools/scripts/project-move.sh <num> Active`
+4. Display feedback summary (from step 1)
 5. Display guardrails
-6. After feedback is addressed, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-6).
+6. After feedback is addressed, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5).
    This ensures Codex review, tests, and /pm-review all pass before returning to Review.
 
 ### CLOSED Mode
@@ -2222,8 +2377,7 @@ Execute: `./tools/scripts/project-move.sh <num> Done`
 - `./tools/scripts/codex-mcp-overrides.sh` - Emit `-c` flags to inject MCP servers into codex exec
 - `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s workspace-write ... "Write an implementation plan for issue #<num>. Save to .codex-work/plan-<num>-<prefix>.md"` - Codex independent plan writing (collaborative planning Phase 1)
 - `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ... "Review my updated plan for issue #<num> at <path>. I incorporated [X, Y] from your plan..."` - Codex iterative review (collaborative planning Phase 3, fresh session each round)
-- `echo "Implementation review for issue #<num>." | codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ... review --base main` - Codex implementation review (minimal issue pointer via stdin)
-- `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ... review --uncommitted` - Codex implementation review (pre-commit, no prompt)
+- `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ... "You are an adversarial code reviewer for issue #<num>..."` - Codex implementation review (exec with structured prompt)
 - `codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ... resume "$CODEX_SESSION_ID"` - Resume Codex implementation review session (dialogue)
 - `/pm-review <pr-or-issue-number>` - Self-review before Review transition (ANALYSIS_ONLY action)
 
@@ -2296,6 +2450,22 @@ Project state and reality can diverge:
 - Multiple PRs linked to same issue
 
 The skill detects these and offers fixes, rather than failing or ignoring them.
+
+### Why parallel quality gates?
+
+Tests and Codex review are independent — test results don't affect what Codex reviews and vice versa. Running them sequentially doubles wall-clock time (30-120s each). Running in parallel saves the minimum of both durations. The convergence requirement (both pass on same commit) prevents the edge case where fixing one gate invalidates the other.
+
+### Why evidence-based review with weighted categories?
+
+Behavioral instructions ("be thorough", "be skeptical") drift under token pressure — the agent starts rubber-stamping after a few iterations. Structural requirements (mandatory file:line citations, weighted severity categories) make findings objectively verifiable. If a finding lacks a citation, it's automatically downgraded. This is the "structure over behavior" principle applied to code review.
+
+### Why risk-proportional depth?
+
+Running a full adversarial review loop on a typo fix wastes 60-90 seconds. The cost of review should match the risk of the change. Trivial changes (1 file, ≤20 lines) skip Codex entirely. Small changes (≤3 files, ≤100 lines) get a single pass. Only standard changes get the full loop with resume and iteration.
+
+### Why artifact cleanup?
+
+Leftover Plan B files confuse Claude during implementation — it interprets them as unfinished work or late-arriving background results. Deleting temporary artifacts when they're no longer needed (structural cleanup) is more reliable than telling Claude to ignore them (behavioral instruction).
 
 ---
 
@@ -2737,28 +2907,30 @@ codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-
 #### Implementation Review Invocations
 
 ```bash
-# Implementation review (initial) — minimal issue pointer via stdin (--base doesn't accept inline prompt)
-echo "Implementation review for issue #<num>." | \
-  codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
-  -o /tmp/codex-impl-review-<num>.txt \
-  review --base main 2>/dev/null \
-  | tee /tmp/codex-impl-events-<num>.jsonl
-
-# Alternative: quick review without custom prompt
-# codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
-#   -o /tmp/codex-impl-review-<num>.txt \
-#   review --uncommitted 2>/dev/null \
-#   | tee /tmp/codex-impl-events-<num>.jsonl
+# Implementation review (initial) — exec with structured review prompt
+# Why exec instead of review: the review subcommand has 0-byte output issues,
+# flag mutual-exclusion problems, and unreliable stdin consumption. exec is reliable.
+set -o pipefail
+ITER=1
+git diff main...HEAD > /tmp/codex-diff-<num>.patch
+codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
+  -o /tmp/codex-impl-review-<num>-${ITER}.txt \
+  "You are an adversarial code reviewer for issue #<num>. Review the diff at /tmp/codex-diff-<num>.patch against the issue's acceptance criteria. For each finding, cite the specific file:line. Categorize findings as BLOCKING or SUGGESTION. End with APPROVED if no blocking findings remain, or CHANGES_NEEDED." \
+  2>/tmp/codex-impl-stderr-<num>-${ITER}.txt \
+  | tee /tmp/codex-impl-events-<num>-${ITER}.jsonl
 
 # Session resume (implementation review follow-up iterations) — dialogue, use session ID, NOT --last
+set -o pipefail
+ITER=$((ITER + 1))
 echo "This is Claude (Anthropic). <respond to Codex — answer questions or explain revisions>" | \
   codex exec $(./tools/scripts/codex-mcp-overrides.sh) --json -s read-only --skip-git-repo-check \
-  -o /tmp/codex-impl-review-<num>.txt \
-  resume "$CODEX_SESSION_ID" 2>/dev/null \
-  | tee /tmp/codex-impl-events-<num>.jsonl
+  -o /tmp/codex-impl-review-<num>-${ITER}.txt \
+  resume "$CODEX_SESSION_ID" \
+  2>/tmp/codex-impl-stderr-<num>-${ITER}.txt \
+  | tee /tmp/codex-impl-events-<num>-${ITER}.jsonl
 ```
 
-**Critical syntax rule:** `-o`, `-s`, `--json`, and other `exec`-level flags MUST appear before any subcommand (`review`, `resume`). Placing them after the subcommand causes "unexpected argument" errors.
+**Critical syntax rule:** `-o`, `-s`, `--json`, and other `exec`-level flags MUST appear before any subcommand (`resume`). Placing them after the subcommand causes "unexpected argument" errors.
 
 ### Sandbox Mode Reference
 
@@ -2766,7 +2938,13 @@ echo "This is Claude (Anthropic). <respond to Codex — answer questions or expl
 | -------------------------- | -------------------- | ------------------------ | --------------------------------------------- |
 | Plan B writing (Phase 1)   | `-s workspace-write` | Fresh                    | Codex must create plan file in `.codex-work/` |
 | Iterative review (Phase 3) | `-s read-only`       | Fresh each round         | Codex reads plan file only                    |
-| Implementation review      | `-s read-only`       | Resume-based (unchanged) | Per existing pattern                          |
+| Implementation review      | `-s read-only`       | Resume-based             | Session continuity for dialogue               |
+
+**Why `exec` instead of `review` for implementation review:** The `review` subcommand (`review --base main`) has documented issues:
+- 0-byte `-o` output files (the gate can never pass)
+- `--base`, `--uncommitted`, and `[PROMPT]` are mutually exclusive
+- Stdin prompt consumption is best-effort (unreliable)
+Using `exec` with a structured prompt avoids all three issues while giving richer review instructions.
 
 **Why session IDs for implementation review, not `--last`:** Multiple worktrees may run Codex reviews concurrently. `resume --last` resumes the globally most recent session, which could belong to a different worktree. `resume "$CODEX_SESSION_ID"` is concurrency-safe.
 
@@ -2800,16 +2978,16 @@ codex --version 2>/dev/null
 
 Exit 0 → available. Non-zero → unavailable. Checked once in Step 1e, stored as `codex_available`.
 
-### Review Subcommand Flags
+### Review Approach: exec with Structured Prompt
 
-`codex exec ... review` supports (implementation review only):
+**Implementation review uses `exec` with a structured prompt** instead of the `review` subcommand. The diff is generated as a patch file (`git diff main...HEAD > /tmp/codex-diff-<num>.patch`) and referenced in the prompt.
 
-- `--base <branch>`: Diff committed changes against the given branch (does NOT accept inline `[PROMPT]`)
-- `--uncommitted`: Include staged, unstaged, and untracked changes in the diff (does NOT accept inline `[PROMPT]`)
+**Why not `review --base main`:** The `review` subcommand has known issues in Codex CLI v0.101.0:
+- 0-byte `-o` output files (the output gate can never pass)
+- `--base`, `--uncommitted`, and `[PROMPT]` are mutually exclusive
+- Stdin prompt consumption is best-effort and unreliable
 
-**Constraint:** `--uncommitted`, `--base`, and `[PROMPT]` are mutually exclusive in Codex CLI v0.101.0. None of these flags can be combined with a `[PROMPT]` argument. To pass a minimal issue pointer with `--base`, pipe via stdin: `echo "Implementation review for issue #<num>." | codex exec ... review --base main`. Use `--uncommitted` only for quick reviews without custom instructions.
-
-**Stdin best-effort caveat:** Stdin prompt consumption by `review --base` is best-effort — if Codex does not consume the piped issue pointer, it falls back to its default review prompt. The minimal prompt is short enough to avoid context exhaustion but delivery is not guaranteed. Codex still reads AGENTS.md and browses the codebase regardless.
+**The `exec` approach gives full control:** custom prompts with adversarial framing, evidence requirements (file:line citations), and structured output format requests. The diff is always available as a file path, not dependent on CLI flag behavior.
 
 ### Output Parsing
 
@@ -2821,12 +2999,25 @@ Codex responses in collaborative planning are natural language. Look for:
 - **Suggestions** — Codex proposes specific changes → incorporate good ones, iterate
 - **Questions** — Codex asks about ambiguities → answer in next iteration prompt
 
-#### Implementation Review (unchanged)
+#### Implementation Review
 
-- **BLOCKING** — must fix before proceeding
+Codex output is parsed into weighted finding categories:
+
+| Category | Weight | Blocking Rule | Rationale |
+|----------|--------|---------------|-----------|
+| **Security** | 0.45 | 1 HIGH finding blocks | Security issues have outsized blast radius |
+| **Correctness** | 0.35 | 2 HIGH findings block | Logic errors need accumulation to warrant blocking |
+| **Performance** | 0.15 | Advisory only | Performance is rarely a merge blocker |
+| **Style** | 0.05 | Never blocks | Style is cosmetic; never gates a merge |
+
+**Finding types:**
+- **BLOCKING** — must fix before proceeding (Security HIGH or 2+ Correctness HIGH)
 - **SUGGESTION** — improvement that MUST be addressed or explicitly justified by Claude. "It's just a suggestion" is not valid justification. Valid skip reasons: conflicts with non-goal, requires out-of-scope work, Codex misunderstood context.
+- **Advisory** — informational (Performance, Style). Document in review display but do not gate.
 - **APPROVED** — look for "APPROVED" with no BLOCKING findings in the response
 - If response contains neither BLOCKING nor APPROVED, treat as unparseable (see Error Handling)
+
+**Evidence requirement:** Every BLOCKING or SUGGESTION finding must include a `file:line` citation. Findings without citations are automatically downgraded to Advisory. This structural rule prevents vague opinions from blocking merges.
 
 ### Temporary File Paths
 
@@ -2835,13 +3026,17 @@ Codex responses in collaborative planning are natural language. Look for:
 - Collaborative output (Plan B): `/tmp/codex-collab-output-<issue_num>.txt`
 - Collaborative events (Plan B): `/tmp/codex-collab-events-<issue_num>.jsonl`
 - Collaborative stderr (Plan B): `/tmp/codex-collab-stderr-<issue_num>.txt`
-- Iterative review output: `/tmp/codex-collab-review-<issue_num>.txt`
+- Iterative review output (per iteration): `/tmp/codex-collab-review-<issue_num>-<COLLAB_ITER>.txt`
+- Iterative review events (per iteration): `/tmp/codex-collab-events-<issue_num>-<COLLAB_ITER>.jsonl`
+- Iterative review stderr (per iteration): `/tmp/codex-collab-stderr-<issue_num>-<COLLAB_ITER>.txt`
 - Plan B file: `.codex-work/plan-<issue_num>-<PLAN_B_PREFIX>.md`
 
-#### Implementation Review (unchanged)
+#### Implementation Review
 
-- Implementation review output: `/tmp/codex-impl-review-<issue_num>.txt`
-- Implementation review JSONL events: `/tmp/codex-impl-events-<issue_num>.jsonl`
+- Diff file: `/tmp/codex-diff-<issue_num>.patch`
+- Review output (per iteration): `/tmp/codex-impl-review-<issue_num>-<ITER>.txt`
+- JSONL events (per iteration): `/tmp/codex-impl-events-<issue_num>-<ITER>.jsonl`
+- Stderr (per iteration): `/tmp/codex-impl-stderr-<issue_num>-<ITER>.txt`
 
 ### Session ID Capture (Implementation Review Only)
 
@@ -2876,12 +3071,13 @@ CODEX_STDERR=$(cat /tmp/codex-collab-stderr-<num>.txt)
 
 **Stderr capture pattern (implementation review):**
 
+Stderr is captured to a per-iteration file on every invocation (initial and resume). This replaces the previous `2>/dev/null` pattern that discarded error information.
+
 ```bash
-CODEX_STDERR=$(codex exec ... 2>&1 1>/tmp/codex-output.txt)
-EXIT_CODE=$?
-if [ $EXIT_CODE -ne 0 ]; then
-  # Display CODEX_STDERR to user, ask for decision
-fi
+# Initial review: stderr goes to /tmp/codex-impl-stderr-<num>-1.txt
+# Resume: stderr goes to /tmp/codex-impl-stderr-<num>-2.txt, etc.
+# On failure, read it:
+CODEX_STDERR=$(cat /tmp/codex-impl-stderr-<num>-${ITER}.txt)
 ```
 
 | Scenario                                                | Behavior                                                                                                  |
