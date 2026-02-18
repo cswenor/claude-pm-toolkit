@@ -76,10 +76,10 @@ case "$AREA_LABEL" in
   area:backend)    AREA_ID="$PM_AREA_BACKEND" ;;
   area:contracts)  AREA_ID="$PM_AREA_CONTRACTS" ;;
   area:infra)      AREA_ID="$PM_AREA_INFRA" ;;
-  area:compliance) AREA_ID="$PM_AREA_COMPLIANCE" ;;
-  area:growth)     AREA_ID="$PM_AREA_GROWTH" ;;
-  area:data)       AREA_ID="$PM_AREA_DATA" ;;
-  *) echo "Error: Unknown area label '$AREA_LABEL'" && exit 1 ;;
+  area:design)     AREA_ID="$PM_AREA_DESIGN" ;;
+  area:docs)       AREA_ID="$PM_AREA_DOCS" ;;
+  area:pm)         AREA_ID="$PM_AREA_PM" ;;
+  *) echo "Warning: Unknown area label '$AREA_LABEL' — skipping area field" ;;
 esac
 
 # --- Check if already in project (idempotent) ---
@@ -111,7 +111,11 @@ gh project item-edit --project-id "$PM_PROJECT_ID" --id "$ITEM_ID" \
   --field-id "$PM_FIELD_WORKFLOW" --single-select-option-id "$PM_WORKFLOW_BACKLOG"
 gh project item-edit --project-id "$PM_PROJECT_ID" --id "$ITEM_ID" \
   --field-id "$PM_FIELD_PRIORITY" --single-select-option-id "$PRIORITY_ID"
-gh project item-edit --project-id "$PM_PROJECT_ID" --id "$ITEM_ID" \
-  --field-id "$PM_FIELD_AREA" --single-select-option-id "$AREA_ID"
 
-echo "Issue #$ISSUE_NUM: Workflow=Backlog, Priority=$PRIORITY, Area=${AREA_LABEL#area:}"
+if [ -n "$AREA_ID" ]; then
+  gh project item-edit --project-id "$PM_PROJECT_ID" --id "$ITEM_ID" \
+    --field-id "$PM_FIELD_AREA" --single-select-option-id "$AREA_ID"
+  echo "Issue #$ISSUE_NUM: Workflow=Backlog, Priority=$PRIORITY, Area=${AREA_LABEL#area:}"
+else
+  echo "Issue #$ISSUE_NUM: Workflow=Backlog, Priority=$PRIORITY (area skipped — no matching option)"
+fi

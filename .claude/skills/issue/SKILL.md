@@ -2,7 +2,7 @@
 name: issue
 description: Create new issues (PM interview) or work on existing issues. Use without arguments to create, with issue number to execute.
 argument-hint: '[issue-number]'
-allowed-tools: Read, Glob, Bash(./tools/scripts/project-add.sh *), Bash(./tools/scripts/project-move.sh *), Bash(./tools/scripts/project-status.sh *), Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(./tools/scripts/codex-mcp-overrides.sh), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash(make setup), Bash(codex --version *), Bash(codex exec -s read-only *), Bash(codex exec -s workspace-write *), Bash(codex exec -c *), mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, AskUserQuestion, EnterPlanMode, TaskOutput
+allowed-tools: Read, Glob, Bash(./tools/scripts/project-add.sh *), Bash(./tools/scripts/project-move.sh *), Bash(./tools/scripts/project-status.sh *), Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(./tools/scripts/codex-mcp-overrides.sh), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), Bash(codex exec -s read-only *), Bash(codex exec -s workspace-write *), Bash(codex exec -c *), mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, AskUserQuestion, EnterPlanMode, TaskOutput
 ---
 
 # /issue - Issue Creation & Execution
@@ -509,7 +509,7 @@ Then run `/issue <num>` again to continue setup.
 
 For dev with port isolation:
 eval "$(./tools/scripts/worktree-setup.sh <num> --print-env)"
-pnpm install && make dev
+pnpm install && {{DEV_COMMAND}}
 ```
 
 **Do NOT continue working in main repo.** The user (or Claude) must switch to the worktree.
@@ -623,6 +623,8 @@ Then run `/issue <num>` again to create a fresh worktree.
 | `area:backend`   | `docs/architecture/DATABASE.md`, `docs/architecture/OVERVIEW.md`                     |
 | `area:contracts` | `docs/contracts/GAME_CONTRACT_INTERFACE.md`, `packages/contracts/algorand/README.md` |
 | `area:infra`     | `docs/ENV_WORKFLOW.md`, `docs/SECRETS.md`, `docs/development/SETUP.md`               |
+
+> **Note:** Not all area labels may exist in your project. Skip any that don't apply.
 
 #### Load Based on Keywords
 
@@ -1261,7 +1263,7 @@ options:
   - label: "Continue — fix and re-submit (Recommended)"
     description: "Claude addresses feedback and re-submits for review"
   - label: "Override — proceed to tests"
-    description: "Skip Codex findings and proceed to make ci-quick && make test"
+    description: "Skip Codex findings and proceed to {{TEST_COMMAND}}"
   - label: "Show full Codex output"
     description: "Display the complete Codex review output"
 ```
@@ -1337,7 +1339,7 @@ Enforced ordered sequence from completed implementation to Review transition. Pr
 
 **After ExitPlanMode (START/CONTINUE):** The skill has completed. Claude Code resumes normal operation with its standard tool permissions (Bash, Edit, Write, etc.). The skill's `allowed-tools` frontmatter only restricts tools during skill execution — it does not apply after the skill ends. Claude Code follows this sequence as behavioral guidance.
 
-**During REWORK mode:** The skill presents feedback and instructs Claude Code to follow this sequence. Claude Code executes each step with its normal capabilities. This is the same pattern used today — REWORK already instructs `make ci-quick && make test` which is not in the skill's `allowed-tools` but is executed by Claude Code.
+**During REWORK mode:** The skill presents feedback and instructs Claude Code to follow this sequence. Claude Code executes each step with its normal capabilities. This is the same pattern used today — REWORK already instructs `{{TEST_COMMAND}}` which is not in the skill's `allowed-tools` but is executed by Claude Code.
 
 ### Sequence (MANDATORY — execute in order, do not skip steps)
 
@@ -1366,7 +1368,7 @@ Display: "Codex not available — skipping implementation review."
 
 #### Step 3: Run Tests
 
-`make ci-quick && make test`
+`{{TEST_COMMAND}}`
 
 Fix any failures — do NOT bypass. If fixes require code changes, commit the fixes and return to Step 2 (Codex re-review).
 
@@ -1522,6 +1524,8 @@ As a {user_type}, I want {goal} so that {benefit}.
 | contract, on-chain, Algorand, Voi     | `area:contracts` |
 | CI, deploy, script, tooling, workflow | `area:infra`     |
 
+> **Note:** Not all area labels may exist in your project. Only create the ones relevant to your work.
+
 ---
 
 ## Appendix F: Verification Checklist
@@ -1561,8 +1565,8 @@ As a {user_type}, I want {goal} so that {benefit}.
 - [ ] Loads external library docs via context7
 - [ ] "Comment if Approach Differs" step runs for START/CONTINUE
 - [ ] Briefing packet displays all required sections
-- [ ] START mode: move to Active, run make setup in background, enter plan mode with full detail
-- [ ] CONTINUE mode: git sync, run make setup in background, enter plan mode with full detail
+- [ ] START mode: move to Active, run {{SETUP_COMMAND}} in background, enter plan mode with full detail
+- [ ] CONTINUE mode: git sync, run {{SETUP_COMMAND}} in background, enter plan mode with full detail
 - [ ] REVIEW mode: offers /pm-review or make changes
 - [ ] APPROVED mode: shows merge instructions
 - [ ] REWORK mode: moves to Active, syncs git, displays feedback and guardrails
@@ -1588,17 +1592,17 @@ As a {user_type}, I want {goal} so that {benefit}.
 - [ ] If in wrong worktree + tmux, spawns worktree + window in background
 - [ ] If in wrong worktree + no tmux, user is directed to correct location
 - [ ] Broken worktree (stale metadata) is detected and fix offered
-- [ ] Port isolation allows `make dev` in multiple worktrees simultaneously
+- [ ] Port isolation allows `{{DEV_COMMAND}}` in multiple worktrees simultaneously
 - [ ] CONTINUE mode detects worktree and proceeds if in correct location
 
 ### Background Setup
 
-- [ ] /issue <num> in START mode runs make setup in background before plan mode
-- [ ] /issue <num> in CONTINUE mode runs make setup in background before plan mode
+- [ ] /issue <num> in START mode runs {{SETUP_COMMAND}} in background before plan mode
+- [ ] /issue <num> in CONTINUE mode runs {{SETUP_COMMAND}} in background before plan mode
 - [ ] Bash tool called with run_in_background: true (returns task_id within 2 seconds)
 - [ ] TaskOutput called with block: false after ExitPlanMode to check result
 - [ ] Completed setup: user told "Environment ready"
-- [ ] Failed setup: user shown error output and told to run make setup manually
+- [ ] Failed setup: user shown error output and told to run {{SETUP_COMMAND}} manually
 - [ ] Still-running setup: user informed, not blocked
 - [ ] Background setup only runs in correct worktree (not during worktree creation handoff)
 
@@ -1782,7 +1786,7 @@ As a {user_type}, I want {goal} so that {benefit}.
 3. **Post-implementation checklist (MANDATORY — in order, do not skip):**
    a. Commit changes with `<type>(<scope>): <description>`
    b. Codex Implementation Review — address all BLOCKING and SUGGESTION findings, commit fixes
-   c. Run `make ci-quick && make test` — fix failures, return to (b) if code changed
+   c. Run `{{TEST_COMMAND}}` — fix failures, return to (b) if code changed
    d. Create PR (or push to existing) with `Fixes #<num>`
    e. Run `/pm-review` self-check (ANALYSIS_ONLY action) — address findings, return to (b) if code changed
    f. Move to Review: `./tools/scripts/project-move.sh <num> Review`
@@ -1834,11 +1838,11 @@ If you're seeing this, you're in the correct worktree (exit 0).
 
 1.5. **Background environment setup** (before plan mode):
 
-Kick off make setup in the background so the environment bootstraps while you plan.
+Kick off {{SETUP_COMMAND}} in the background so the environment bootstraps while you plan.
 
 Call the Bash tool with these exact parameters:
 
-- command: "make setup"
+- command: "{{SETUP_COMMAND}}"
 - run_in_background: true
 - description: "Background environment setup for issue #<num>"
 
@@ -1846,10 +1850,10 @@ The Bash tool returns a result that includes a task_id. Store this task_id for
 checking after plan mode exits.
 
 Behavior: The command starts in a separate process and returns control to you
-immediately (within seconds). You do not wait for make setup to finish.
+immediately (within seconds). You do not wait for {{SETUP_COMMAND}} to finish.
 
 **If the Bash call fails or does not return a task_id:** Warn the user
-("Background setup failed to launch, you may need to run `make setup` manually")
+("Background setup failed to launch, you may need to run `{{SETUP_COMMAND}}` manually")
 and set task_id to null. Continue to step 2 (EnterPlanMode) regardless — setup
 failure must never block planning.
 
@@ -1926,10 +1930,10 @@ Include this in the plan output so the user sees and acknowledges scope boundari
 
 #### After ExitPlanMode (START)
 
-Before beginning implementation, check the background make setup result.
+Before beginning implementation, check the background {{SETUP_COMMAND}} result.
 
 **If task_id is null** (step 1.5 failed to launch): Skip the TaskOutput call.
-Report "Background setup was not launched. Run `make setup` manually if needed."
+Report "Background setup was not launched. Run `{{SETUP_COMMAND}}` manually if needed."
 Proceed to implementation.
 
 **If task_id exists:** Call the TaskOutput tool with these exact parameters:
@@ -1942,12 +1946,12 @@ Interpret the result and always report to the user:
 
 - Completed with exit code 0: Report "Environment ready." Proceed to implementation.
 - Completed with non-zero exit code: Report "Background setup failed." Show the
-  first 20 lines of output. Suggest the user run make setup manually. Do NOT block
+  first 20 lines of output. Suggest the user run {{SETUP_COMMAND}} manually. Do NOT block
   implementation.
 - Still running: Report "Setup is still running in the background. You can start
   working. Check back with TaskOutput if needed before running tests."
 
-**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-6). Do NOT skip directly to `make ci-quick && make test` or `project-move.sh Review`.
+**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-6). Do NOT skip directly to `{{TEST_COMMAND}}` or `project-move.sh Review`.
 
 ### CONTINUE Mode
 
@@ -2000,7 +2004,7 @@ options:
 
 Same as START mode step 1.5. Call the Bash tool with:
 
-- command: "make setup"
+- command: "{{SETUP_COMMAND}}"
 - run_in_background: true
 - description: "Background environment setup for issue #<num>"
 
@@ -2062,7 +2066,7 @@ report that setup was not launched. If task_id exists, call TaskOutput with
 block: false using the task_id from step 3.5. Always report the result to the
 user: ready, failed (with output), or still running.
 
-**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-6). Do NOT skip directly to `make ci-quick && make test` or `project-move.sh Review`.
+**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-6). Do NOT skip directly to `{{TEST_COMMAND}}` or `project-move.sh Review`.
 
 ### REVIEW Mode
 
@@ -2250,7 +2254,7 @@ Execute: `./tools/scripts/project-move.sh <num> Done`
 - `gh pr create` - Create PR
 - `cd <worktree-path> && claude` - Switch to worktree
 - `eval "$(./tools/scripts/worktree-setup.sh <num> --print-env)"` - Apply port isolation
-- `pnpm install && make dev` - Initialize and start worktree dev server
+- `pnpm install && {{DEV_COMMAND}}` - Initialize and start worktree dev server
 
 **Execution scope note:** The `allowed-tools` frontmatter restricts tools during skill execution (mode detection, briefing, plan mode entry). After ExitPlanMode, the skill has ended and Claude Code resumes normal operation with standard tool permissions. The Post-Implementation Sequence runs in this normal context.
 
@@ -2380,7 +2384,7 @@ Git worktrees enable parallel development by creating separate working directori
 - **Parallel work**: Run multiple Claude Code sessions, each on a different issue
 - **Clean state**: Each worktree has fresh `node_modules/` and build artifacts
 - **No context switching**: Don't lose uncommitted work when switching issues
-- **Isolated dev stacks**: Run `make dev` in multiple worktrees simultaneously
+- **Isolated dev stacks**: Run `{{DEV_COMMAND}}` in multiple worktrees simultaneously
 
 ### Worktree Location
 
@@ -2412,9 +2416,9 @@ Each worktree gets a unique port offset based on `(issue_number % 79) * 100 + 32
 Port offsets are set via shell exports (no env files):
 
 ```bash
-# In the worktree, before running make dev:
+# In the worktree, before running {{DEV_COMMAND}}:
 eval "$(./tools/scripts/worktree-setup.sh 294 --print-env)"
-make dev
+{{DEV_COMMAND}}
 ```
 
 This prints and exports:

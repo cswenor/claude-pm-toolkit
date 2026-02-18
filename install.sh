@@ -166,10 +166,76 @@ DETECTED_REPO=$(detect_git_remote_repo)
 
 OWNER=$(prompt_with_default "GitHub owner (org or user)" "$DETECTED_OWNER")
 REPO=$(prompt_with_default "GitHub repo name" "$DETECTED_REPO")
-PROJECT_NUMBER=$(prompt_with_default "GitHub Project number (Projects v2)" "")
+PROJECT_NUMBER=$(prompt_with_default "GitHub Project number (Projects v2, or 'new' to create)" "")
+
+# If user entered "new", create a project board with all required fields
+if [[ "$PROJECT_NUMBER" == "new" ]]; then
+  log_section "Creating GitHub Projects v2 board"
+  PROJECT_TITLE=$(prompt_with_default "Project board title" "$REPO")
+  log_info "Creating project '$PROJECT_TITLE'..."
+  CREATE_RESULT=$(gh project create --owner "$OWNER" --title "$PROJECT_TITLE" --format json 2>&1) || {
+    # Fallback for personal accounts (--owner @me)
+    CREATE_RESULT=$(gh project create --owner @me --title "$PROJECT_TITLE" --format json 2>&1) || {
+      log_error "Failed to create project: $CREATE_RESULT"
+      exit 1
+    }
+  }
+  PROJECT_NUMBER=$(echo "$CREATE_RESULT" | jq -r '.number')
+  log_ok "Created project #$PROJECT_NUMBER"
+
+  log_info "Adding Workflow field..."
+  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Workflow" --data-type "SINGLE_SELECT" \
+    --single-select-options "Backlog,Ready,Active,Review,Rework,Done" 2>/dev/null || \
+  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Workflow" --data-type "SINGLE_SELECT" \
+    --single-select-options "Backlog,Ready,Active,Review,Rework,Done" 2>/dev/null
+  log_ok "  Workflow: Backlog, Ready, Active, Review, Rework, Done"
+
+  log_info "Adding Priority field..."
+  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Priority" --data-type "SINGLE_SELECT" \
+    --single-select-options "Critical,High,Normal" 2>/dev/null || \
+  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Priority" --data-type "SINGLE_SELECT" \
+    --single-select-options "Critical,High,Normal" 2>/dev/null
+  log_ok "  Priority: Critical, High, Normal"
+
+  log_info "Adding Area field..."
+  read -r -p "$(printf "${CYAN}Area options (comma-separated)${RESET} [${BOLD}Frontend,Backend,Infra,Docs${RESET}]: ")" AREA_OPTS
+  AREA_OPTS="${AREA_OPTS:-Frontend,Backend,Infra,Docs}"
+  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Area" --data-type "SINGLE_SELECT" \
+    --single-select-options "$AREA_OPTS" 2>/dev/null || \
+  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Area" --data-type "SINGLE_SELECT" \
+    --single-select-options "$AREA_OPTS" 2>/dev/null
+  log_ok "  Area: $AREA_OPTS"
+
+  log_info "Adding Issue Type field..."
+  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Issue Type" --data-type "SINGLE_SELECT" \
+    --single-select-options "Bug,Feature,Spike,Epic,Chore" 2>/dev/null || \
+  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Issue Type" --data-type "SINGLE_SELECT" \
+    --single-select-options "Bug,Feature,Spike,Epic,Chore" 2>/dev/null
+  log_ok "  Issue Type: Bug, Feature, Spike, Epic, Chore"
+
+  log_info "Adding Risk field..."
+  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Risk" --data-type "SINGLE_SELECT" \
+    --single-select-options "Low,Medium,High" 2>/dev/null || \
+  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Risk" --data-type "SINGLE_SELECT" \
+    --single-select-options "Low,Medium,High" 2>/dev/null
+  log_ok "  Risk: Low, Medium, High"
+
+  log_info "Adding Estimate field..."
+  gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Estimate" --data-type "SINGLE_SELECT" \
+    --single-select-options "Small,Medium,Large" 2>/dev/null || \
+  gh project field-create "$PROJECT_NUMBER" --owner @me --name "Estimate" --data-type "SINGLE_SELECT" \
+    --single-select-options "Small,Medium,Large" 2>/dev/null
+  log_ok "  Estimate: Small, Medium, Large"
+
+  log_ok "Project board created with all fields!"
+  printf "\n"
+fi
 PREFIX_LOWER=$(prompt_with_default "Short prefix, lowercase (e.g. hov, myapp)" "")
-PREFIX_UPPER="${PREFIX_LOWER^^}"
+PREFIX_UPPER=$(echo "$PREFIX_LOWER" | tr '[:lower:]' '[:upper:]')
 DISPLAY_NAME=$(prompt_with_default "Display name (e.g. House of Voi)" "$OWNER")
+TEST_COMMAND=$(prompt_with_default "Test command (run before PR/review)" "make test")
+SETUP_COMMAND=$(prompt_with_default "Setup command (bootstrap environment)" "make setup")
+DEV_COMMAND=$(prompt_with_default "Dev command (start dev server)" "make dev")
 
 printf "\n"
 log_info "Owner:          $OWNER"
@@ -177,6 +243,9 @@ log_info "Repo:           $REPO"
 log_info "Project number: $PROJECT_NUMBER"
 log_info "Prefix:         $PREFIX_LOWER / $PREFIX_UPPER"
 log_info "Display name:   $DISPLAY_NAME"
+log_info "Test command:   $TEST_COMMAND"
+log_info "Setup command:  $SETUP_COMMAND"
+log_info "Dev command:    $DEV_COMMAND"
 log_info "Target dir:     $TARGET"
 printf "\n"
 read -r -p "$(printf "${YELLOW}Continue?${RESET} [Y/n] ")" CONFIRM
@@ -355,6 +424,9 @@ SED_PAIRS=(
   "{{DISPLAY_NAME}}"        "$DISPLAY_NAME"        ""
   "{{PREFIX}}"              "$PREFIX_UPPER"        ""
   "{{prefix}}"              "$PREFIX_LOWER"        ""
+  "{{TEST_COMMAND}}"        "$TEST_COMMAND"        ""
+  "{{SETUP_COMMAND}}"       "$SETUP_COMMAND"       ""
+  "{{DEV_COMMAND}}"         "$DEV_COMMAND"         ""
   "{{FIELD_WORKFLOW}}"      "$FIELD_WORKFLOW"      "TODO: add Workflow field to project"
   "{{FIELD_PRIORITY}}"      "$FIELD_PRIORITY"      "TODO: add Priority field to project"
   "{{FIELD_AREA}}"          "$FIELD_AREA"          "TODO: add Area field to project"
@@ -407,18 +479,10 @@ apply_replacements_to_content() {
     i=$((i+3))
 
     if [[ -n "$value" ]]; then
-      local escaped_value
-      escaped_value=$(printf '%s' "$value" | sed 's/[\/&]/\\&/g')
-      local escaped_ph
-      escaped_ph=$(printf '%s' "$placeholder" | sed 's/[\/&]/\\&/g; s/\[/\\[/g; s/\]/\\]/g; s/{/\\{/g; s/}/\\}/g')
-      sed -i.bak "s/${escaped_ph}/${escaped_value}/g" "$dst"
-    elif [[ -n "$fallback" ]]; then
-      local escaped_ph
-      escaped_ph=$(printf '%s' "$placeholder" | sed 's/[\/&]/\\&/g; s/\[/\\[/g; s/\]/\\]/g; s/{/\\{/g; s/}/\\}/g')
-      local escaped_fb
-      escaped_fb=$(printf '%s' "$fallback" | sed 's/[\/&]/\\&/g')
-      sed -i.bak "/${escaped_ph}/{/# TODO/! s/${escaped_ph}/${escaped_ph} # ${escaped_fb}/g}" "$dst"
+      # Use awk for reliable cross-platform replacement (no regex escaping issues)
+      awk -v ph="$placeholder" -v val="$value" '{gsub(ph, val)} 1' "$dst" > "${dst}.tmp" && mv "${dst}.tmp" "$dst"
     fi
+    # If value is empty, the placeholder remains — the summary will warn about it
     rm -f "${dst}.bak"
   done
 }
@@ -656,6 +720,9 @@ printf "${GREEN}%-20s${RESET} %s\n" "Project number:" "$PROJECT_NUMBER"
 printf "${GREEN}%-20s${RESET} %s\n" "Prefix (lower):" "$PREFIX_LOWER"
 printf "${GREEN}%-20s${RESET} %s\n" "Prefix (upper):" "$PREFIX_UPPER"
 printf "${GREEN}%-20s${RESET} %s\n" "Display name:"   "$DISPLAY_NAME"
+printf "${GREEN}%-20s${RESET} %s\n" "Test command:"   "$TEST_COMMAND"
+printf "${GREEN}%-20s${RESET} %s\n" "Setup command:"  "$SETUP_COMMAND"
+printf "${GREEN}%-20s${RESET} %s\n" "Dev command:"    "$DEV_COMMAND"
 printf "\n"
 printf "${GREEN}%-20s${RESET} %d\n" "Files copied:"   "$COUNT_COPIED"
 printf "${GREEN}%-20s${RESET} %d\n" "Files merged:"   "$COUNT_MERGED"

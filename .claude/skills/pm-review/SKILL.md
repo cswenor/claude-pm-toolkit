@@ -89,7 +89,7 @@ When a PR includes Docker, CI, or tooling changes:
 1. **Version tags** - Is it pinned or using `:latest`? Latest is a reproducibility foot-gun.
 2. **Breaking changes** - Does the new version have different behavior? (ports, config, APIs)
 3. **Downstream effects** - What scripts/tests depend on this? Will they still work?
-4. **Fresh clone test** - Would `git clone && make setup` work for a new developer?
+4. **Fresh clone test** - Would `git clone && {{SETUP_COMMAND}}` work for a new developer?
 
 **Common failure mode:** Noting a Docker upgrade as "minor observation" instead of verifying KMD still works, scripts still run, and ports are correct.
 
@@ -350,7 +350,7 @@ Why: Mixed PRs are hard to review, hard to rollback, and couple unrelated risks.
    - [ ] Does KMD still work? Do funded accounts still exist?
 
 3. **Fresh clone verification:**
-   - [ ] Would `git clone && make setup && make dev` work?
+   - [ ] Would `git clone && {{SETUP_COMMAND}} && {{DEV_COMMAND}}` work?
    - [ ] Are any manual steps now required?
 
 #### Change-Type Specific Checks

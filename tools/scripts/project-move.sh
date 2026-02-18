@@ -139,14 +139,8 @@ if [ "$STATE" = "Review" ]; then
   fi
 
   # Step 4: Run tests against rebased code
-  echo "==> make ci-quick"
-  if ! make -C "$REPO_ROOT" ci-quick; then
-    echo ""
-    echo "ERROR: ci-quick failed (lint/format/typecheck). Fix before moving to Review."
-    exit 1
-  fi
-  echo "==> make test"
-  if ! make -C "$REPO_ROOT" test; then
+  echo "==> {{TEST_COMMAND}}"
+  if ! eval "{{TEST_COMMAND}}"; then
     echo ""
     echo "ERROR: tests failed. Fix before moving to Review."
     exit 1

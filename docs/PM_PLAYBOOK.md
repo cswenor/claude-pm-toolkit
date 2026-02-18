@@ -230,6 +230,8 @@ An issue can be `Ready` + `spec:missing` = "you can start, but clarify scope fir
 | **Growth**     | Marketing                                          |
 | **Data**       | Analytics                                          |
 
+> Not all projects need all area options. Only create the ones relevant to your project. The toolkit handles missing options gracefully — scripts will warn but not fail.
+
 ### Other Fields
 
 | Field          | Type          | Options                          |
@@ -298,19 +300,19 @@ An issue can be `Ready` + `spec:missing` = "you can start, but clarify scope fir
 | Backend    | `{{OPT_AREA_BACKEND}}` |
 | Contracts  | `{{OPT_AREA_CONTRACTS}}` |
 | Infra      | `{{OPT_AREA_INFRA}}` |
-| Compliance | `{{OPT_AREA_DESIGN}}` |
-| Growth     | `{{OPT_AREA_DOCS}}` |
-| Data       | `{{OPT_AREA_PM}}` |
+| Design     | `{{OPT_AREA_DESIGN}}` |
+| Docs       | `{{OPT_AREA_DOCS}}` |
+| PM         | `{{OPT_AREA_PM}}` |
 
 ### Issue Type Option IDs
 
 | Option  | Option ID  |
 | ------- | ---------- |
-| Epic    | `{{OPT_TYPE_BUG}}` |
+| Bug     | `{{OPT_TYPE_BUG}}` |
 | Feature | `{{OPT_TYPE_FEATURE}}` |
-| Bug     | `{{OPT_TYPE_SPIKE}}` |
-| Chore   | `{{OPT_TYPE_EPIC}}` |
-| Spike   | `{{OPT_TYPE_CHORE}}` |
+| Spike   | `{{OPT_TYPE_SPIKE}}` |
+| Epic    | `{{OPT_TYPE_EPIC}}` |
+| Chore   | `{{OPT_TYPE_CHORE}}` |
 
 ### Risk Option IDs
 
