@@ -205,8 +205,17 @@ if [[ -f "$CONFIG_FILE" ]]; then
   PM_FIELD_WORKFLOW=""
   PM_WORKFLOW_ACTIVE=""
 
-  # Safe source — only read values
-  eval "$(grep -E '^PM_[A-Z_]+=' "$CONFIG_FILE" | head -50)"
+  # Safe parse — extract values without eval (printf -v doesn't execute content)
+  while IFS='=' read -r key value; do
+    # Strip surrounding quotes from value
+    value="${value#\"}"
+    value="${value%\"}"
+    value="${value#\'}"
+    value="${value%\'}"
+    case "$key" in
+      PM_*) printf -v "$key" '%s' "$value" 2>/dev/null || true ;;
+    esac
+  done < <(grep -E '^PM_[A-Z_]+=' "$CONFIG_FILE" | head -50)
 
   if [[ -n "$PM_OWNER" ]]; then
     pass "PM_OWNER=$PM_OWNER"
@@ -385,7 +394,13 @@ log_section "9. GitHub Connectivity (optional)"
 
 if command -v gh &>/dev/null && gh auth status &>/dev/null; then
   if [[ -f "$CONFIG_FILE" ]]; then
-    eval "$(grep -E '^PM_(OWNER|PROJECT_NUMBER)=' "$CONFIG_FILE" | head -5)"
+    while IFS='=' read -r key value; do
+      value="${value#\"}"
+      value="${value%\"}"
+      case "$key" in
+        PM_OWNER|PM_PROJECT_NUMBER) printf -v "$key" '%s' "$value" 2>/dev/null || true ;;
+      esac
+    done < <(grep -E '^PM_(OWNER|PROJECT_NUMBER)=' "$CONFIG_FILE" | head -5)
     if [[ -n "${PM_OWNER:-}" ]] && [[ -n "${PM_PROJECT_NUMBER:-}" ]]; then
       if gh project view "$PM_PROJECT_NUMBER" --owner "$PM_OWNER" &>/dev/null; then
         pass "Project #$PM_PROJECT_NUMBER accessible for $PM_OWNER"
