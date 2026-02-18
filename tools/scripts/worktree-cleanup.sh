@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # worktree-cleanup.sh - Clean up a worktree for a completed issue

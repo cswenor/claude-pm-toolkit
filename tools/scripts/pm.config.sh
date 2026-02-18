@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # pm.config.sh - Centralized PM project configuration
 # Source this file in other scripts: source "$(dirname "$0")/pm.config.sh"
 

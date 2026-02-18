@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # project-add.sh - Add an issue to the {{DISPLAY_NAME}} project board

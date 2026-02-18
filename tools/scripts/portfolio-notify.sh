@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # portfolio-notify.sh - Hook-driven notification handler for portfolio manager

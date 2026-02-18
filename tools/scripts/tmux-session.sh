@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # tmux-session.sh - Portfolio orchestrator for parallel Claude Code development

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # pm-dashboard.sh - Health dashboard for claude-pm-toolkit

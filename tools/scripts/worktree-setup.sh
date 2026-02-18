@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # worktree-setup.sh - Create a worktree with port isolation for parallel development
