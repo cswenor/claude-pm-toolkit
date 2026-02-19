@@ -8,7 +8,7 @@
  */
 
 import { getVelocity } from "./github.js";
-import { getIssue, getLocalBoardSummary } from "./db.js";
+import { getIssue, getLocalBoardSummary, getIssuesByWorkflow } from "./db.js";
 import type { LocalIssue } from "./db.js";
 import {
   getEvents,
@@ -125,42 +125,20 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
       getWorkflowHealth().catch(() => null),
     ]);
 
-  // Find candidate issues (Ready or Backlog, not Active/Review/Done)
-  const candidateWorkflows = new Set(["Ready", "Backlog"]);
-  const allIssueNumbers: number[] = [];
-
   // Collect from board — active items tell us WIP
   const activeCount = board.activeIssues.length;
 
-  // Get all issue numbers from board that are in candidate states
-  // Board doesn't expose all issues by workflow, so we use the graph
+  // Primary source: local DB is the source of truth for candidates
+  const readyIssues = await getIssuesByWorkflow("Ready");
+  const backlogIssues = await getIssuesByWorkflow("Backlog");
+  const allIssueNumbers = [
+    ...readyIssues.map((i) => i.number),
+    ...backlogIssues.map((i) => i.number),
+  ];
+
   const candidates: ScoredIssue[] = [];
 
-  if (graphResult) {
-    // Use graph nodes to find candidate issues
-    for (const node of graphResult.nodes) {
-      if (
-        node.workflow &&
-        candidateWorkflows.has(node.workflow) &&
-        node.state === "open"
-      ) {
-        allIssueNumbers.push(node.number);
-      }
-    }
-  }
-
-  // Also check blocked issues from board
-  for (const blocked of board.blockedIssues) {
-    if (!allIssueNumbers.includes(blocked.issue.number)) {
-      allIssueNumbers.push(blocked.issue.number);
-    }
-  }
-
-  // If no graph data, fall back to review/rework items as context only
-  // and note we have limited data
   if (allIssueNumbers.length === 0) {
-    // Try to get issue details for any ready items we can find
-    // by checking board review/rework items as reference
     return {
       recommended: null,
       alternatives: [],
@@ -172,7 +150,7 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
       },
       reasoning:
         "No candidate issues found in Ready or Backlog states. " +
-        "Either all issues are in progress, or the dependency graph is empty. " +
+        "All issues may be in progress or completed. " +
         "Create new issues or move existing ones to Ready.",
     };
   }

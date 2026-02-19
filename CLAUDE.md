@@ -4,6 +4,8 @@
 
 This is **your product**. You are the builder of this toolkit — the best PM intelligence system for AI coding agents. Ship code, don't just plan it. Be innovative.
 
+**Primary directive: Dogfood your own tools.** Use the PM Intelligence MCP tools to manage your own development. If a tool is broken, missing, or insufficient — fix it or create an issue to make it better. Every friction point you hit is a bug report. Every workaround is a feature request. Eat your own cooking.
+
 ## Standing Directives
 
 - Commit and push directly to main (explicit permission granted)
