@@ -118,6 +118,11 @@ import {
   compareEstimates,
 } from "./explain.js";
 import { detectPatterns } from "./anomaly.js";
+import {
+  triageIssue,
+  analyzePRImpact,
+  decomposeIssue,
+} from "./triage.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
@@ -1804,6 +1809,136 @@ server.registerTool(
   }
 );
 
+// ─── SMART TRIAGE ────────────────────────────────────────
+
+server.registerTool(
+  "triage_issue",
+  {
+    title: "Triage Issue",
+    description:
+      "One-call complete issue intelligence. Auto-classifies tier, type, area, " +
+      "priority (with factor analysis), size estimate, risk assessment, rework " +
+      "probability, similar past work, suggested assignees, relevant docs to load, " +
+      "and spec readiness score. Use when picking up any new issue to get full " +
+      "context in one call instead of querying multiple tools.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("GitHub issue number to triage"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const result = await triageIssue(issueNumber);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "analyze_pr_impact",
+  {
+    title: "Analyze PR Impact",
+    description:
+      "Blast radius analysis before merging a PR. Shows dependency impact (what " +
+      "issues get unblocked), knowledge risk (bus factor for affected files), " +
+      "coupling analysis (files that often change together), hotspot overlap, " +
+      "and merge readiness score. Use before merging to understand systemic impact.",
+    inputSchema: {
+      prNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Pull request number to analyze"),
+    },
+  },
+  async ({ prNumber }) => {
+    try {
+      const result = await analyzePRImpact(prNumber);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "decompose_issue",
+  {
+    title: "Decompose Issue",
+    description:
+      "Break a large issue or epic into smaller, dependency-ordered subtasks. " +
+      "Generates subtask suggestions with titles, types, acceptance criteria, " +
+      "size estimates, risk levels, and dependency relationships. Calculates " +
+      "critical path, parallelization speedup ratio, and execution order phases. " +
+      "Use for sprint planning or when an issue feels too large to start.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("GitHub issue number to decompose"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const result = await decomposeIssue(issueNumber);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
 
 const ALL_TOOLS = [
@@ -1821,6 +1956,7 @@ const ALL_TOOLS = [
   "suggest_next_issue", "generate_standup", "generate_retro",
   "explain_delay", "compare_estimates",
   "detect_patterns",
+  "triage_issue", "analyze_pr_impact", "decompose_issue",
 ];
 
 async function main() {
