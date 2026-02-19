@@ -27,6 +27,8 @@
  *   - record_review_outcome: Track review finding dispositions
  *   - get_review_calibration: Review hit rate and false positive patterns
  *   - check_decision_decay: Flag stale decisions based on context drift
+ *   - simulate_sprint: Monte Carlo sprint throughput simulation
+ *   - forecast_backlog: Monte Carlo backlog completion forecast
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -74,10 +76,14 @@ import {
   getReviewCalibration,
   checkDecisionDecay,
 } from "./review-learning.js";
+import {
+  simulateSprint,
+  forecastBacklog,
+} from "./simulate.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.7.0",
+  version: "0.8.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -871,6 +877,130 @@ server.registerTool(
   }
 );
 
+// ─── SIMULATION TOOLS ─────────────────────────────────
+
+server.registerTool(
+  "simulate_sprint",
+  {
+    title: "Monte Carlo Sprint Simulation",
+    description:
+      "Run a Monte Carlo simulation to forecast sprint throughput. Randomly samples from historical cycle time distributions across thousands of trials to produce probabilistic forecasts: 'How many items will we likely finish in N days?' Returns throughput percentiles (P10-P90), completion probability for a target item count, histogram distribution, and data quality assessment. Use this for sprint planning and commitment decisions.",
+    inputSchema: {
+      itemCount: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Target number of items to evaluate against (default 10)"),
+      sprintDays: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Sprint duration in days (default 14)"),
+      trials: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Number of simulation trials (default 10000, max 50000)"),
+      area: z
+        .string()
+        .optional()
+        .describe("Filter cycle times to a specific area (frontend, backend, contracts, infra)"),
+      wipLimit: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Max concurrent items — WIP limit (default 1)"),
+    },
+  },
+  async ({ itemCount, sprintDays, trials, area, wipLimit }) => {
+    try {
+      const result = await simulateSprint({
+        itemCount,
+        sprintDays,
+        trials,
+        area,
+        wipLimit,
+      });
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "forecast_backlog",
+  {
+    title: "Monte Carlo Backlog Forecast",
+    description:
+      "Run a Monte Carlo simulation to answer 'When will we finish these N items?' Produces completion date forecasts with confidence intervals (P50/P80/P95), sprint-by-sprint breakdown showing cumulative progress, and risk analysis (tail risk, variability). Use this for roadmap planning, stakeholder communication, and identifying when a backlog will be cleared.",
+    inputSchema: {
+      itemCount: z
+        .number()
+        .int()
+        .positive()
+        .describe("Total number of items to forecast completing"),
+      trials: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Number of simulation trials (default 10000, max 50000)"),
+      area: z
+        .string()
+        .optional()
+        .describe("Filter cycle times to a specific area"),
+      wipLimit: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Max concurrent items — WIP limit (default 1)"),
+    },
+  },
+  async ({ itemCount, trials, area, wipLimit }) => {
+    try {
+      const result = await forecastBacklog({
+        itemCount,
+        trials,
+        area,
+        wipLimit,
+      });
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -1057,12 +1187,13 @@ const ALL_TOOLS = [
   "get_sprint_analytics", "suggest_approach", "check_readiness", "get_history_insights",
   "predict_completion", "predict_rework", "get_dora_metrics", "get_knowledge_risk",
   "record_review_outcome", "get_review_calibration", "check_decision_decay",
+  "simulate_sprint", "forecast_backlog",
 ];
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.7.0 running on stdio");
+  console.error("PM Intelligence MCP Server v0.8.0 running on stdio");
   console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
 }
 

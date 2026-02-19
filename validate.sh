@@ -163,6 +163,7 @@ OPTIONAL_FILES=(
   "tools/mcp/pm-intelligence/src/history.ts"
   "tools/mcp/pm-intelligence/src/predict.ts"
   "tools/mcp/pm-intelligence/src/review-learning.ts"
+  "tools/mcp/pm-intelligence/src/simulate.ts"
   "tools/scripts/pm-commit-guard.sh"
   "tools/scripts/pm-stop-guard.sh"
   "tools/scripts/pm-event-log.sh"

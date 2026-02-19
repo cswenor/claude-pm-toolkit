@@ -81,6 +81,8 @@ A native MCP server that gives Claude direct access to project state — no bash
 | | `predict_rework` | Rework probability with weighted signals and mitigations |
 | | `get_dora_metrics` | DORA metrics rated against industry benchmarks |
 | | `get_knowledge_risk` | Bus factor, knowledge decay, per-file risk scoring |
+| **Simulation** | `simulate_sprint` | Monte Carlo sprint throughput (P10-P90, histogram) |
+| | `forecast_backlog` | "When will we finish N items?" with sprint breakdown |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |

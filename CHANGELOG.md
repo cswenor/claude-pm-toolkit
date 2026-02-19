@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-02-19
+
+### Added
+- **Monte Carlo Simulation:**
+  - MCP `simulate_sprint` tool: probabilistic sprint throughput forecasting via Monte Carlo simulation (10,000 trials default). Answers "how many items will we finish in N days?" with P10-P90 throughput percentiles, completion probability for target item count, confidence levels, histogram distribution, and data quality assessment. Uses bootstrap sampling from historical cycle time distributions.
+  - MCP `forecast_backlog` tool: "when will we finish N items?" with P50/P80/P95 completion dates, sprint-by-sprint breakdown (cumulative progress, remaining items, per-sprint probability of completion), risk analysis (tail risk, variability ratio), and automatic synthetic fallback when historical data is insufficient.
+  - Core simulation engine: WIP-aware sequential processing (default WIP=1 per PM policy), 0.25-day resolution, 50,000 trial cap, area-filtered cycle times with automatic all-area fallback
+  - Synthetic distribution generation when fewer than 3 historical cycle times exist (3-7 day uniform, clearly warned)
+- `validate.sh`: Added check for simulate.ts
+
 ## [0.7.0] - 2026-02-19
 
 ### Added
