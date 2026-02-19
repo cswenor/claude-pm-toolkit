@@ -357,17 +357,33 @@ Instead of a user manually running `/issue 42` in one window and `/issue 57` in 
 
 | Priority | What | Impact | Effort | Status |
 |----------|------|--------|--------|--------|
-| **P0** | GitHub Actions: post-merge + PR quality gate | Eliminates manual checklist steps | 2-3 days | Ready to build |
-| **P1** | SessionStart hook: load relevant context | Every session starts smarter | 1 day | Ready to build |
-| **P2** | Structured JSONL decision/outcome logs | Persistent learning, zero infra | 1 day | Ready to build |
-| **P3** | Event stream logging (portfolio-notify.sh) | Analytics, replay, debugging | 0.5 day | Ready to build |
-| **P4** | MCP server (pm-intelligence) | Live state, tools, resources | 1-2 weeks | Design phase |
+| **P0** | GitHub Actions: post-merge + PR quality gate | Eliminates manual checklist steps | 2-3 days | ✅ Done (v0.5.0) |
+| **P1** | SessionStart hook: load relevant context | Every session starts smarter | 1 day | ✅ Done (v0.5.0) |
+| **P2** | Structured JSONL decision/outcome logs | Persistent learning, zero infra | 1 day | ✅ Done (v0.5.0) |
+| **P3** | Event stream logging (portfolio-notify.sh) | Analytics, replay, debugging | 0.5 day | ✅ Done (v0.5.0) |
+| **P4** | MCP server (pm-intelligence) | Live state, tools, resources | 1-2 weeks | ✅ Done (v0.5.0) |
+| **P4.1** | Sprint analytics, approach suggestion, readiness | Deep process intelligence | 1 day | ✅ Done (v0.6.0) |
+| **P4.2** | Smart hooks (commit guard, stop guard) | Convention enforcement, work tracking | 0.5 day | ✅ Done (v0.6.0) |
+| **P4.3** | Git history mining (hotspots, coupling, risk) | Codebase risk intelligence | 1 day | ✅ Done (v0.6.0) |
+| **P4.4** | Predictive intelligence (completion, rework) | Forecasting from historical data | 1 day | ✅ Done (v0.7.0) |
+| **P4.5** | DORA metrics + knowledge risk | Engineering health assessment | 0.5 day | ✅ Done (v0.7.0) |
+| **P4.6** | Review learning + decision decay | Self-calibrating reviews | 0.5 day | ✅ Done (v0.7.0) |
 | **P5** | SQLite memory server (mcp-memory-keeper) | Cross-session persistence | 0.5 day | Ready to deploy |
 | **P6** | Plugin distribution format | Easier install, updates, sharing | 2-3 weeks | Design phase |
 | **P7** | claude-code-action integration | Assign issue → agent works → PR | 1 week | Research phase |
-| **P8** | Outcome tracker (git history mining) | Learn from rework patterns | 1 week | Design phase |
+| **P8** | Outcome tracker (git history mining) | Learn from rework patterns | 1 week | ✅ Done (v0.6.0) |
 | **P9** | Agent Teams prototype | Automated parallel development | 2 weeks | Experimental |
 | **P10** | Project-specific RAG | Semantic search across all knowledge | 2-3 weeks | Future |
+
+### Next Priorities (v0.8.0+)
+
+| Priority | What | Impact | Effort | Status |
+|----------|------|--------|--------|--------|
+| **P11** | E2E install test on real repo | Validates install works for new users | 0.5 day | Ready |
+| **P12** | Graph-based memory (entity-relationship) | Multi-hop reasoning across sessions | 1-2 weeks | Research |
+| **P13** | Review sub-agents (specialist decomposition) | Parallel expert review per domain | 1 week | Design |
+| **P14** | Monte Carlo sprint simulation | Probability-based sprint forecasting | 1 day | Ready |
+| **P15** | Context efficiency tracking | Measure AI context waste per issue | 0.5 day | Design |
 
 ---
 
