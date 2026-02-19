@@ -101,6 +101,9 @@ A native MCP server that gives Claude direct access to project state — no bash
 | **Triage** | `triage_issue` | One-call issue classification, priority, risk, assignment |
 | | `analyze_pr_impact` | Pre-merge dependency, knowledge, coupling analysis |
 | | `decompose_issue` | AI-powered issue decomposition with execution order |
+| **What-If** | `simulate_dependency_change` | "What if #X slips N days?" cascade modeling |
+| **Release** | `generate_release_notes` | Automated release notes from merged PRs |
+| **Session** | `optimize_session` | Context-aware session planning and prioritization |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |

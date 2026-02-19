@@ -44,6 +44,12 @@
  *   - explain_delay: "Why is this issue slow?" root cause analysis
  *   - compare_estimates: Prediction accuracy tracking and calibration
  *   - detect_patterns: Cross-cutting anomaly detection and early warnings
+ *   - triage_issue: One-call issue classification, priority, risk, assignment
+ *   - analyze_pr_impact: Pre-merge dependency, knowledge, coupling analysis
+ *   - decompose_issue: AI-powered issue decomposition with execution order
+ *   - simulate_dependency_change: "What if issue #X slips by N days?"
+ *   - generate_release_notes: Automated release notes from merged PRs
+ *   - optimize_session: Context-aware session planning and work prioritization
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -123,6 +129,9 @@ import {
   analyzePRImpact,
   decomposeIssue,
 } from "./triage.js";
+import { simulateDependencyChange } from "./whatif.js";
+import { generateReleaseNotes } from "./release.js";
+import { optimizeSession } from "./session.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
@@ -1939,6 +1948,160 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "simulate_dependency_change",
+  {
+    title: "Simulate Dependency Change",
+    description:
+      "What-if analysis: 'What happens if issue #X slips by N days?' " +
+      "Models cascading delay through the dependency graph, shows which issues " +
+      "are impacted and by how much, quantifies total schedule slip, critical " +
+      "path impact, and suggests mitigations with alternative scenarios. " +
+      "Set removeIssue=true to model removing an issue from the dependency chain entirely.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to model slipping"),
+      slipDays: z
+        .number()
+        .positive()
+        .describe("Number of days the issue would slip"),
+      removeIssue: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("If true, model removing this issue from the dependency chain"),
+    },
+  },
+  async ({ issueNumber, slipDays, removeIssue }) => {
+    try {
+      const result = await simulateDependencyChange(
+        issueNumber,
+        slipDays,
+        removeIssue
+      );
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "generate_release_notes",
+  {
+    title: "Generate Release Notes",
+    description:
+      "Build structured release notes from merged PRs and closed issues. " +
+      "Groups changes by area, classifies by type (feature/fix/breaking/etc), " +
+      "generates stakeholder summary, technical notes, and full markdown. " +
+      "Defaults to last 7 days if no date range specified.",
+    inputSchema: {
+      since: z
+        .string()
+        .optional()
+        .describe("Start date (YYYY-MM-DD). Defaults to 7 days ago"),
+      until: z
+        .string()
+        .optional()
+        .describe("End date (YYYY-MM-DD). Defaults to today"),
+      version: z
+        .string()
+        .optional()
+        .describe("Version label for the release. Defaults to the end date"),
+    },
+  },
+  async ({ since, until, version }) => {
+    try {
+      const result = await generateReleaseNotes(since, until, version);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "optimize_session",
+  {
+    title: "Optimize Session",
+    description:
+      "Context-aware session planning. Analyzes current project state — active " +
+      "issues, review queue, rework pending, dependency bottlenecks, stale items, " +
+      "anomalies — and recommends the most impactful work for this session. " +
+      "Returns a prioritized plan with time estimates, quick wins, and deferrals. " +
+      "Use at the start of every coding session for maximum impact.",
+    inputSchema: {
+      availableMinutes: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .default(120)
+        .describe("Available minutes for this session. Default 120"),
+      focusArea: z
+        .string()
+        .optional()
+        .describe("Optional: focus on a specific area (frontend, backend, etc)"),
+    },
+  },
+  async ({ availableMinutes, focusArea }) => {
+    try {
+      const result = await optimizeSession(availableMinutes, focusArea);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
 
 const ALL_TOOLS = [
@@ -1957,6 +2120,7 @@ const ALL_TOOLS = [
   "explain_delay", "compare_estimates",
   "detect_patterns",
   "triage_issue", "analyze_pr_impact", "decompose_issue",
+  "simulate_dependency_change", "generate_release_notes", "optimize_session",
 ];
 
 async function main() {
