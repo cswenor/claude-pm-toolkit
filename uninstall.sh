@@ -191,7 +191,6 @@ if ! $CONFIRM; then
 fi
 
 removed_count=0
-skipped_count=0
 
 # Remove individual files
 log_section "Toolkit files"
