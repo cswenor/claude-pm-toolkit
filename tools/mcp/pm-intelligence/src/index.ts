@@ -41,6 +41,8 @@
  *   - suggest_next_issue: "What should I work on next?" recommendation engine
  *   - generate_standup: Auto-generate daily standup from recent activity
  *   - generate_retro: Data-driven sprint retrospective
+ *   - explain_delay: "Why is this issue slow?" root cause analysis
+ *   - compare_estimates: Prediction accuracy tracking and calibration
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -110,6 +112,10 @@ import {
   generateStandup,
   generateRetro,
 } from "./operations.js";
+import {
+  explainDelay,
+  compareEstimates,
+} from "./explain.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
@@ -1668,6 +1674,93 @@ server.registerTool(
   }
 );
 
+// ─── EXPLANATORY INTELLIGENCE ────────────────────────────
+
+server.registerTool(
+  "explain_delay",
+  {
+    title: "Explain Delay",
+    description:
+      "Root cause analysis for why an issue is slow or stuck. Examines dependency " +
+      "chains, rework cycles, bottleneck states, completion risk signals, and time " +
+      "allocation (active vs waiting). Returns prioritized delay factors with evidence, " +
+      "a chronological timeline, and actionable recommendations.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("GitHub issue number to analyze"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const explanation = await explainDelay(issueNumber);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(explanation, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "compare_estimates",
+  {
+    title: "Compare Estimates",
+    description:
+      "Compares predicted vs actual cycle times across completed issues. Measures " +
+      "prediction accuracy at P50/P80/P95 levels, rework prediction hit rate, and " +
+      "identifies systematic bias (optimistic/pessimistic/calibrated). Use to improve " +
+      "future estimation accuracy and determine which confidence level to use for commitments.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Days to look back for completed issues (default: 30)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const calibration = await compareEstimates(days ?? 30);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(calibration, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
 
 const ALL_TOOLS = [
@@ -1683,6 +1776,7 @@ const ALL_TOOLS = [
   "visualize_dependencies",
   "get_project_dashboard",
   "suggest_next_issue", "generate_standup", "generate_retro",
+  "explain_delay", "compare_estimates",
 ];
 
 async function main() {
