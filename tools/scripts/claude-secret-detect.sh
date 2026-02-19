@@ -71,19 +71,12 @@ for (( _i=0; _i<_pattern_count; _i++ )); do
 
     [[ -z "$_pattern" ]] && continue
 
-    # Validate regex: grep returns 0=match, 1=no match, 2=invalid regex
+    # Validate regex: grep returns 2 for invalid regex
     echo "" | grep -qE "$_pattern" 2>/dev/null
     _grep_exit=$?
-    case $_grep_exit in
-        0|1) ;; # Valid regex (0=match on empty, 1=no match — both are fine)
-        2)
-            warn "Secret detection: invalid regex pattern '$_name'. Tool output may contain secrets."
-            ;;
-        *)
-            # Unexpected grep failure (e.g. 127=not found in restricted env)
-            warn "Secret detection: regex validation failed for '$_name' (exit $_grep_exit). Tool output may contain secrets."
-            ;;
-    esac
+    if [[ "$_grep_exit" -eq 2 ]]; then
+        warn "Secret detection: invalid regex pattern '$_name'. Tool output may contain secrets."
+    fi
 
     # Check for matches
     _matches=$(echo "$output_text" | grep -oE "$_pattern" 2>/dev/null) || continue

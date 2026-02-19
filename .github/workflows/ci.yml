@@ -90,6 +90,20 @@ jobs:
           fi
           echo "OK: secret-patterns.json ($PATTERN_COUNT patterns)"
 
+  guard-tests:
+    name: Guard & Ledger Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq and python3
+        run: sudo apt-get install -y jq python3
+      - name: Run command guard tests
+        run: ./tools/scripts/claude-command-guard.test.sh
+      - name: Run secret guard tests
+        run: ./tools/scripts/claude-secret-guard.test.sh
+      - name: Run codex ledger tests
+        run: ./tools/scripts/codex-ledger.test.sh
+
   install-test:
     name: Install Test
     runs-on: ubuntu-latest
