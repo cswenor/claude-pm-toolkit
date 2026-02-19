@@ -26,6 +26,12 @@ set -euo pipefail
 
 # --- Guard: no-op outside portfolio sessions ---
 
+# Exit silently if template placeholder has not been resolved (running in toolkit source repo)
+_PM_PREFIX="{{PREFIX}}"
+if [[ "$_PM_PREFIX" == *"{"* ]]; then
+  exit 0
+fi
+
 # shellcheck disable=SC2296
 ISSUE_NUM="${{{PREFIX}}_ISSUE_NUM:-}"
 
