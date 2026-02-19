@@ -30,8 +30,8 @@ jobs:
         run: |
           # All placeholders should be {{UPPER_SNAKE}} format
           # Find any malformed ones (missing braces, wrong format)
-          if grep -rn '{[A-Z_]*}' --include='*.sh' --include='*.md' --include='*.json' \
-             | grep -v '{{' | grep -v '\${' | grep -v '.git/' | grep -v 'CHANGELOG' | grep -v 'CONTRIBUTING'; then
+          if grep -rn '{[A-Z_][A-Z_]*}' --include='*.sh' --include='*.md' --include='*.json' \
+             | grep -v '{{' | grep -v '\${' | grep -v '{}' | grep -v '.git/' | grep -v 'CHANGELOG' | grep -v 'CONTRIBUTING'; then
             echo "ERROR: Found malformed placeholder (single braces instead of double)"
             exit 1
           fi

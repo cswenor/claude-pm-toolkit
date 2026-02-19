@@ -77,13 +77,13 @@ seconds_since() {
   local now
   now=$(date -u +%s)
   # macOS date -j -f for parsing ISO timestamps
-  local then
+  local past_ts
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    then=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null || echo "$now")
+    past_ts=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null || echo "$now")
   else
-    then=$(date -d "$ts" +%s 2>/dev/null || echo "$now")
+    past_ts=$(date -d "$ts" +%s 2>/dev/null || echo "$now")
   fi
-  echo $(( now - then ))
+  echo $(( now - past_ts ))
 }
 
 # --- Shared helpers ---

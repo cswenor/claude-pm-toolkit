@@ -26,6 +26,7 @@ set -euo pipefail
 
 # --- Guard: no-op outside portfolio sessions ---
 
+# shellcheck disable=SC2296 — {{PREFIX}} is a template placeholder resolved at install time
 ISSUE_NUM="${{{PREFIX}}_ISSUE_NUM:-}"
 
 # If {{PREFIX}}_ISSUE_NUM is not set, this is not a portfolio-managed session — silent no-op

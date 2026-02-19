@@ -20,6 +20,7 @@ fi
 FILE_PATH="$1"
 
 # Resolve to absolute path for consistent matching (only expand ~ and ~/..., not ~user/...)
+# shellcheck disable=SC2088 — intentional string comparison, not tilde expansion
 if [[ "$FILE_PATH" == "~/"* || "$FILE_PATH" == "~" ]]; then
     FILE_PATH="${HOME}${FILE_PATH#\~}"
 fi
