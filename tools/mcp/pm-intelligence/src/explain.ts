@@ -115,19 +115,20 @@ export async function explainDelay(
   );
 
   for (const evt of issueEvents) {
-    if (evt.event === "state_transition") {
+    if (evt.event_type === "state_transition") {
       timeline.push({
         date: evt.timestamp.split("T")[0],
-        event: `${evt.from_state} → ${evt.to_state}`,
-        detail: evt.message ?? "",
+        event: `${evt.from_value} → ${evt.to_value}`,
+        detail: evt.to_value ?? "",
       });
-    } else if (evt.event === "tool_use" && evt.tool) {
+    } else if (evt.event_type === "tool_use" && (evt.metadata as any)?.tool) {
       // Only include significant tool uses
-      if (["move_issue", "pm move", "pm add"].some((t) => evt.tool?.includes(t))) {
+      const tool = (evt.metadata as any).tool as string;
+      if (["move_issue", "pm move", "pm add"].some((t) => tool.includes(t))) {
         timeline.push({
           date: evt.timestamp.split("T")[0],
-          event: evt.event,
-          detail: evt.tool,
+          event: evt.event_type,
+          detail: tool,
         });
       }
     }
@@ -193,11 +194,11 @@ export async function explainDelay(
 
   // 2. Rework cycles
   const reworkTransitions = issueEvents.filter(
-    (e) => e.event === "state_transition" && e.to_state === "Rework"
+    (e) => e.event_type === "state_transition" && e.to_value === "Rework"
   );
   if (reworkTransitions.length > 0) {
     const reworkReasons = reworkTransitions
-      .map((e) => e.message)
+      .map((e) => e.to_value)
       .filter(Boolean);
 
     factors.push({
@@ -374,11 +375,11 @@ export async function compareEstimates(
       const events = await getEvents(100, { issueNumber: outcome.issue_number });
       const activeEvent = events.find(
         (e) =>
-          e.event === "state_transition" && e.to_state === "Active"
+          e.event_type === "state_transition" && e.to_value === "Active"
       );
       const doneEvent = events.find(
         (e) =>
-          e.event === "state_transition" && e.to_state === "Done"
+          e.event_type === "state_transition" && e.to_value === "Done"
       );
 
       let actualCycleDays: number;

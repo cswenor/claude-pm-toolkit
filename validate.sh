@@ -3,8 +3,8 @@ set -euo pipefail
 
 # validate.sh - Post-install validation for claude-pm-toolkit
 #
-# Checks that all toolkit files are present, all placeholders are resolved,
-# scripts are executable, and project board integration works.
+# v0.15.0: Local-first SQLite architecture. Validates pm CLI, MCP server build,
+# .claude-pm-toolkit.json config, CLAUDE.md sentinels, hooks, and gitignore.
 #
 # Usage:
 #   ./validate.sh [/path/to/repo]     # Defaults to current directory
@@ -48,17 +48,17 @@ CHECKS PERFORMED
   1. Required/optional files exist
   2. Script permissions (executable)
   3. Placeholder resolution (no remaining {{...}} tokens)
-  4. pm.config.sh values (non-empty, no TODOs, no unreplaced placeholders)
-  5. CLAUDE.md sentinel block integrity
-  6. settings.json validity and hook configuration
-  7. .gitignore rules (.claude, .codex-work/)
-  8. Metadata file (.claude-pm-toolkit.json) validity
+  4. Configuration (.claude-pm-toolkit.json validity)
+  5. MCP server build (build/index.js, build/cli.js exist)
+  6. CLAUDE.md sentinel block integrity
+  7. settings.json validity and hook configuration
+  8. .gitignore rules (.claude, .codex-work/, .pm/)
   9. GitHub connectivity (optional, non-blocking)
 
 AUTO-FIX (--fix)
   - Script permissions: chmod +x on non-executable .sh files
   - .gitignore: convert blanket .claude → selective entries
-  - .gitignore: add .codex-work/ if missing
+  - .gitignore: add .codex-work/ and .pm/ if missing
 
 EXIT CODES
   0 - All checks passed
@@ -88,15 +88,9 @@ warn() { WARN=$((WARN+1)); log_warn "$@"; }
 log_section "1. Required Files"
 
 REQUIRED_FILES=(
-  "tools/scripts/pm.config.sh"
-  "tools/scripts/project-add.sh"
-  "tools/scripts/project-move.sh"
-  "tools/scripts/project-status.sh"
-  "tools/scripts/project-archive-done.sh"
   "tools/scripts/worktree-setup.sh"
   "tools/scripts/worktree-detect.sh"
   "tools/scripts/worktree-cleanup.sh"
-  "tools/scripts/worktree-ports.conf"
   ".claude/settings.json"
   ".claude/skills/issue/SKILL.md"
   ".claude/skills/pm-review/SKILL.md"
@@ -105,6 +99,8 @@ REQUIRED_FILES=(
   "docs/PM_PLAYBOOK.md"
   "docs/PM_PROJECT_CONFIG.md"
   ".claude-pm-toolkit.json"
+  "tools/mcp/pm-intelligence/package.json"
+  "tools/mcp/pm-intelligence/src/index.ts"
 )
 
 for f in "${REQUIRED_FILES[@]}"; do
@@ -143,11 +139,22 @@ done
 
 # Optional files (warn if missing)
 OPTIONAL_FILES=(
+  "tools/scripts/worktree-ports.conf"
   "tools/scripts/worktree-urls.conf"
   "tools/scripts/find-plan.sh"
   "tools/scripts/tmux-session.sh"
   "tools/scripts/portfolio-notify.sh"
   "tools/scripts/codex-mcp-overrides.sh"
+  "tools/scripts/claude-command-guard.sh"
+  "tools/scripts/claude-secret-guard.sh"
+  "tools/scripts/claude-secret-bash-guard.sh"
+  "tools/scripts/claude-secret-detect.sh"
+  "tools/scripts/claude-secret-check-path.sh"
+  "tools/scripts/pm-commit-guard.sh"
+  "tools/scripts/pm-stop-guard.sh"
+  "tools/scripts/pm-event-log.sh"
+  "tools/scripts/pm-session-context.sh"
+  "tools/scripts/makefile-targets.mk"
   "tools/config/command-guard.conf"
   "tools/config/secret-patterns.json"
   "tools/config/secret-paths.conf"
@@ -155,36 +162,6 @@ OPTIONAL_FILES=(
   "reports/weekly/analysis/.gitkeep"
   ".github/workflows/pm-post-merge.yml"
   ".github/workflows/pm-pr-check.yml"
-  "tools/mcp/pm-intelligence/package.json"
-  "tools/mcp/pm-intelligence/src/index.ts"
-  "tools/mcp/pm-intelligence/src/config.ts"
-  "tools/mcp/pm-intelligence/src/github.ts"
-  "tools/mcp/pm-intelligence/src/memory.ts"
-  "tools/mcp/pm-intelligence/src/analytics.ts"
-  "tools/mcp/pm-intelligence/src/history.ts"
-  "tools/mcp/pm-intelligence/src/predict.ts"
-  "tools/mcp/pm-intelligence/src/review-learning.ts"
-  "tools/mcp/pm-intelligence/src/simulate.ts"
-  "tools/mcp/pm-intelligence/src/guardrails.ts"
-  "tools/mcp/pm-intelligence/src/graph.ts"
-  "tools/mcp/pm-intelligence/src/capacity.ts"
-  "tools/mcp/pm-intelligence/src/planner.ts"
-  "tools/mcp/pm-intelligence/src/visualize.ts"
-  "tools/mcp/pm-intelligence/src/dashboard.ts"
-  "tools/mcp/pm-intelligence/src/operations.ts"
-  "tools/mcp/pm-intelligence/src/explain.ts"
-  "tools/mcp/pm-intelligence/src/anomaly.ts"
-  "tools/mcp/pm-intelligence/src/triage.ts"
-  "tools/mcp/pm-intelligence/src/whatif.ts"
-  "tools/mcp/pm-intelligence/src/release.ts"
-  "tools/mcp/pm-intelligence/src/session.ts"
-  "tools/mcp/pm-intelligence/src/review-intel.ts"
-  "tools/mcp/pm-intelligence/src/context.ts"
-  "tools/mcp/pm-intelligence/src/batch.ts"
-  "tools/mcp/pm-intelligence/src/risk-radar.ts"
-  "tools/scripts/pm-commit-guard.sh"
-  "tools/scripts/pm-stop-guard.sh"
-  "tools/scripts/pm-event-log.sh"
   ".mcp.json"
 )
 
@@ -231,18 +208,17 @@ while IFS= read -r line; do
 
   # Skip template-like references in docs (e.g. "format: {{prefix}}-$ISSUE_NUM")
   if [[ "$rel" == *"PM_PLAYBOOK.md"* ]] || [[ "$rel" == *"SKILL.md"* ]]; then
-    # Only count if it looks like an unreplaced config placeholder, not a documentation example
-    if echo "$match" | grep -qE '\{\{(OWNER|REPO|PROJECT_ID|PROJECT_NUMBER|DISPLAY_NAME|PREFIX|prefix|FIELD_|OPT_|TEST_COMMAND|SETUP_COMMAND|DEV_COMMAND)\}\}'; then
+    # Only count if it looks like an unreplaced config placeholder
+    if echo "$match" | grep -qE '\{\{(OWNER|REPO|DISPLAY_NAME|PREFIX|prefix|TEST_COMMAND|SETUP_COMMAND|DEV_COMMAND)\}\}'; then
       PLACEHOLDER_COUNT=$((PLACEHOLDER_COUNT+1))
       PLACEHOLDER_FILES="$PLACEHOLDER_FILES\n  $rel: $match"
     fi
     continue
   fi
 
-  # In shell scripts, skip echo/printf/comment lines — these reference placeholders
-  # as literal text (e.g. error messages about unreplaced placeholders), not actual placeholders
+  # In shell scripts, skip echo/printf/comment lines
   if [[ "$rel" == *.sh ]]; then
-    content="${match#*:}"  # Strip line number prefix
+    content="${match#*:}"
     if echo "$content" | grep -qE '^\s*(echo |printf |#)'; then
       continue
     fi
@@ -262,77 +238,101 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. pm.config.sh validation
+# 4. Configuration (.claude-pm-toolkit.json)
 # ---------------------------------------------------------------------------
-log_section "4. Configuration (pm.config.sh)"
+log_section "4. Configuration (.claude-pm-toolkit.json)"
 
-CONFIG_FILE="$TARGET/tools/scripts/pm.config.sh"
-if [[ -f "$CONFIG_FILE" ]]; then
-  # Source it in a subshell to check values
-  PM_OWNER=""
-  PM_PROJECT_ID=""
-  PM_PROJECT_NUMBER=""
-  PM_FIELD_WORKFLOW=""
-  PM_WORKFLOW_ACTIVE=""
+METADATA_FILE="$TARGET/.claude-pm-toolkit.json"
+if [[ -f "$METADATA_FILE" ]]; then
+  if jq empty "$METADATA_FILE" 2>/dev/null; then
+    pass ".claude-pm-toolkit.json is valid JSON"
 
-  # Safe parse — extract values without eval (printf -v doesn't execute content)
-  while IFS='=' read -r key value; do
-    # Strip surrounding quotes from value
-    value="${value#\"}"
-    value="${value%\"}"
-    value="${value#\'}"
-    value="${value%\'}"
-    case "$key" in
-      PM_*) printf -v "$key" '%s' "$value" 2>/dev/null || true ;;
-    esac
-  done < <(grep -E '^PM_[A-Z_]+=' "$CONFIG_FILE" | head -50)
+    TK_VERSION=$(jq -r '.toolkit_version // empty' "$METADATA_FILE")
+    if [[ -n "$TK_VERSION" ]]; then
+      pass "toolkit_version: $TK_VERSION"
+    else
+      warn "toolkit_version not set"
+    fi
 
-  if [[ -n "$PM_OWNER" ]]; then
-    pass "PM_OWNER=$PM_OWNER"
+    TK_OWNER=$(jq -r '.owner // empty' "$METADATA_FILE")
+    if [[ -n "$TK_OWNER" ]]; then
+      pass "owner: $TK_OWNER"
+    else
+      fail "owner not set — pm sync will not work"
+    fi
+
+    TK_REPO=$(jq -r '.repo // empty' "$METADATA_FILE")
+    if [[ -n "$TK_REPO" ]]; then
+      pass "repo: $TK_REPO"
+    else
+      fail "repo not set — pm sync will not work"
+    fi
+
+    TK_PREFIX=$(jq -r '.prefix_lower // empty' "$METADATA_FILE")
+    if [[ -n "$TK_PREFIX" ]]; then
+      pass "prefix: $TK_PREFIX"
+    else
+      warn "prefix_lower not set"
+    fi
   else
-    fail "PM_OWNER is empty"
-  fi
-
-  if [[ -n "$PM_PROJECT_ID" ]] && [[ "$PM_PROJECT_ID" != *"TODO"* ]]; then
-    pass "PM_PROJECT_ID is set"
-  else
-    fail "PM_PROJECT_ID is empty or contains TODO"
-  fi
-
-  if [[ -n "$PM_PROJECT_NUMBER" ]]; then
-    pass "PM_PROJECT_NUMBER=$PM_PROJECT_NUMBER"
-  else
-    fail "PM_PROJECT_NUMBER is empty"
-  fi
-
-  if [[ -n "$PM_FIELD_WORKFLOW" ]] && [[ "$PM_FIELD_WORKFLOW" != *"TODO"* ]]; then
-    pass "PM_FIELD_WORKFLOW is set"
-  else
-    fail "PM_FIELD_WORKFLOW is empty or TODO"
-  fi
-
-  if [[ -n "$PM_WORKFLOW_ACTIVE" ]] && [[ "$PM_WORKFLOW_ACTIVE" != *"TODO"* ]]; then
-    pass "PM_WORKFLOW_ACTIVE is set"
-  else
-    fail "PM_WORKFLOW_ACTIVE is empty or TODO — project-move.sh will fail"
-  fi
-
-  # Check for unreplaced placeholders in any field (catches broken installs)
-  UNRESOLVED_COUNT=$(grep -cE '^PM_[A-Z_]+="[^"]*\{\{' "$CONFIG_FILE" 2>/dev/null || true)
-  UNRESOLVED_COUNT="${UNRESOLVED_COUNT:-0}"
-  if [[ "$UNRESOLVED_COUNT" -eq 0 ]]; then
-    pass "No unreplaced {{...}} placeholders in config values"
-  else
-    fail "$UNRESOLVED_COUNT config value(s) contain unreplaced {{...}} placeholders"
+    fail ".claude-pm-toolkit.json is not valid JSON — may be corrupted"
   fi
 else
-  fail "pm.config.sh not found"
+  fail ".claude-pm-toolkit.json not found — toolkit not properly installed"
 fi
 
 # ---------------------------------------------------------------------------
-# 5. CLAUDE.md sentinel check
+# 5. MCP Server Build
 # ---------------------------------------------------------------------------
-log_section "5. CLAUDE.md Integration"
+log_section "5. MCP Server Build"
+
+MCP_DIR="$TARGET/tools/mcp/pm-intelligence"
+
+if [[ -d "$MCP_DIR" ]]; then
+  pass "MCP server source directory exists"
+
+  if [[ -f "$MCP_DIR/build/index.js" ]]; then
+    pass "build/index.js exists (MCP server entry)"
+  else
+    fail "build/index.js missing — run: cd $MCP_DIR && npm install && npm run build"
+  fi
+
+  if [[ -f "$MCP_DIR/build/cli.js" ]]; then
+    pass "build/cli.js exists (pm CLI entry)"
+  else
+    fail "build/cli.js missing — run: cd $MCP_DIR && npm install && npm run build"
+  fi
+
+  if [[ -d "$MCP_DIR/node_modules" ]]; then
+    pass "node_modules installed"
+    if [[ -d "$MCP_DIR/node_modules/better-sqlite3" ]]; then
+      pass "better-sqlite3 dependency present"
+    else
+      fail "better-sqlite3 missing — run: cd $MCP_DIR && npm install"
+    fi
+  else
+    fail "node_modules missing — run: cd $MCP_DIR && npm install"
+  fi
+
+  # Check .mcp.json references the server
+  MCP_JSON="$TARGET/.mcp.json"
+  if [[ -f "$MCP_JSON" ]]; then
+    if jq -e '.mcpServers["pm-intelligence"]' "$MCP_JSON" >/dev/null 2>&1; then
+      pass "pm-intelligence registered in .mcp.json"
+    else
+      warn "pm-intelligence not found in .mcp.json — MCP tools won't load"
+    fi
+  else
+    warn ".mcp.json not found — MCP tools won't load"
+  fi
+else
+  fail "MCP server directory not found: tools/mcp/pm-intelligence"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. CLAUDE.md sentinel check
+# ---------------------------------------------------------------------------
+log_section "6. CLAUDE.md Integration"
 
 CLAUDE_MD="$TARGET/CLAUDE.md"
 if [[ -f "$CLAUDE_MD" ]]; then
@@ -342,7 +342,6 @@ if [[ -f "$CLAUDE_MD" ]]; then
   HAS_END=$(grep -cF "claude-pm-toolkit:end" "$CLAUDE_MD" || echo 0)
 
   if [[ "$HAS_START" -gt 0 ]] && [[ "$HAS_END" -gt 0 ]]; then
-    # Count lines between sentinels (should have content)
     SENTINEL_LINES=$(awk '/claude-pm-toolkit:start/{found=1;next} /claude-pm-toolkit:end/{found=0} found{c++} END{print c+0}' "$CLAUDE_MD")
     if [[ "$SENTINEL_LINES" -gt 0 ]]; then
       pass "PM toolkit sentinel block present ($SENTINEL_LINES lines of content)"
@@ -359,15 +358,14 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. settings.json hooks check
+# 7. settings.json hooks check
 # ---------------------------------------------------------------------------
-log_section "6. Claude Settings (hooks)"
+log_section "7. Claude Settings (hooks)"
 
 SETTINGS_FILE="$TARGET/.claude/settings.json"
 if [[ -f "$SETTINGS_FILE" ]]; then
   pass ".claude/settings.json exists"
 
-  # Validate JSON structure before inspecting hooks
   if ! jq empty "$SETTINGS_FILE" 2>/dev/null; then
     fail ".claude/settings.json is not valid JSON — may be corrupted"
   else
@@ -389,9 +387,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. .gitignore check
+# 8. .gitignore check
 # ---------------------------------------------------------------------------
-log_section "7. Gitignore"
+log_section "8. Gitignore"
 
 GITIGNORE="$TARGET/.gitignore"
 if [[ -f "$GITIGNORE" ]]; then
@@ -424,37 +422,19 @@ if [[ -f "$GITIGNORE" ]]; then
       pass ".codex-work/ — FIXED (added to .gitignore)"
     fi
   fi
-else
-  warn "No .gitignore found"
-fi
 
-# ---------------------------------------------------------------------------
-# 8. Metadata file validation
-# ---------------------------------------------------------------------------
-log_section "8. Metadata File"
-
-METADATA_FILE="$TARGET/.claude-pm-toolkit.json"
-if [[ -f "$METADATA_FILE" ]]; then
-  if jq empty "$METADATA_FILE" 2>/dev/null; then
-    pass ".claude-pm-toolkit.json is valid JSON"
-    # Check required fields
-    TK_VERSION=$(jq -r '.toolkit_version // empty' "$METADATA_FILE")
-    if [[ -n "$TK_VERSION" ]]; then
-      pass "toolkit_version: $TK_VERSION"
-    else
-      warn "toolkit_version not set in metadata"
-    fi
-    TK_OWNER=$(jq -r '.owner // empty' "$METADATA_FILE")
-    if [[ -n "$TK_OWNER" ]]; then
-      pass "owner: $TK_OWNER"
-    else
-      warn "owner not set in metadata"
-    fi
+  if grep -qF '.pm/' "$GITIGNORE"; then
+    pass ".pm/ is gitignored"
   else
-    fail ".claude-pm-toolkit.json is not valid JSON — may be corrupted"
+    warn ".pm/ not gitignored (SQLite database should not be committed)"
+    if $FIX_MODE; then
+      echo '.pm/' >> "$GITIGNORE"
+      FIXED=$((FIXED+1))
+      pass ".pm/ — FIXED (added to .gitignore)"
+    fi
   fi
 else
-  warn ".claude-pm-toolkit.json not found — toolkit may not be fully installed"
+  warn "No .gitignore found"
 fi
 
 # ---------------------------------------------------------------------------
@@ -463,24 +443,18 @@ fi
 log_section "9. GitHub Connectivity (optional)"
 
 if command -v gh &>/dev/null && gh auth status &>/dev/null; then
-  if [[ -f "$CONFIG_FILE" ]]; then
-    while IFS='=' read -r key value; do
-      value="${value#\"}"
-      value="${value%\"}"
-      case "$key" in
-        PM_OWNER|PM_PROJECT_NUMBER) printf -v "$key" '%s' "$value" 2>/dev/null || true ;;
-      esac
-    done < <(grep -E '^PM_(OWNER|PROJECT_NUMBER)=' "$CONFIG_FILE" | head -5)
-    if [[ -n "${PM_OWNER:-}" ]] && [[ -n "${PM_PROJECT_NUMBER:-}" ]]; then
-      if gh project view "$PM_PROJECT_NUMBER" --owner "$PM_OWNER" &>/dev/null; then
-        pass "Project #$PM_PROJECT_NUMBER accessible for $PM_OWNER"
+  pass "gh CLI authenticated"
+
+  # Read owner/repo from metadata file
+  if [[ -f "$METADATA_FILE" ]] && jq empty "$METADATA_FILE" 2>/dev/null; then
+    GH_OWNER=$(jq -r '.owner // empty' "$METADATA_FILE")
+    GH_REPO=$(jq -r '.repo // empty' "$METADATA_FILE")
+
+    if [[ -n "$GH_OWNER" ]] && [[ -n "$GH_REPO" ]]; then
+      if gh repo view "$GH_OWNER/$GH_REPO" --json name >/dev/null 2>&1; then
+        pass "Repository $GH_OWNER/$GH_REPO is accessible"
       else
-        # Try @me fallback
-        if gh project view "$PM_PROJECT_NUMBER" --owner @me &>/dev/null; then
-          pass "Project #$PM_PROJECT_NUMBER accessible (via @me)"
-        else
-          warn "Cannot access project #$PM_PROJECT_NUMBER for $PM_OWNER (check permissions)"
-        fi
+        warn "Cannot access repository $GH_OWNER/$GH_REPO (check permissions)"
       fi
     fi
   fi
@@ -512,8 +486,8 @@ if [[ $FAIL -gt 0 ]]; then
   fi
   printf ".\n"
   if ! $FIX_MODE; then
-    printf "\n${DIM}Tip: ./validate.sh --fix %s  (auto-fixes permissions and .gitignore)${RESET}\n" "$TARGET"
-    printf "${DIM}     install.sh --update %s   (re-discovers project field IDs)${RESET}\n" "$TARGET"
+    printf "\n${DIM}Tip: ./validate.sh --fix %s  (auto-fixes permissions, .gitignore)${RESET}\n" "$TARGET"
+    printf "${DIM}     ./install.sh --update %s  (refresh toolkit files)${RESET}\n" "$TARGET"
   fi
   exit 1
 elif [[ $WARN -gt 0 ]]; then

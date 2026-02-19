@@ -3,8 +3,11 @@ set -euo pipefail
 
 # install.sh - Install or update claude-pm-toolkit in an existing repository
 #
+# v0.15.0: Local-first architecture. No more GitHub Projects field IDs.
+# Config is just owner/repo, everything else lives in local SQLite.
+#
 # Modes:
-#   Fresh install:  Prompts for config, discovers field IDs, copies files
+#   Fresh install:  Prompts for config, copies files, builds MCP server
 #   Update:         Reads saved config, overwrites toolkit files, preserves customizations
 #
 # Usage:
@@ -51,32 +54,23 @@ USAGE
 
 MODES
   Fresh install (default):
-    - Prompts for project configuration
-    - Discovers GitHub Projects v2 field IDs via GraphQL
+    - Prompts for project configuration (owner, repo, prefix)
     - Copies template files with replacements applied
+    - Builds MCP server (pm-intelligence)
     - Creates .claude-pm-toolkit.json metadata file
+    - Runs initial GitHub sync into local SQLite
 
   Update (--update):
     - Reads config from existing .claude-pm-toolkit.json
     - Overwrites toolkit-managed files (scripts, skills, docs)
     - Preserves user customizations (ports.conf, urls.conf, PM_PROJECT_CONFIG.md)
     - Refreshes CLAUDE.md sentinel block and settings.json hooks
-
-  Copy rules (fresh install):
-    - New files:              copied with replacements applied
-    - Existing files:         skipped (not clobbered)
-    - .claude/settings.json:  merged (hooks from template added)
-    - CLAUDE.md:              content appended between sentinel comments
-
-  Copy rules (update):
-    - Toolkit-managed files:  overwritten with latest version
-    - User config files:      preserved (never overwritten)
-    - .claude/settings.json:  merged (new hooks added)
-    - CLAUDE.md:              sentinel block replaced
+    - Rebuilds MCP server
 
 PREREQUISITES
-  - gh CLI (authenticated, with 'project' scope)
+  - gh CLI (authenticated)
   - jq
+  - node >= 18
   - Target directory must be a git repository
 
 ARGUMENTS
@@ -111,6 +105,9 @@ fi
 if ! command -v jq &>/dev/null; then
   MISSING_DEPS+=("jq (brew install jq  /  apt install jq)")
 fi
+if ! command -v node &>/dev/null; then
+  MISSING_DEPS+=("node >= 18 (https://nodejs.org)")
+fi
 
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
   log_error "Missing required tools:"
@@ -119,19 +116,21 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
   done
   exit 1
 fi
-log_ok "gh and jq found"
+log_ok "gh, jq, and node found"
+
+# Check node version
+NODE_MAJOR=$(node -e 'console.log(process.versions.node.split(".")[0])')
+if [[ "$NODE_MAJOR" -lt 18 ]]; then
+  log_error "Node.js >= 18 required (found v$(node --version))"
+  exit 1
+fi
+log_ok "Node.js v$(node --version)"
 
 if ! gh auth status &>/dev/null; then
   log_error "gh CLI is not authenticated. Run: gh auth login"
   exit 1
 fi
 log_ok "gh authenticated"
-
-if ! gh auth status 2>&1 | grep -q "'project'"; then
-  log_warn "gh token may be missing 'project' scope."
-  log_warn "If project board writes fail later, run:"
-  log_warn "  gh auth refresh -s project --hostname github.com"
-fi
 
 # ---------------------------------------------------------------------------
 # Validate target argument
@@ -233,8 +232,6 @@ if $UPDATE_MODE; then
   # Read all values from metadata
   OWNER=$(jq -r '.owner' "$METADATA_FILE")
   REPO=$(jq -r '.repo' "$METADATA_FILE")
-  PROJECT_NUMBER=$(jq -r '.project_number' "$METADATA_FILE")
-  PROJECT_ID=$(jq -r '.project_id' "$METADATA_FILE")
   PREFIX_LOWER=$(jq -r '.prefix_lower' "$METADATA_FILE")
   PREFIX_UPPER=$(jq -r '.prefix_upper' "$METADATA_FILE")
   DISPLAY_NAME=$(jq -r '.display_name' "$METADATA_FILE")
@@ -242,7 +239,7 @@ if $UPDATE_MODE; then
   SETUP_COMMAND=$(jq -r '.setup_command' "$METADATA_FILE")
   DEV_COMMAND=$(jq -r '.dev_command' "$METADATA_FILE")
 
-  log_ok "Loaded config: $OWNER/$REPO (project #$PROJECT_NUMBER)"
+  log_ok "Loaded config: $OWNER/$REPO"
   log_info "Prefix: $PREFIX_LOWER / $PREFIX_UPPER"
   log_info "Display: $DISPLAY_NAME"
 fi
@@ -258,103 +255,6 @@ if ! $UPDATE_MODE; then
 
   OWNER=$(prompt_with_default "GitHub owner (org or user)" "$DETECTED_OWNER")
   REPO=$(prompt_with_default "GitHub repo name" "$DETECTED_REPO")
-  PROJECT_NUMBER=$(prompt_with_default "GitHub Project number (existing number, or 'new' to create)" "new")
-
-  # If user entered "new", create a project board with all required fields
-  if [[ "$PROJECT_NUMBER" == "new" ]]; then
-    log_section "Creating GitHub Projects v2 board"
-    PROJECT_TITLE=$(prompt_with_default "Project board title" "$REPO")
-    log_info "Creating project '$PROJECT_TITLE'..."
-    CREATE_RESULT=$(gh project create --owner "$OWNER" --title "$PROJECT_TITLE" --format json 2>&1) || {
-      log_warn "Project create failed for owner '$OWNER', trying personal account (@me)..."
-      CREATE_RESULT=$(gh project create --owner @me --title "$PROJECT_TITLE" --format json 2>&1) || {
-        log_error "Failed to create project: $CREATE_RESULT"
-        exit 1
-      }
-    }
-    PROJECT_NUMBER=$(echo "$CREATE_RESULT" | jq -r '.number')
-    log_ok "Created project #$PROJECT_NUMBER"
-
-    log_info "Adding Workflow field..."
-    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Workflow" --data-type "SINGLE_SELECT" \
-      --single-select-options "Backlog,Ready,Active,Review,Rework,Done" 2>/dev/null || \
-    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Workflow" --data-type "SINGLE_SELECT" \
-      --single-select-options "Backlog,Ready,Active,Review,Rework,Done" 2>/dev/null
-    log_ok "  Workflow: Backlog, Ready, Active, Review, Rework, Done"
-
-    log_info "Adding Priority field..."
-    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Priority" --data-type "SINGLE_SELECT" \
-      --single-select-options "Critical,High,Normal" 2>/dev/null || \
-    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Priority" --data-type "SINGLE_SELECT" \
-      --single-select-options "Critical,High,Normal" 2>/dev/null
-    log_ok "  Priority: Critical, High, Normal"
-
-    log_info "Adding Area field..."
-    # Auto-detect project stack for smarter area suggestions
-    DETECTED_AREAS="Frontend,Backend,Infra,Docs"
-    STACK_HINTS=""
-    if [[ -f "$TARGET/package.json" ]]; then
-      PKG=$(cat "$TARGET/package.json" 2>/dev/null || echo "{}")
-      if echo "$PKG" | grep -qE '"(svelte|sveltekit|@sveltejs/)' 2>/dev/null; then
-        STACK_HINTS="SvelteKit"
-      elif echo "$PKG" | grep -qE '"(next|@next/)' 2>/dev/null; then
-        STACK_HINTS="Next.js"
-      elif echo "$PKG" | grep -qE '"(nuxt|@nuxt/)' 2>/dev/null; then
-        STACK_HINTS="Nuxt"
-      elif echo "$PKG" | grep -qE '"(react|react-dom)' 2>/dev/null; then
-        STACK_HINTS="React"
-      elif echo "$PKG" | grep -qE '"(vue|@vue/)' 2>/dev/null; then
-        STACK_HINTS="Vue"
-      fi
-    fi
-    if [[ -f "$TARGET/pyproject.toml" ]] || [[ -f "$TARGET/requirements.txt" ]]; then
-      STACK_HINTS="${STACK_HINTS:+$STACK_HINTS, }Python"
-      DETECTED_AREAS="Frontend,Backend,Data,Infra,Docs"
-    fi
-    if [[ -f "$TARGET/foundry.toml" ]] || [[ -f "$TARGET/Anchor.toml" ]] || [[ -d "$TARGET/contracts" ]]; then
-      STACK_HINTS="${STACK_HINTS:+$STACK_HINTS, }Smart Contracts"
-      DETECTED_AREAS="Frontend,Backend,Contracts,Infra,Docs"
-    fi
-    if [[ -f "$TARGET/Cargo.toml" ]]; then
-      STACK_HINTS="${STACK_HINTS:+$STACK_HINTS, }Rust"
-    fi
-    if [[ -f "$TARGET/go.mod" ]]; then
-      STACK_HINTS="${STACK_HINTS:+$STACK_HINTS, }Go"
-    fi
-    if [[ -n "$STACK_HINTS" ]]; then
-      log_info "Detected stack: $STACK_HINTS"
-    fi
-    AREA_OPTS=$(prompt_with_default "Area options (comma-separated)" "$DETECTED_AREAS")
-    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Area" --data-type "SINGLE_SELECT" \
-      --single-select-options "$AREA_OPTS" 2>/dev/null || \
-    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Area" --data-type "SINGLE_SELECT" \
-      --single-select-options "$AREA_OPTS" 2>/dev/null
-    log_ok "  Area: $AREA_OPTS"
-
-    log_info "Adding Issue Type field..."
-    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Issue Type" --data-type "SINGLE_SELECT" \
-      --single-select-options "Bug,Feature,Spike,Epic,Chore" 2>/dev/null || \
-    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Issue Type" --data-type "SINGLE_SELECT" \
-      --single-select-options "Bug,Feature,Spike,Epic,Chore" 2>/dev/null
-    log_ok "  Issue Type: Bug, Feature, Spike, Epic, Chore"
-
-    log_info "Adding Risk field..."
-    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Risk" --data-type "SINGLE_SELECT" \
-      --single-select-options "Low,Medium,High" 2>/dev/null || \
-    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Risk" --data-type "SINGLE_SELECT" \
-      --single-select-options "Low,Medium,High" 2>/dev/null
-    log_ok "  Risk: Low, Medium, High"
-
-    log_info "Adding Estimate field..."
-    gh project field-create "$PROJECT_NUMBER" --owner "$OWNER" --name "Estimate" --data-type "SINGLE_SELECT" \
-      --single-select-options "Small,Medium,Large" 2>/dev/null || \
-    gh project field-create "$PROJECT_NUMBER" --owner @me --name "Estimate" --data-type "SINGLE_SELECT" \
-      --single-select-options "Small,Medium,Large" 2>/dev/null
-    log_ok "  Estimate: Small, Medium, Large"
-
-    log_ok "Project board created with all fields!"
-    printf "\n"
-  fi
 
   PREFIX_LOWER=$(prompt_with_default "Short prefix, lowercase (e.g. hov, myapp)" "")
   # Validate prefix: must be 2-10 lowercase alphanumeric chars
@@ -371,13 +271,11 @@ if ! $UPDATE_MODE; then
   printf "\n"
   log_info "Owner:          $OWNER"
   log_info "Repo:           $REPO"
-  log_info "Project number: $PROJECT_NUMBER"
   log_info "Prefix:         $PREFIX_LOWER / $PREFIX_UPPER"
   log_info "Display name:   $DISPLAY_NAME"
   log_info "Test command:   $TEST_COMMAND"
   log_info "Setup command:  $SETUP_COMMAND"
   log_info "Dev command:    $DEV_COMMAND"
-  log_info "Target dir:     $TARGET"
   printf "\n"
   read -r -p "$(printf "${YELLOW}Continue?${RESET} [Y/n] ")" CONFIRM
   CONFIRM="${CONFIRM:-Y}"
@@ -388,317 +286,18 @@ if ! $UPDATE_MODE; then
 fi
 
 # ---------------------------------------------------------------------------
-# GraphQL: discover project fields (both modes — update refreshes IDs)
-# ---------------------------------------------------------------------------
-log_section "Discovering GitHub Project fields via GraphQL"
-
-ORG_QUERY='
-query($owner: String!, $num: Int!) {
-  organization(login: $owner) {
-    projectV2(number: $num) {
-      id
-      fields(first: 30) {
-        nodes {
-          ... on ProjectV2SingleSelectField {
-            id
-            name
-            options { id name }
-          }
-        }
-      }
-    }
-  }
-}
-'
-
-USER_QUERY='
-query($owner: String!, $num: Int!) {
-  user(login: $owner) {
-    projectV2(number: $num) {
-      id
-      fields(first: 30) {
-        nodes {
-          ... on ProjectV2SingleSelectField {
-            id
-            name
-            options { id name }
-          }
-        }
-      }
-    }
-  }
-}
-'
-
-GQL_RESULT=""
-PROJECT_DATA=""
-
-log_info "Trying organization query..."
-if GQL_RESULT=$(gh api graphql \
-    -f query="$ORG_QUERY" \
-    -f owner="$OWNER" \
-    -F num="$PROJECT_NUMBER" 2>&1); then
-  PROJECT_DATA=$(echo "$GQL_RESULT" | jq -r '.data.organization.projectV2 // empty' 2>/dev/null) || true
-fi
-
-if [[ -z "$PROJECT_DATA" || "$PROJECT_DATA" == "null" ]]; then
-  log_info "Organization query returned no data, trying user query..."
-  if GQL_RESULT=$(gh api graphql \
-      -f query="$USER_QUERY" \
-      -f owner="$OWNER" \
-      -F num="$PROJECT_NUMBER" 2>&1); then
-    PROJECT_DATA=$(echo "$GQL_RESULT" | jq -r '.data.user.projectV2 // empty' 2>/dev/null) || true
-  fi
-fi
-
-if [[ -z "$PROJECT_DATA" || "$PROJECT_DATA" == "null" ]]; then
-  log_error "Could not find project #$PROJECT_NUMBER for '$OWNER'."
-  log_error "Verify the project number and that '$OWNER' owns it."
-  log_error "Raw GraphQL response:"
-  echo "$GQL_RESULT" | head -30 >&2
-  exit 1
-fi
-
-log_ok "Project found"
-PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.id')
-log_info "Project ID: $PROJECT_ID"
-
-# ---------------------------------------------------------------------------
-# Link project to repo & set visibility (idempotent, safe on update too)
-# ---------------------------------------------------------------------------
-log_info "Linking project to repository..."
-gh project link "$PROJECT_NUMBER" --owner "$OWNER" --repo "$OWNER/$REPO" 2>/dev/null && \
-  log_ok "Project linked to $OWNER/$REPO" || \
-  log_info "Project already linked (or link not supported for user-owned projects)"
-
-log_info "Setting project description and visibility..."
-GQL_UPDATE=$(cat <<GQLEOF
-mutation {
-  updateProjectV2(input: {
-    projectId: "$PROJECT_ID"
-    shortDescription: "Issue tracking and workflow management for $REPO"
-    public: true
-  }) {
-    projectV2 { id shortDescription public }
-  }
-}
-GQLEOF
-)
-TMPGQL=$(mktemp)
-TEMP_FILES+=("$TMPGQL")
-echo "$GQL_UPDATE" > "$TMPGQL"
-gh api graphql -F query=@"$TMPGQL" --silent 2>/dev/null && \
-  log_ok "Project is public with description set" || \
-  log_info "Could not update project visibility (may require admin permissions)"
-
-# ---------------------------------------------------------------------------
-# Field/option helpers
-# ---------------------------------------------------------------------------
-get_field_id() {
-  local field_name="$1"
-  echo "$PROJECT_DATA" | jq -r --arg name "$field_name" \
-    '.fields.nodes[] | select(.name == $name) | .id // empty'
-}
-
-get_option_id() {
-  local field_name="$1"
-  local option_name="$2"
-  echo "$PROJECT_DATA" | jq -r --arg fname "$field_name" --arg oname "$option_name" \
-    '.fields.nodes[] | select(.name == $fname) | .options[] | select(.name == $oname) | .id // empty'
-}
-
-log_section "Mapping project fields"
-
-FIELD_WORKFLOW=$(get_field_id "Workflow")
-FIELD_PRIORITY=$(get_field_id "Priority")
-FIELD_AREA=$(get_field_id "Area")
-FIELD_ISSUE_TYPE=$(get_field_id "Issue Type")
-FIELD_RISK=$(get_field_id "Risk")
-FIELD_ESTIMATE=$(get_field_id "Estimate")
-
-report_field() {
-  local name="$1"
-  local value="$2"
-  if [[ -z "$value" ]]; then
-    log_warn "Field '$name' not found in project — placeholder will be left with TODO comment"
-  else
-    log_ok "  $name: $value"
-  fi
-}
-
-report_field "Workflow"   "$FIELD_WORKFLOW"
-report_field "Priority"   "$FIELD_PRIORITY"
-report_field "Area"       "$FIELD_AREA"
-report_field "Issue Type" "$FIELD_ISSUE_TYPE"
-report_field "Risk"       "$FIELD_RISK"
-report_field "Estimate"   "$FIELD_ESTIMATE"
-
-# Workflow field is required — everything else is optional
-if [[ -z "$FIELD_WORKFLOW" ]]; then
-  log_error "Workflow field not found in project #$PROJECT_NUMBER."
-  log_error "This is required for the toolkit to function."
-  log_error "Add a 'Workflow' single-select field to your project with options:"
-  log_error "  Backlog, Ready, Active, Review, Rework, Done"
-  exit 1
-fi
-
-# Workflow options
-OPT_WF_BACKLOG=$(get_option_id "Workflow" "Backlog")
-OPT_WF_READY=$(get_option_id  "Workflow" "Ready")
-OPT_WF_ACTIVE=$(get_option_id "Workflow" "Active")
-OPT_WF_REVIEW=$(get_option_id "Workflow" "Review")
-OPT_WF_REWORK=$(get_option_id "Workflow" "Rework")
-OPT_WF_DONE=$(get_option_id   "Workflow" "Done")
-
-# Priority options
-OPT_PRI_CRITICAL=$(get_option_id "Priority" "Critical")
-OPT_PRI_HIGH=$(get_option_id     "Priority" "High")
-OPT_PRI_NORMAL=$(get_option_id   "Priority" "Normal")
-
-# Area options (dynamically discovered — supports any area names)
-declare -a AREA_NAMES=()
-declare -a AREA_KEYS=()
-declare -a AREA_IDS=()
-
-if [[ -n "$FIELD_AREA" ]]; then
-  while IFS=$'\t' read -r opt_name opt_id; do
-    [[ -z "$opt_name" ]] && continue
-    area_key=$(echo "$opt_name" | tr '[:lower:] -' '[:upper:]__')
-    AREA_NAMES+=("$opt_name")
-    AREA_KEYS+=("$area_key")
-    AREA_IDS+=("$opt_id")
-    declare "OPT_AREA_${area_key}=${opt_id}"
-    log_ok "  Area option: $opt_name → PM_AREA_${area_key}"
-  done < <(echo "$PROJECT_DATA" | jq -r '.fields.nodes[] | select(.name == "Area") | .options[] | [.name, .id] | @tsv')
-fi
-
-if [[ ${#AREA_NAMES[@]} -eq 0 ]]; then
-  log_warn "No Area options found in project board"
-else
-  log_ok "  ${#AREA_NAMES[@]} area option(s) discovered"
-fi
-
-# Issue Type options
-OPT_TYPE_BUG=$(get_option_id     "Issue Type" "Bug")
-OPT_TYPE_FEATURE=$(get_option_id "Issue Type" "Feature")
-OPT_TYPE_SPIKE=$(get_option_id   "Issue Type" "Spike")
-OPT_TYPE_EPIC=$(get_option_id    "Issue Type" "Epic")
-OPT_TYPE_CHORE=$(get_option_id   "Issue Type" "Chore")
-
-# Risk options
-OPT_RISK_LOW=$(get_option_id    "Risk" "Low")
-OPT_RISK_MEDIUM=$(get_option_id "Risk" "Medium")
-OPT_RISK_HIGH=$(get_option_id   "Risk" "High")
-
-# Estimate options
-OPT_EST_SMALL=$(get_option_id  "Estimate" "Small")
-OPT_EST_MEDIUM=$(get_option_id "Estimate" "Medium")
-OPT_EST_LARGE=$(get_option_id  "Estimate" "Large")
-
-# ---------------------------------------------------------------------------
-# Validate required workflow options (scripts fail at runtime without these)
-# ---------------------------------------------------------------------------
-MISSING_WF_OPTS=()
-for opt_pair in "Backlog:$OPT_WF_BACKLOG" "Ready:$OPT_WF_READY" "Active:$OPT_WF_ACTIVE" \
-                "Review:$OPT_WF_REVIEW" "Rework:$OPT_WF_REWORK" "Done:$OPT_WF_DONE"; do
-  opt_name="${opt_pair%%:*}"
-  opt_value="${opt_pair#*:}"
-  if [[ -z "$opt_value" ]]; then
-    MISSING_WF_OPTS+=("$opt_name")
-  fi
-done
-
-if [[ ${#MISSING_WF_OPTS[@]} -gt 0 ]]; then
-  log_warn "Missing Workflow options: ${MISSING_WF_OPTS[*]}"
-  log_warn "project-move.sh will fail for these states."
-  log_warn "Add them to your project's Workflow field, then re-run --update."
-else
-  log_ok "  All 6 Workflow options found (Backlog, Ready, Active, Review, Rework, Done)"
-fi
-
-# Count discovered fields/options for summary
-FIELDS_FOUND=0
-FIELDS_MISSING=0
-OPTIONS_FOUND=0
-OPTIONS_MISSING=0
-
-for fval in "$FIELD_WORKFLOW" "$FIELD_PRIORITY" "$FIELD_AREA" "$FIELD_ISSUE_TYPE" "$FIELD_RISK" "$FIELD_ESTIMATE"; do
-  if [[ -n "$fval" ]]; then
-    FIELDS_FOUND=$((FIELDS_FOUND+1))
-  else
-    FIELDS_MISSING=$((FIELDS_MISSING+1))
-  fi
-done
-
-for oval in "$OPT_WF_BACKLOG" "$OPT_WF_READY" "$OPT_WF_ACTIVE" "$OPT_WF_REVIEW" "$OPT_WF_REWORK" "$OPT_WF_DONE" \
-            "$OPT_PRI_CRITICAL" "$OPT_PRI_HIGH" "$OPT_PRI_NORMAL" \
-            "${AREA_IDS[@]}" \
-            "$OPT_TYPE_BUG" "$OPT_TYPE_FEATURE" "$OPT_TYPE_SPIKE" "$OPT_TYPE_EPIC" "$OPT_TYPE_CHORE" \
-            "$OPT_RISK_LOW" "$OPT_RISK_MEDIUM" "$OPT_RISK_HIGH" \
-            "$OPT_EST_SMALL" "$OPT_EST_MEDIUM" "$OPT_EST_LARGE"; do
-  if [[ -n "$oval" ]]; then
-    OPTIONS_FOUND=$((OPTIONS_FOUND+1))
-  else
-    OPTIONS_MISSING=$((OPTIONS_MISSING+1))
-  fi
-done
-
-log_info "Fields: $FIELDS_FOUND found, $FIELDS_MISSING missing"
-log_info "Options: $OPTIONS_FOUND found, $OPTIONS_MISSING not configured"
-
-# ---------------------------------------------------------------------------
-# In update mode: detect field ID changes from previous installation
-# ---------------------------------------------------------------------------
-if $UPDATE_MODE; then
-  OLD_PROJECT_ID=$(jq -r '.project_id // empty' "$METADATA_FILE")
-  if [[ -n "$OLD_PROJECT_ID" ]] && [[ "$OLD_PROJECT_ID" != "$PROJECT_ID" ]]; then
-    log_warn "Project ID changed: $OLD_PROJECT_ID → $PROJECT_ID"
-    log_warn "This usually means the project was recreated."
-  fi
-fi
-
-# ---------------------------------------------------------------------------
 # Replacement map (stride-3: placeholder, value, fallback)
 # ---------------------------------------------------------------------------
 declare -a REPLACE_PAIRS
 REPLACE_PAIRS=(
   "{{OWNER}}"               "$OWNER"               ""
   "{{REPO}}"                "$REPO"                ""
-  "{{PROJECT_ID}}"          "$PROJECT_ID"          ""
-  "{{PROJECT_NUMBER}}"      "$PROJECT_NUMBER"      ""
   "{{DISPLAY_NAME}}"        "$DISPLAY_NAME"        ""
   "{{PREFIX}}"              "$PREFIX_UPPER"        ""
   "{{prefix}}"              "$PREFIX_LOWER"        ""
   "{{TEST_COMMAND}}"        "$TEST_COMMAND"        ""
   "{{SETUP_COMMAND}}"       "$SETUP_COMMAND"       ""
   "{{DEV_COMMAND}}"         "$DEV_COMMAND"         ""
-  "{{FIELD_WORKFLOW}}"      "$FIELD_WORKFLOW"      "TODO: add Workflow field to project"
-  "{{FIELD_PRIORITY}}"      "$FIELD_PRIORITY"      "TODO: add Priority field to project"
-  "{{FIELD_AREA}}"          "$FIELD_AREA"          "TODO: add Area field to project"
-  "{{FIELD_ISSUE_TYPE}}"    "$FIELD_ISSUE_TYPE"    "TODO: add Issue Type field to project"
-  "{{FIELD_RISK}}"          "$FIELD_RISK"          "TODO: add Risk field to project"
-  "{{FIELD_ESTIMATE}}"      "$FIELD_ESTIMATE"      "TODO: add Estimate field to project"
-  "{{OPT_WF_BACKLOG}}"      "$OPT_WF_BACKLOG"      "TODO: add Backlog option to Workflow field"
-  "{{OPT_WF_READY}}"        "$OPT_WF_READY"        "TODO: add Ready option to Workflow field"
-  "{{OPT_WF_ACTIVE}}"       "$OPT_WF_ACTIVE"       "TODO: add Active option to Workflow field"
-  "{{OPT_WF_REVIEW}}"       "$OPT_WF_REVIEW"       "TODO: add Review option to Workflow field"
-  "{{OPT_WF_REWORK}}"       "$OPT_WF_REWORK"       "TODO: add Rework option to Workflow field"
-  "{{OPT_WF_DONE}}"         "$OPT_WF_DONE"         "TODO: add Done option to Workflow field"
-  "{{OPT_PRI_CRITICAL}}"    "$OPT_PRI_CRITICAL"    "TODO: add Critical option to Priority field"
-  "{{OPT_PRI_HIGH}}"        "$OPT_PRI_HIGH"        "TODO: add High option to Priority field"
-  "{{OPT_PRI_NORMAL}}"      "$OPT_PRI_NORMAL"      "TODO: add Normal option to Priority field"
-  # Area options are injected dynamically (see post-replacement step below)
-  "{{OPT_TYPE_BUG}}"        "$OPT_TYPE_BUG"        "TODO: add Bug option to Issue Type field"
-  "{{OPT_TYPE_FEATURE}}"    "$OPT_TYPE_FEATURE"    "TODO: add Feature option to Issue Type field"
-  "{{OPT_TYPE_SPIKE}}"      "$OPT_TYPE_SPIKE"      "TODO: add Spike option to Issue Type field"
-  "{{OPT_TYPE_EPIC}}"       "$OPT_TYPE_EPIC"       "TODO: add Epic option to Issue Type field"
-  "{{OPT_TYPE_CHORE}}"      "$OPT_TYPE_CHORE"      "TODO: add Chore option to Issue Type field"
-  "{{OPT_RISK_LOW}}"        "$OPT_RISK_LOW"        "TODO: add Low option to Risk field"
-  "{{OPT_RISK_MEDIUM}}"     "$OPT_RISK_MEDIUM"     "TODO: add Medium option to Risk field"
-  "{{OPT_RISK_HIGH}}"       "$OPT_RISK_HIGH"       "TODO: add High option to Risk field"
-  "{{OPT_EST_SMALL}}"       "$OPT_EST_SMALL"       "TODO: add Small option to Estimate field"
-  "{{OPT_EST_MEDIUM}}"      "$OPT_EST_MEDIUM"      "TODO: add Medium option to Estimate field"
-  "{{OPT_EST_LARGE}}"       "$OPT_EST_LARGE"       "TODO: add Large option to Estimate field"
 )
 
 # ---------------------------------------------------------------------------
@@ -723,7 +322,6 @@ apply_replacements_to_content() {
     fi
 
     if [[ -n "$effective" ]]; then
-      # Use awk with index() for fixed-string matching (no regex interpretation)
       awk -v ph="$placeholder" -v val="$effective" '
         {
           while (idx = index($0, ph)) {
@@ -857,7 +455,8 @@ COUNT_CREATED_DIRS=0
 
 # Files to skip from the toolkit root (not part of the install payload)
 SKIP_FILES=("setup.sh" "install.sh" "validate.sh" "uninstall.sh" "claude-md-sections.md" ".gitignore" "README.md" "LICENSE")
-SKIP_FILES+=("CLAUDE.md" "CONTRIBUTING.md" "CHANGELOG.md" "VERSION")
+SKIP_FILES+=("CLAUDE.md" "CONTRIBUTING.md" "CHANGELOG.md" "VERSION" "Makefile")
+SKIP_FILES+=("CLAUDE_SESSION_CONTEXT.md")
 
 while IFS= read -r src_file; do
   # Get path relative to toolkit
@@ -953,6 +552,7 @@ done < <(find "$TOOLKIT_DIR" \
   -not -path "*/.git/*" \
   -not -path "*/.git" \
   -not -path "*/node_modules/*" \
+  -not -path "*/build/*" \
   -type f | sort)
 
 # ---------------------------------------------------------------------------
@@ -962,7 +562,7 @@ log_section "Handling CLAUDE.md"
 merge_claude_md
 
 # ---------------------------------------------------------------------------
-# Fix .gitignore if .claude is fully ignored
+# Fix .gitignore
 # ---------------------------------------------------------------------------
 GITIGNORE_FILE="$TARGET/.gitignore"
 
@@ -974,6 +574,9 @@ if [[ ! -f "$GITIGNORE_FILE" ]]; then
 .claude/settings.local.json
 .claude/plans/
 .codex-work/
+
+# PM Intelligence
+.pm/
 GITIGNORE
   log_ok "Created .gitignore with Claude Code entries"
 fi
@@ -989,17 +592,12 @@ if [[ -f "$GITIGNORE_FILE" ]] && grep -qx '\.claude' "$GITIGNORE_FILE"; then
     }
     { print }
   ' "$GITIGNORE_FILE" > "${GITIGNORE_FILE}.tmp" && mv "${GITIGNORE_FILE}.tmp" "$GITIGNORE_FILE"
-
-  if ! grep -qF '.codex-work/' "$GITIGNORE_FILE"; then
-    echo '.codex-work/' >> "$GITIGNORE_FILE"
-  fi
-
   log_ok "Updated .gitignore: .claude/settings.json and .claude/skills/ now trackable"
 fi
 
-# Ensure essential ignore entries exist (even if no .claude wildcard)
+# Ensure essential ignore entries exist
 if [[ -f "$GITIGNORE_FILE" ]]; then
-  for entry in '.claude/settings.local.json' '.claude/plans/' '.codex-work/'; do
+  for entry in '.claude/settings.local.json' '.claude/plans/' '.codex-work/' '.pm/'; do
     if ! grep -qF "$entry" "$GITIGNORE_FILE"; then
       echo "$entry" >> "$GITIGNORE_FILE"
     fi
@@ -1007,47 +605,26 @@ if [[ -f "$GITIGNORE_FILE" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Clean up unresolved optional placeholders (area options not in project)
+# Clean up any remaining old placeholders
 # ---------------------------------------------------------------------------
 while IFS= read -r file_with_opt; do
-  # Replace any remaining {{OPT_*}} placeholders with empty strings
   awk '{
     while (match($0, /\{\{OPT_[A-Z_]+\}\}/)) {
       $0 = substr($0, 1, RSTART-1) substr($0, RSTART+RLENGTH)
     }
+    while (match($0, /\{\{FIELD_[A-Z_]+\}\}/)) {
+      $0 = substr($0, 1, RSTART-1) substr($0, RSTART+RLENGTH)
+    }
+    while (match($0, /\{\{PROJECT_ID\}\}/)) {
+      $0 = substr($0, 1, RSTART-1) substr($0, RSTART+RLENGTH)
+    }
+    while (match($0, /\{\{PROJECT_NUMBER\}\}/)) {
+      $0 = substr($0, 1, RSTART-1) substr($0, RSTART+RLENGTH)
+    }
     print
   }' "$file_with_opt" > "${file_with_opt}.tmp" && mv "${file_with_opt}.tmp" "$file_with_opt"
-done < <(grep -rl '{{OPT_' "$TARGET" --include='*.sh' --include='*.json' --include='*.md' 2>/dev/null || true)
-
-# ---------------------------------------------------------------------------
-# Inject dynamic area options into pm.config.sh
-# ---------------------------------------------------------------------------
-PM_CONFIG_TARGET="$TARGET/tools/scripts/pm.config.sh"
-if [[ -f "$PM_CONFIG_TARGET" ]] && [[ ${#AREA_KEYS[@]} -gt 0 ]]; then
-  log_info "Injecting ${#AREA_KEYS[@]} area option(s) into pm.config.sh"
-
-  # Build the area lines file
-  AREA_LINES_FILE=$(mktemp)
-  TEMP_FILES+=("$AREA_LINES_FILE")
-  for (( i=0; i<${#AREA_KEYS[@]}; i++ )); do
-    echo "PM_AREA_${AREA_KEYS[$i]}=\"${AREA_IDS[$i]}\"" >> "$AREA_LINES_FILE"
-  done
-
-  # Replace sentinel block in pm.config.sh with actual area lines
-  awk -v replacement_file="$AREA_LINES_FILE" '
-    /^# pm-area-options:start$/ {
-      print
-      while ((getline line < replacement_file) > 0) print line
-      close(replacement_file)
-      # Skip lines until end sentinel
-      while ((getline) > 0 && $0 !~ /^# pm-area-options:end$/) {}
-      print
-      next
-    }
-    { print }
-  ' "$PM_CONFIG_TARGET" > "${PM_CONFIG_TARGET}.tmp" && mv "${PM_CONFIG_TARGET}.tmp" "$PM_CONFIG_TARGET"
-  log_ok "Area options injected into pm.config.sh"
-fi
+done < <(grep -rl '{{OPT_\|{{FIELD_\|{{PROJECT_' "$TARGET/tools" "$TARGET/.claude" \
+    --include='*.sh' --include='*.json' --include='*.md' 2>/dev/null || true)
 
 # ---------------------------------------------------------------------------
 # Make shell scripts executable in target
@@ -1064,7 +641,7 @@ done < <(find "$TARGET" \
   -type f | sort)
 
 # ---------------------------------------------------------------------------
-# Save metadata for future updates
+# Save metadata
 # ---------------------------------------------------------------------------
 log_section "Saving configuration metadata"
 
@@ -1080,45 +657,33 @@ fi
 ORIGINAL_INSTALLED_AT="${ORIGINAL_INSTALLED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# Build area names JSON array
-AREA_NAMES_JSON="[]"
-if [[ ${#AREA_NAMES[@]} -gt 0 ]]; then
-  AREA_NAMES_JSON=$(printf '%s\n' "${AREA_NAMES[@]}" | jq -R . | jq -s .)
-fi
-
 jq -n \
   --arg toolkit_version "$TOOLKIT_VERSION" \
   --arg installed_at "$ORIGINAL_INSTALLED_AT" \
   --arg updated_at "$NOW" \
   --arg owner "$OWNER" \
   --arg repo "$REPO" \
-  --arg project_number "$PROJECT_NUMBER" \
-  --arg project_id "$PROJECT_ID" \
   --arg prefix_lower "$PREFIX_LOWER" \
   --arg prefix_upper "$PREFIX_UPPER" \
   --arg display_name "$DISPLAY_NAME" \
   --arg test_command "$TEST_COMMAND" \
   --arg setup_command "$SETUP_COMMAND" \
   --arg dev_command "$DEV_COMMAND" \
-  --argjson areas "$AREA_NAMES_JSON" \
   '{
     toolkit_version: $toolkit_version,
     installed_at: $installed_at,
     updated_at: $updated_at,
     owner: $owner,
     repo: $repo,
-    project_number: $project_number,
-    project_id: $project_id,
     prefix_lower: $prefix_lower,
     prefix_upper: $prefix_upper,
     display_name: $display_name,
     test_command: $test_command,
     setup_command: $setup_command,
-    dev_command: $dev_command,
-    areas: $areas
+    dev_command: $dev_command
   }' > "$METADATA_FILE"
 
-log_ok "Saved .claude-pm-toolkit.json (used by --update mode)"
+log_ok "Saved .claude-pm-toolkit.json"
 
 # ---------------------------------------------------------------------------
 # Makefile integration (optional)
@@ -1130,7 +695,6 @@ MAKEFILE_TARGETS="$TOOLKIT_DIR/tools/scripts/makefile-targets.mk"
 
 if [[ -f "$TARGET_MAKEFILE" ]] && [[ -f "$MAKEFILE_TARGETS" ]]; then
   if grep -qF "$MAKEFILE_SENTINEL_START" "$TARGET_MAKEFILE"; then
-    # Update existing sentinel block
     tmp_mk=$(mktemp)
     TEMP_FILES+=("$tmp_mk")
     awk -v start="$MAKEFILE_SENTINEL_START" -v end="$MAKEFILE_SENTINEL_END" \
@@ -1139,8 +703,6 @@ if [[ -f "$TARGET_MAKEFILE" ]] && [[ -f "$MAKEFILE_TARGETS" ]]; then
          $0 == end   { skip=0; next }
          !skip       { print }
         ' "$TARGET_MAKEFILE" > "$tmp_mk"
-
-    # Append fresh block
     {
       echo ""
       echo "$MAKEFILE_SENTINEL_START"
@@ -1148,109 +710,45 @@ if [[ -f "$TARGET_MAKEFILE" ]] && [[ -f "$MAKEFILE_TARGETS" ]]; then
       echo "$MAKEFILE_SENTINEL_END"
     } >> "$tmp_mk"
     mv "$tmp_mk" "$TARGET_MAKEFILE"
-    log_ok "Updated Makefile targets (make claude, make pm-status)"
+    log_ok "Updated Makefile targets"
   elif ! $UPDATE_MODE; then
-    # Fresh install — append targets
     {
       echo ""
       echo "$MAKEFILE_SENTINEL_START"
       cat "$MAKEFILE_TARGETS"
       echo "$MAKEFILE_SENTINEL_END"
     } >> "$TARGET_MAKEFILE"
-    log_ok "Added Makefile targets (make claude, make pm-status)"
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# GitHub Actions workflows (optional — requires PROJECT_WRITE_TOKEN secret)
-# ---------------------------------------------------------------------------
-WORKFLOW_TEMPLATES="$TOOLKIT_DIR/templates/github-workflows"
-WORKFLOW_TARGET="$TARGET/.github/workflows"
-COUNT_WORKFLOWS=0
-
-if [[ -d "$WORKFLOW_TEMPLATES" ]]; then
-  log_section "GitHub Actions Workflows"
-
-  mkdir -p "$WORKFLOW_TARGET"
-
-  for wf_src in "$WORKFLOW_TEMPLATES"/*.yml; do
-    [[ ! -f "$wf_src" ]] && continue
-    wf_basename="$(basename "$wf_src")"
-    wf_dst="$WORKFLOW_TARGET/$wf_basename"
-
-    if [[ -f "$wf_dst" ]] && ! $UPDATE_MODE; then
-      log_skip "Exists (skipping): .github/workflows/$wf_basename"
-      continue
-    fi
-
-    # Apply placeholder replacements
-    tmp_wf=$(mktemp)
-    TEMP_FILES+=("$tmp_wf")
-    apply_replacements_to_content "$wf_src" "$tmp_wf"
-    cp "$tmp_wf" "$wf_dst"
-
-    if [[ -f "$wf_dst" ]] && $UPDATE_MODE; then
-      log_ok "Updated: .github/workflows/$wf_basename"
-    else
-      log_ok "Created: .github/workflows/$wf_basename"
-    fi
-    COUNT_WORKFLOWS=$((COUNT_WORKFLOWS+1))
-  done
-
-  if [[ $COUNT_WORKFLOWS -gt 0 ]]; then
-    printf "\n"
-    log_warn "GitHub Actions workflows require a repository secret:"
-    log_warn "  Secret name: PROJECT_WRITE_TOKEN"
-    log_warn "  Type: Classic PAT with 'project' scope (read:org if org project)"
-    log_warn "  Set at: https://github.com/$OWNER/$REPO/settings/secrets/actions"
-    printf "\n"
-    log_info "Workflows installed:"
-    log_info "  pm-post-merge.yml — Auto-move issues to Done when PRs merge"
-    log_info "  pm-pr-check.yml   — Validate PR conventions and issue links"
+    log_ok "Added Makefile targets"
   fi
 fi
 
 # ---------------------------------------------------------------------------
 # MCP Server (pm-intelligence)
 # ---------------------------------------------------------------------------
-MCP_SRC="$TOOLKIT_DIR/tools/mcp/pm-intelligence"
 MCP_DST="$TARGET/tools/mcp/pm-intelligence"
-COUNT_MCP=0
 
-if [[ -d "$MCP_SRC/src" ]]; then
-  log_section "MCP Server (pm-intelligence)"
+if [[ -d "$MCP_DST/src" ]] && [[ -f "$MCP_DST/package.json" ]]; then
+  log_section "Building MCP Server (pm-intelligence)"
 
-  mkdir -p "$MCP_DST/src"
+  log_info "Installing dependencies..."
+  (cd "$MCP_DST" && npm install --loglevel=warn 2>&1) || {
+    log_warn "npm install failed — MCP server won't be available"
+    log_warn "Run manually: cd $MCP_DST && npm install && npm run build"
+  }
 
-  # Copy source files with placeholder replacement
-  for ts_src in "$MCP_SRC/src"/*.ts; do
-    [[ ! -f "$ts_src" ]] && continue
-    ts_basename="$(basename "$ts_src")"
-    ts_dst="$MCP_DST/src/$ts_basename"
-
-    tmp_ts=$(mktemp)
-    TEMP_FILES+=("$tmp_ts")
-    apply_replacements_to_content "$ts_src" "$tmp_ts"
-    cp "$tmp_ts" "$ts_dst"
-    log_ok "Copied: tools/mcp/pm-intelligence/src/$ts_basename"
-    COUNT_MCP=$((COUNT_MCP+1))
-  done
-
-  # Copy package.json and tsconfig.json (no placeholder replacement needed)
-  for meta_file in package.json tsconfig.json; do
-    if [[ -f "$MCP_SRC/$meta_file" ]]; then
-      cp "$MCP_SRC/$meta_file" "$MCP_DST/$meta_file"
-      log_ok "Copied: tools/mcp/pm-intelligence/$meta_file"
-      COUNT_MCP=$((COUNT_MCP+1))
-    fi
-  done
+  log_info "Compiling TypeScript..."
+  if (cd "$MCP_DST" && npm run build 2>&1); then
+    log_ok "MCP server built successfully"
+  else
+    log_warn "TypeScript compilation failed — MCP server won't be available"
+    log_warn "Run manually: cd $MCP_DST && npm run build"
+  fi
 
   # Merge pm-intelligence into .mcp.json
   MCP_JSON="$TARGET/.mcp.json"
   MCP_ENTRY='{"mcpServers":{"pm-intelligence":{"command":"node","args":["./tools/mcp/pm-intelligence/build/index.js"]}}}'
 
   if [[ -f "$MCP_JSON" ]]; then
-    # Merge: add pm-intelligence to existing .mcp.json
     tmp_mcp=$(mktemp)
     TEMP_FILES+=("$tmp_mcp")
     if jq -s '.[0] * .[1]' "$MCP_JSON" <(echo "$MCP_ENTRY") > "$tmp_mcp" 2>/dev/null; then
@@ -1263,13 +761,22 @@ if [[ -d "$MCP_SRC/src" ]]; then
     echo "$MCP_ENTRY" | jq '.' > "$MCP_JSON"
     log_ok "Created .mcp.json with pm-intelligence server"
   fi
+fi
 
-  printf "\n"
-  log_info "MCP server installed. To activate:"
-  log_info "  cd $TARGET/tools/mcp/pm-intelligence"
-  log_info "  npm install && npm run build"
-  log_info ""
-  log_info "Claude Code will auto-discover it from .mcp.json on next session."
+# ---------------------------------------------------------------------------
+# Initial sync (fresh install only)
+# ---------------------------------------------------------------------------
+if ! $UPDATE_MODE; then
+  PM_CLI="$MCP_DST/build/cli.js"
+  if [[ -f "$PM_CLI" ]]; then
+    log_section "Initial GitHub sync"
+    log_info "Syncing issues and PRs into local SQLite database..."
+    if (cd "$TARGET" && node "$PM_CLI" init 2>&1); then
+      log_ok "Initial sync complete — local database ready at .pm/state.db"
+    else
+      log_warn "Initial sync failed. Run manually: cd $TARGET && pm init"
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -1280,9 +787,6 @@ log_section "Install complete"
 printf "${GREEN}%-20s${RESET} %s\n" "Target:"         "$TARGET"
 printf "${GREEN}%-20s${RESET} %s\n" "Owner:"          "$OWNER"
 printf "${GREEN}%-20s${RESET} %s\n" "Repo:"           "$REPO"
-printf "${GREEN}%-20s${RESET} %s\n" "Project ID:"     "$PROJECT_ID"
-printf "${GREEN}%-20s${RESET} %s\n" "Project number:" "$PROJECT_NUMBER"
-printf "${GREEN}%-20s${RESET} %s\n" "Project URL:"    "https://github.com/orgs/$OWNER/projects/$PROJECT_NUMBER"
 printf "${GREEN}%-20s${RESET} %s\n" "Prefix (lower):" "$PREFIX_LOWER"
 printf "${GREEN}%-20s${RESET} %s\n" "Prefix (upper):" "$PREFIX_UPPER"
 printf "${GREEN}%-20s${RESET} %s\n" "Display name:"   "$DISPLAY_NAME"
@@ -1296,42 +800,12 @@ if $UPDATE_MODE; then
 fi
 printf "${GREEN}%-20s${RESET} %d\n" "Files merged:"   "$COUNT_MERGED"
 printf "${YELLOW}%-20s${RESET} %d\n" "Files skipped:" "$COUNT_SKIPPED"
-if [[ "${COUNT_WORKFLOWS:-0}" -gt 0 ]]; then
-  printf "${CYAN}%-20s${RESET} %d\n" "Workflows:"     "$COUNT_WORKFLOWS"
-fi
-if [[ "${COUNT_MCP:-0}" -gt 0 ]]; then
-  printf "${CYAN}%-20s${RESET} %d\n" "MCP server:"    "$COUNT_MCP"
-fi
-
-if grep -rqF '{{' "$TARGET/tools" "$TARGET/.claude" \
-    --include="*.sh" \
-    --include="*.md" \
-    --include="*.json" \
-    2>/dev/null; then
-  printf "\n"
-  log_warn "Some placeholders may still remain (fields/options not found in your project)."
-  log_warn "Search for remaining placeholders in target:"
-  log_warn "  grep -r '{{' $TARGET --include='*.sh' --include='*.md' --include='*.json'"
-fi
 
 if $UPDATE_MODE; then
   printf "\n${GREEN}Update complete.${RESET} Toolkit files refreshed in:\n  $TARGET\n"
-
-  # Show version change if applicable
   if [[ -n "${PREVIOUS_VERSION:-}" ]] && [[ "$PREVIOUS_VERSION" != "$TOOLKIT_VERSION" ]]; then
     printf "\n${CYAN}%-20s${RESET} %s → %s\n" "Toolkit version:" "$PREVIOUS_VERSION" "$TOOLKIT_VERSION"
-  elif [[ -n "${PREVIOUS_VERSION:-}" ]]; then
-    printf "\n${CYAN}%-20s${RESET} %s (unchanged)\n" "Toolkit version:" "$TOOLKIT_VERSION"
   fi
-
-  # Field discovery summary
-  printf "\n${BOLD}Field Discovery:${RESET}\n"
-  printf "  Fields: %d found, %d missing\n" "$FIELDS_FOUND" "$FIELDS_MISSING"
-  printf "  Options: %d found, %d not configured\n" "$OPTIONS_FOUND" "$OPTIONS_MISSING"
-  if [[ ${#MISSING_WF_OPTS[@]} -gt 0 ]]; then
-    printf "  ${YELLOW}WARNING: Missing Workflow options: %s${RESET}\n" "${MISSING_WF_OPTS[*]}"
-  fi
-
   printf "\n${BOLD}Preserved user config files:${RESET}\n"
   for ucf in "${USER_CONFIG_FILES[@]}"; do
     if [[ -f "$TARGET/$ucf" ]]; then
@@ -1342,30 +816,14 @@ if $UPDATE_MODE; then
   done
   printf "\nRun ./validate.sh $TARGET to verify the installation.\n\n"
 else
-  # Field discovery summary
-  printf "\n${BOLD}Field Discovery:${RESET}\n"
-  printf "  Fields: %d found, %d missing\n" "$FIELDS_FOUND" "$FIELDS_MISSING"
-  printf "  Options: %d found, %d not configured\n" "$OPTIONS_FOUND" "$OPTIONS_MISSING"
-  if [[ ${#MISSING_WF_OPTS[@]} -gt 0 ]]; then
-    printf "  ${YELLOW}WARNING: Missing Workflow options: %s${RESET}\n" "${MISSING_WF_OPTS[*]}"
-  fi
-
   printf "\n${GREEN}Done.${RESET} The PM toolkit has been installed into:\n  $TARGET\n"
-  printf "\n${BOLD}Project board:${RESET}\n"
-  printf "  URL: https://github.com/orgs/$OWNER/projects/$PROJECT_NUMBER\n"
-  printf "       (If user-owned: https://github.com/users/$OWNER/projects/$PROJECT_NUMBER)\n"
+  printf "\n${BOLD}Architecture:${RESET} local-first SQLite\n"
+  printf "  - Workflow state managed locally (.pm/state.db)\n"
+  printf "  - Issues synced from GitHub on demand (pm sync)\n"
+  printf "  - No GitHub Projects v2 dependency\n"
   printf "\n${BOLD}Next steps:${RESET}\n"
   printf "  1. Review and customize: docs/PM_PROJECT_CONFIG.md\n"
-  printf "  2. Configure port services: tools/scripts/worktree-ports.conf\n"
-  printf "  3. Validate: (cd $TOOLKIT_DIR && ./validate.sh $TARGET)\n"
-  printf "  4. Add PROJECT_WRITE_TOKEN secret (classic PAT with 'project' scope):\n"
-  printf "     https://github.com/$OWNER/$REPO/settings/secrets/actions\n"
-  printf "  5. Commit the new files\n"
-  printf "\n${BOLD}Set up Board view (manual — GitHub API doesn't support view creation):${RESET}\n"
-  printf "  5. Open the project URL above in your browser\n"
-  printf "  6. Click '+ New view' → select 'Board'\n"
-  printf "  7. Click the view's ⋯ menu → 'Group by' → select 'Workflow'\n"
-  printf "  8. Click 'Fields' → enable Priority, Area, and Assignees\n"
-  printf "  9. Rename the default 'View 1' tab to 'Table' (optional)\n"
-  printf "  10. The Board view shows issues as cards in Backlog → Ready → Active → Review → Rework → Done columns\n\n"
+  printf "  2. Validate: ./validate.sh $TARGET\n"
+  printf "  3. Commit the new files\n"
+  printf "  4. Run ${BOLD}pm board${RESET} to see your kanban board\n\n"
 fi

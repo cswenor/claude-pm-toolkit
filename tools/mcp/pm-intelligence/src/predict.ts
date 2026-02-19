@@ -217,10 +217,10 @@ function computeCycleTimes(
     );
 
     const activeEvent = issueEvents.find(
-      (e) => e.event === "state_change" && e.to_state === "Active"
+      (e) => e.event_type === "state_change" && e.to_value === "Active"
     );
     const doneEvent = issueEvents.find(
-      (e) => e.event === "state_change" && e.to_state === "Done"
+      (e) => e.event_type === "state_change" && e.to_value === "Done"
     );
 
     if (activeEvent && doneEvent) {
@@ -247,14 +247,14 @@ function percentile(sorted: number[], p: number): number {
 /** Detect current state from events */
 function getCurrentState(events: PMEvent[]): string {
   const stateChanges = events
-    .filter((e) => e.event === "state_change" && e.to_state)
+    .filter((e) => e.event_type === "state_change" && e.to_value)
     .sort(
       (a, b) =>
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
   return stateChanges.length > 0
-    ? stateChanges[stateChanges.length - 1].to_state!
+    ? stateChanges[stateChanges.length - 1].to_value!
     : "Unknown";
 }
 
@@ -337,7 +337,7 @@ export async function predictCompletion(
 
   // Factor 1: Has rework history
   const reworkEvents = issueEvents.filter(
-    (e) => e.event === "state_change" && e.to_state === "Rework"
+    (e) => e.event_type === "state_change" && e.to_value === "Rework"
   );
   if (reworkEvents.length > 0) {
     const contribution = Math.min(reworkEvents.length * 15, 30);
@@ -352,7 +352,7 @@ export async function predictCompletion(
 
   // Factor 2: Long time in current state
   const lastStateChange = issueEvents
-    .filter((e) => e.event === "state_change")
+    .filter((e) => e.event_type === "state_change")
     .sort(
       (a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -407,7 +407,7 @@ export async function predictCompletion(
 
   // Factor 5: Few sessions (low activity)
   const sessions = issueEvents.filter(
-    (e) => e.event === "session_start"
+    (e) => e.event_type === "session_start"
   );
   if (sessions.length <= 1 && currentState === "Active") {
     riskScore += 10;
@@ -529,7 +529,7 @@ export async function predictRework(
 
   // Signal 1: Multiple rework cycles in event history
   const reworkCycles = issueEvents.filter(
-    (e) => e.event === "state_change" && e.to_state === "Rework"
+    (e) => e.event_type === "state_change" && e.to_value === "Rework"
   ).length;
   const hasReworkHistory = reworkCycles > 0;
   signals.push({
@@ -572,11 +572,11 @@ export async function predictRework(
 
   // Signal 4: Rapid state transitions (rushing)
   const stateChanges = issueEvents.filter(
-    (e) => e.event === "state_change"
+    (e) => e.event_type === "state_change"
   );
   const hasActiveToReviewFast = (() => {
-    const activeEvent = stateChanges.find((e) => e.to_state === "Active");
-    const reviewEvent = stateChanges.find((e) => e.to_state === "Review");
+    const activeEvent = stateChanges.find((e) => e.to_value === "Active");
+    const reviewEvent = stateChanges.find((e) => e.to_value === "Review");
     if (activeEvent && reviewEvent) {
       const hours =
         (new Date(reviewEvent.timestamp).getTime() -
@@ -598,7 +598,7 @@ export async function predictRework(
 
   // Signal 5: Few sessions
   const sessionCount = issueEvents.filter(
-    (e) => e.event === "session_start"
+    (e) => e.event_type === "session_start"
   ).length;
   const fewSessions = sessionCount <= 1;
   signals.push({
@@ -611,7 +611,7 @@ export async function predictRework(
 
   // Signal 6: High needs-input rate (complexity indicator)
   const needsInputCount = issueEvents.filter(
-    (e) => e.event === "needs_input"
+    (e) => e.event_type === "needs_input"
   ).length;
   const highNeedsInput =
     sessionCount > 0 && needsInputCount / sessionCount > 0.5;

@@ -137,20 +137,20 @@ export async function getSessionHistory(
   // Build timeline
   const timeline: SessionEvent[] = events.map((e) => ({
     timestamp: e.timestamp,
-    event: e.event,
+    event: e.event_type,
     detail:
-      e.message ||
-      (e.from_state && e.to_state
-        ? `${e.from_state} → ${e.to_state}`
-        : e.tool || ""),
+      e.to_value ||
+      (e.from_value && e.to_value
+        ? `${e.from_value} → ${e.to_value}`
+        : (e.metadata as any)?.tool || ""),
   }));
 
   // Extract workflow transitions
   const workflowTransitions = events
-    .filter((e) => e.event === "workflow_transition" && e.from_state && e.to_state)
+    .filter((e) => e.event_type === "workflow_transition" && e.from_value && e.to_value)
     .map((e) => ({
-      from: e.from_state!,
-      to: e.to_state!,
+      from: e.from_value!,
+      to: e.to_value!,
       timestamp: e.timestamp,
     }));
 
@@ -437,12 +437,12 @@ export async function recoverContext(
 
   const recentEvents: SessionEvent[] = events.slice(-20).map((e) => ({
     timestamp: e.timestamp,
-    event: e.event,
+    event: e.event_type,
     detail:
-      e.message ||
-      (e.from_state && e.to_state
-        ? `${e.from_state} → ${e.to_state}`
-        : e.tool || ""),
+      e.to_value ||
+      (e.from_value && e.to_value
+        ? `${e.from_value} → ${e.to_value}`
+        : (e.metadata as any)?.tool || ""),
   }));
 
   const summary =

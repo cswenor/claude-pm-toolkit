@@ -420,20 +420,20 @@ export async function getContextEfficiency(
   const events = allEvents.filter((e) => e.issue_number === issueNumber);
 
   // Basic counts
-  const sessions = events.filter((e) => e.event === "session_start");
-  const stateChanges = events.filter((e) => e.event === "state_change");
+  const sessions = events.filter((e) => e.event_type === "session_start");
+  const stateChanges = events.filter((e) => e.event_type === "state_change");
   const reworkCycles = stateChanges.filter(
-    (e) => e.to_state === "Rework"
+    (e) => e.to_value === "Rework"
   ).length;
   const needsInputEvents = events.filter(
-    (e) => e.event === "needs_input"
+    (e) => e.event_type === "needs_input"
   ).length;
-  const errorEvents = events.filter((e) => e.event === "error").length;
+  const errorEvents = events.filter((e) => e.event_type === "error").length;
 
   // Time in state calculations
   const stateTimeline: Array<{ state: string; timestamp: Date }> = stateChanges
-    .filter((e) => e.to_state)
-    .map((e) => ({ state: e.to_state!, timestamp: new Date(e.timestamp) }))
+    .filter((e) => e.to_value)
+    .map((e) => ({ state: e.to_value!, timestamp: new Date(e.timestamp) }))
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
   let timeInActive: number | null = null;
@@ -687,9 +687,9 @@ export async function getWorkflowHealth(
     }
     const entry = issueMap.get(event.issue_number)!;
     entry.events.push(event);
-    if (event.event === "state_change" && event.to_state) {
+    if (event.event_type === "state_change" && event.to_value) {
       entry.states.push({
-        state: event.to_state,
+        state: event.to_value,
         timestamp: new Date(event.timestamp),
       });
     }

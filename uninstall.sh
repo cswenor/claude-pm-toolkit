@@ -3,6 +3,9 @@ set -euo pipefail
 
 # uninstall.sh - Remove claude-pm-toolkit from an existing repository
 #
+# v0.15.0: Updated for local-first SQLite architecture.
+# Removes pm CLI, MCP server build artifacts, .pm/ database, and all toolkit files.
+#
 # Usage:
 #   ./uninstall.sh /path/to/your/repo             # Show what would be removed
 #   ./uninstall.sh --confirm /path/to/your/repo    # Actually remove files
@@ -41,19 +44,22 @@ USAGE
   ./uninstall.sh --confirm /path/to/repo   # Actually remove files
 
 WHAT IT REMOVES
-  - tools/scripts/pm.config.sh, project-*.sh, worktree-*.sh, tmux-session.sh
-  - tools/scripts/claude-*-guard.sh, claude-secret-*.sh, portfolio-notify.sh
-  - tools/scripts/find-plan.sh
+  - tools/scripts/ (worktree-*.sh, claude-*-guard.sh, claude-secret-*.sh, pm-*.sh)
   - tools/config/ (command-guard.conf, secret-patterns.json, secret-paths.conf)
-  - tools/scripts/worktree-ports.conf, worktree-urls.conf
-  - .claude/skills/issue/, .claude/skills/pm-review/, .claude/skills/weekly/
+  - tools/mcp/pm-intelligence/build/ (compiled MCP server)
+  - tools/mcp/pm-intelligence/node_modules/ (dependencies)
+  - .claude/skills/issue/, .claude/skills/pm-review/, .claude/skills/weekly/, .claude/skills/start/
   - docs/PM_PLAYBOOK.md, docs/PM_PROJECT_CONFIG.md
   - reports/weekly/ (directory structure only, not reports you generated)
   - .claude-pm-toolkit.json (metadata)
+  - .pm/ (local SQLite database and state)
+  - pm-intelligence entry from .mcp.json
 
 WHAT IT PRESERVES
   - CLAUDE.md (sentinel block removed, rest untouched)
   - .claude/settings.json (toolkit hooks removed, rest untouched)
+  - .mcp.json (only pm-intelligence entry removed, rest untouched)
+  - MCP server source files (tools/mcp/pm-intelligence/src/)
   - Any files not installed by the toolkit
 
 EOF
@@ -95,13 +101,9 @@ fi
 # Files and directories to remove
 # ---------------------------------------------------------------------------
 
-# Toolkit-installed scripts
+# Toolkit-installed scripts and config files
 TOOLKIT_FILES=(
-  "tools/scripts/pm.config.sh"
-  "tools/scripts/project-add.sh"
-  "tools/scripts/project-move.sh"
-  "tools/scripts/project-status.sh"
-  "tools/scripts/project-archive-done.sh"
+  # Scripts
   "tools/scripts/worktree-setup.sh"
   "tools/scripts/worktree-detect.sh"
   "tools/scripts/worktree-cleanup.sh"
@@ -116,23 +118,40 @@ TOOLKIT_FILES=(
   "tools/scripts/claude-secret-detect.sh"
   "tools/scripts/claude-secret-check-path.sh"
   "tools/scripts/codex-mcp-overrides.sh"
+  "tools/scripts/pm-commit-guard.sh"
+  "tools/scripts/pm-stop-guard.sh"
+  "tools/scripts/pm-event-log.sh"
+  "tools/scripts/pm-session-context.sh"
   "tools/scripts/pm-dashboard.sh"
   "tools/scripts/makefile-targets.mk"
+  # Config
   "tools/config/command-guard.conf"
   "tools/config/secret-patterns.json"
   "tools/config/secret-paths.conf"
+  # Docs
   "docs/PM_PLAYBOOK.md"
   "docs/PM_PROJECT_CONFIG.md"
   "AGENTS.md"
+  # Metadata
   ".claude-pm-toolkit.json"
 )
 
-# Toolkit-installed directories (removed if empty after file removal)
-TOOLKIT_DIRS=(
+# Toolkit-installed directories (removed recursively or if empty)
+TOOLKIT_DIRS_RECURSIVE=(
   ".claude/skills/issue"
   ".claude/skills/pm-review"
   ".claude/skills/weekly"
+  ".claude/skills/start"
+  ".pm"
+  "tools/mcp/pm-intelligence/build"
+  "tools/mcp/pm-intelligence/node_modules"
+)
+
+# Directories to remove only if empty (bottom-up)
+TOOLKIT_DIRS_IF_EMPTY=(
   ".claude/skills"
+  "tools/mcp/pm-intelligence"
+  "tools/mcp"
   "tools/config"
   "tools/scripts"
   "tools"
@@ -150,13 +169,15 @@ SENTINEL_END="<!-- claude-pm-toolkit:end -->"
 # ---------------------------------------------------------------------------
 # Hooks in settings.json
 # ---------------------------------------------------------------------------
-# These are the script paths that the toolkit installs as hooks
 TOOLKIT_HOOK_SCRIPTS=(
   "./tools/scripts/claude-command-guard.sh"
   "./tools/scripts/claude-secret-bash-guard.sh"
   "./tools/scripts/claude-secret-guard.sh"
   "./tools/scripts/claude-secret-detect.sh"
   "./tools/scripts/portfolio-notify.sh"
+  "./tools/scripts/pm-commit-guard.sh"
+  "./tools/scripts/pm-event-log.sh"
+  "./tools/scripts/pm-stop-guard.sh"
 )
 
 # ---------------------------------------------------------------------------
@@ -187,16 +208,16 @@ for rel in "${TOOLKIT_FILES[@]}"; do
   fi
 done
 
-# Remove skill directories (with content)
-log_section "Skill directories"
-for skill_dir in ".claude/skills/issue" ".claude/skills/pm-review" ".claude/skills/weekly"; do
-  full="$TARGET/$skill_dir"
+# Remove directories recursively (skills, .pm, build artifacts)
+log_section "Toolkit directories (recursive)"
+for dir_rel in "${TOOLKIT_DIRS_RECURSIVE[@]}"; do
+  full="$TARGET/$dir_rel"
   if [[ -d "$full" ]]; then
     if $CONFIRM; then
       rm -rf "$full"
-      log_ok "Removed: $skill_dir/"
+      log_ok "Removed: $dir_rel/"
     else
-      log_info "Would remove: $skill_dir/"
+      log_info "Would remove: $dir_rel/"
     fi
     removed_count=$((removed_count + 1))
   fi
@@ -216,9 +237,9 @@ for gitkeep in "reports/weekly/.gitkeep" "reports/weekly/analysis/.gitkeep"; do
   fi
 done
 
-# Clean up empty directories
+# Clean up empty directories (bottom-up order)
 log_section "Empty directories"
-for dir_rel in "${TOOLKIT_DIRS[@]}"; do
+for dir_rel in "${TOOLKIT_DIRS_IF_EMPTY[@]}"; do
   full="$TARGET/$dir_rel"
   if [[ -d "$full" ]] && [[ -z "$(ls -A "$full" 2>/dev/null)" ]]; then
     if $CONFIRM; then
@@ -278,6 +299,34 @@ else
   log_info "No toolkit targets found in Makefile"
 fi
 
+# Remove pm-intelligence from .mcp.json
+log_section "MCP configuration (.mcp.json)"
+MCP_JSON="$TARGET/.mcp.json"
+if [[ -f "$MCP_JSON" ]] && jq -e '.mcpServers["pm-intelligence"]' "$MCP_JSON" >/dev/null 2>&1; then
+  if $CONFIRM; then
+    tmp_mcp=$(mktemp)
+    TEMP_FILES+=("$tmp_mcp")
+    if jq 'del(.mcpServers["pm-intelligence"]) | if (.mcpServers | length) == 0 then del(.mcpServers) else . end' "$MCP_JSON" > "$tmp_mcp" 2>/dev/null; then
+      mv "$tmp_mcp" "$MCP_JSON"
+      # If the resulting .mcp.json is effectively empty, remove it
+      if jq -e 'length == 0 or (keys == ["mcpServers"] and (.mcpServers | length) == 0)' "$MCP_JSON" >/dev/null 2>&1; then
+        rm "$MCP_JSON"
+        log_ok "Removed .mcp.json (was empty after removing pm-intelligence)"
+      else
+        log_ok "Removed pm-intelligence from .mcp.json"
+      fi
+    else
+      rm -f "$tmp_mcp"
+      log_warn "Could not remove pm-intelligence from .mcp.json — edit manually"
+    fi
+  else
+    log_info "Would remove pm-intelligence entry from .mcp.json"
+  fi
+  removed_count=$((removed_count + 1))
+else
+  log_info "No pm-intelligence entry found in .mcp.json"
+fi
+
 # Clean hooks from settings.json
 log_section "Settings.json hooks"
 SETTINGS="$TARGET/.claude/settings.json"
@@ -293,7 +342,6 @@ if [[ -f "$SETTINGS" ]]; then
   if $hooks_found; then
     if $CONFIRM; then
       # Remove hook entries that reference toolkit scripts
-      # Build a jq filter to remove toolkit hook commands
       JQ_SCRIPTS=""
       for script in "${TOOLKIT_HOOK_SCRIPTS[@]}"; do
         JQ_SCRIPTS="${JQ_SCRIPTS:+$JQ_SCRIPTS, }\"$script\""

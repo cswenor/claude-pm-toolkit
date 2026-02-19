@@ -259,10 +259,10 @@ function scoreIssue(
   const warnings: string[] = [];
 
   // Priority boost (+30 critical, +20 high, +0 normal)
-  if (status.priority === "Critical") {
+  if (status.priority === "critical") {
     score += 30;
     reasons.push("Critical priority");
-  } else if (status.priority === "High") {
+  } else if (status.priority === "high") {
     score += 20;
     reasons.push("High priority");
   }
@@ -363,8 +363,8 @@ export async function generateStandup(
   const completed: StandupReport["completed"] = [];
   const doneEvents = events.filter(
     (e) =>
-      e.event === "state_transition" &&
-      e.to_state === "Done" &&
+      e.event_type === "state_transition" &&
+      e.to_value === "Done" &&
       e.timestamp >= cutoffISO
   );
   for (const evt of doneEvents) {
@@ -396,15 +396,15 @@ export async function generateStandup(
       (e) => e.issue_number === item.number
     );
     const lastEvent = issueEvents.length > 0
-      ? issueEvents[0].event
+      ? issueEvents[0].event_type
       : null;
 
     // Estimate days since active
     const activeEvent = events.find(
       (e) =>
         e.issue_number === item.number &&
-        e.event === "state_transition" &&
-        e.to_state === "Active"
+        e.event_type === "state_transition" &&
+        e.to_value === "Active"
     );
     const daysSinceActive = activeEvent
       ? Math.round(

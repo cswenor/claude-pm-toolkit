@@ -265,7 +265,7 @@ export async function generateReleaseNotes(
   // Count completed issues from events
   const completedFromEvents = events.filter(
     (e) =>
-      e.to_state === "Done" &&
+      e.to_value === "Done" &&
       e.timestamp >= sinceDate &&
       e.timestamp <= untilDate + "T23:59:59Z"
   );

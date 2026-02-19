@@ -146,7 +146,7 @@ export async function getSprintAnalytics(days = 14): Promise<SprintAnalytics> {
 function computeTimeInState(
   events: PMEvent[]
 ): Record<string, { avgHours: number; maxHours: number; count: number }> {
-  const stateChanges = events.filter((e) => e.event === "state_change");
+  const stateChanges = events.filter((e) => e.event_type === "state_change");
   const result: Record<string, { totalMs: number; maxMs: number; count: number }> = {};
 
   // Group state changes by issue, compute duration between transitions
@@ -167,7 +167,7 @@ function computeTimeInState(
     for (let i = 0; i < issueEvents.length - 1; i++) {
       const current = issueEvents[i];
       const next = issueEvents[i + 1];
-      const state = current.to_state || "Unknown";
+      const state = current.to_value || "Unknown";
       const durationMs =
         new Date(next.timestamp).getTime() - new Date(current.timestamp).getTime();
 
@@ -250,7 +250,7 @@ function computeCycleTime(
   events: PMEvent[],
   outcomes: Outcome[]
 ): SprintAnalytics["cycleTime"] {
-  const stateChanges = events.filter((e) => e.event === "state_change");
+  const stateChanges = events.filter((e) => e.event_type === "state_change");
 
   // Find first Active timestamp and Done/merged timestamp per issue
   const issueTimelines = new Map<number, { start: number; end: number; area: string | null }>();
@@ -260,7 +260,7 @@ function computeCycleTime(
     const ts = new Date(e.timestamp).getTime();
 
     // Track first time issue became Active
-    if (e.to_state === "Active") {
+    if (e.to_value === "Active") {
       const existing = issueTimelines.get(e.issue_number);
       if (!existing || ts < existing.start) {
         issueTimelines.set(e.issue_number, {
@@ -272,7 +272,7 @@ function computeCycleTime(
     }
 
     // Track when issue reached Done
-    if (e.to_state === "Done") {
+    if (e.to_value === "Done") {
       const existing = issueTimelines.get(e.issue_number);
       if (existing) {
         existing.end = ts;
@@ -383,8 +383,8 @@ function analyzeRework(outcomes: Outcome[]): SprintAnalytics["reworkAnalysis"] {
 
 /** Analyze session patterns from events */
 function analyzeSessionPatterns(events: PMEvent[]): SprintAnalytics["sessionPatterns"] {
-  const sessions = events.filter((e) => e.event === "session_start");
-  const needsInput = events.filter((e) => e.event === "needs_input");
+  const sessions = events.filter((e) => e.event_type === "session_start");
+  const needsInput = events.filter((e) => e.event_type === "needs_input");
   const allEvents = events;
 
   // Events per session (approximate by grouping by session_id or by time windows)
@@ -587,7 +587,7 @@ export async function checkReadiness(issueNumber: number): Promise<ReadinessChec
 
   // Check 1: Issue was moved to Active
   const wasActive = events.some(
-    (e) => e.event === "state_change" && e.to_state === "Active"
+    (e) => e.event_type === "state_change" && e.to_value === "Active"
   );
   checks.push({
     name: "Issue moved to Active",
@@ -600,7 +600,7 @@ export async function checkReadiness(issueNumber: number): Promise<ReadinessChec
   if (!wasActive) missingSteps.push("Move issue to Active before starting work");
 
   // Check 2: Has session activity
-  const sessionStarts = events.filter((e) => e.event === "session_start");
+  const sessionStarts = events.filter((e) => e.event_type === "session_start");
   checks.push({
     name: "Has development sessions",
     passed: sessionStarts.length > 0,
@@ -610,7 +610,7 @@ export async function checkReadiness(issueNumber: number): Promise<ReadinessChec
 
   // Check 3: Look for state_change to Review
   const moveToReview = events.some(
-    (e) => e.event === "state_change" && e.to_state === "Review"
+    (e) => e.event_type === "state_change" && e.to_value === "Review"
   );
   checks.push({
     name: "Not already in Review",
@@ -623,12 +623,12 @@ export async function checkReadiness(issueNumber: number): Promise<ReadinessChec
 
   // Check 4: No unresolved rework
   const reworkEvents = events.filter(
-    (e) => e.event === "state_change" && e.to_state === "Rework"
+    (e) => e.event_type === "state_change" && e.to_value === "Rework"
   );
   const activeAfterRework = reworkEvents.length > 0 && events.some(
     (e) =>
-      e.event === "state_change" &&
-      e.to_state === "Active" &&
+      e.event_type === "state_change" &&
+      e.to_value === "Active" &&
       new Date(e.timestamp) > new Date(reworkEvents[reworkEvents.length - 1].timestamp)
   );
   if (reworkEvents.length > 0) {
