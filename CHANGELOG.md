@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2026-02-19
+
+### Added
+- **Dependency Visualization:**
+  - MCP `visualize_dependencies` tool: renders the issue dependency graph as human-readable ASCII art and Mermaid diagrams. Two modes: (1) Full graph — tree-style dependency rendering with critical path highlight, bottleneck summary, cycle warnings, orphaned blocked issues, and network metrics. (2) Single issue — focused upstream/downstream view showing blockers (with resolution status), dependents, chain visualization, and execution order. ASCII output uses status indicators: `[x]` Done, `[>]` Active, `[?]` Review, `[!]` Rework, `[ ]` Ready, `[-]` Backlog. Mermaid output produces color-coded flowcharts (green=Done, blue=Active, yellow=Review, gray=Ready, dashed=Backlog) with resolved dependencies as dotted lines and critical path edges highlighted in red. Renders natively in GitHub PRs/issues, Notion, and Obsidian.
+- `validate.sh`: Added check for visualize.ts
+
 ## [0.10.0] - 2026-02-19
 
 ### Added

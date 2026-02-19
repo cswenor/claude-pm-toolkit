@@ -387,7 +387,7 @@ Instead of a user manually running `/issue 42` in one window and `/issue 57` in 
 | **P16** | Dependency graph analysis | Detect blocked chains, critical path | 1 day | ✅ Done (v0.9.0) |
 | **P17** | Team capacity modeling | Multi-contributor throughput simulation | 0.5 day | ✅ Done (v0.9.0) |
 | **P18** | Scope creep detector | Alert when PR touches files outside plan | 0.5 day | ✅ Done (v0.8.0) |
-| **P19** | Issue dependency visualization | ASCII graph + Mermaid diagram output | 0.5 day | Ready |
+| **P19** | Issue dependency visualization | ASCII graph + Mermaid diagram output | 0.5 day | ✅ Done (v0.11.0) |
 | **P20** | Sprint planning assistant | AI-assisted sprint planning from capacity + backlog | 1 day | ✅ Done (v0.10.0) |
 
 ---

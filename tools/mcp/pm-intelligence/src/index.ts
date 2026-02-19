@@ -36,6 +36,7 @@
  *   - get_issue_dependencies: Dependencies for a single issue
  *   - get_team_capacity: Team throughput analysis and sprint forecast
  *   - plan_sprint: AI-powered sprint planning combining all intelligence
+ *   - visualize_dependencies: ASCII + Mermaid dependency graph visualization
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -98,10 +99,11 @@ import {
 } from "./graph.js";
 import { getTeamCapacity } from "./capacity.js";
 import { planSprint } from "./planner.js";
+import { visualizeDependencies } from "./visualize.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.10.0",
+  version: "0.11.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -1274,6 +1276,61 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "visualize_dependencies",
+  {
+    title: "Dependency Visualization",
+    description:
+      "Render the issue dependency graph as ASCII art and/or Mermaid diagram. Two modes: (1) Full graph — shows all connected issues, critical path highlighted, bottlenecks listed, dependency trees rendered. (2) Single issue — shows upstream blockers, downstream dependents, execution order, chain visualization. ASCII output is ready for terminal/monospace display. Mermaid output renders in GitHub, Notion, Obsidian. Color-coded by workflow state: green=Done, blue=Active, yellow=Review, gray=Ready, dashed=Backlog. Resolved dependencies shown as dotted lines.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Issue number for single-issue view. Omit for full graph."),
+      format: z
+        .enum(["both", "ascii", "mermaid"])
+        .optional()
+        .describe("Output format: 'both' (default), 'ascii' only, or 'mermaid' only"),
+    },
+  },
+  async ({ issueNumber, format }) => {
+    try {
+      const result = await visualizeDependencies(issueNumber, format ?? "both");
+
+      // Build output: combine ASCII and Mermaid with clear sections
+      const parts: string[] = [];
+
+      if (result.ascii) {
+        parts.push(result.ascii);
+      }
+
+      if (result.mermaid) {
+        if (parts.length > 0) parts.push("\n---\n");
+        parts.push("MERMAID DIAGRAM (paste into GitHub/Notion/Obsidian):\n");
+        parts.push(result.mermaid);
+      }
+
+      parts.push(`\n${result.summary}`);
+
+      return {
+        content: [{ type: "text" as const, text: parts.join("\n") }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -1464,12 +1521,13 @@ const ALL_TOOLS = [
   "detect_scope_creep", "get_context_efficiency", "get_workflow_health",
   "analyze_dependency_graph", "get_issue_dependencies", "get_team_capacity",
   "plan_sprint",
+  "visualize_dependencies",
 ];
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.10.0 running on stdio");
+  console.error("PM Intelligence MCP Server v0.11.0 running on stdio");
   console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
 }
 
