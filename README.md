@@ -104,6 +104,13 @@ A native MCP server that gives Claude direct access to project state — no bash
 | **What-If** | `simulate_dependency_change` | "What if #X slips N days?" cascade modeling |
 | **Release** | `generate_release_notes` | Automated release notes from merged PRs |
 | **Session** | `optimize_session` | Context-aware session planning and prioritization |
+| **Review** | `review_pr` | Structured PR analysis with scope, risk, verdict |
+| | `auto_label` | Automatic issue classification with confidence scores |
+| **Context** | `get_session_history` | Cross-session event history for an issue |
+| | `recover_context` | Full context recovery to resume work ("pick up where you left off") |
+| **Batch** | `bulk_triage` | Triage all untriaged issues in one call |
+| | `bulk_move` | Move multiple issues between states (with dry-run) |
+| **Risk** | `get_risk_radar` | Unified risk dashboard synthesizing all intelligence |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |

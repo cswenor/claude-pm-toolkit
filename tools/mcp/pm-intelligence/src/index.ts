@@ -50,6 +50,13 @@
  *   - simulate_dependency_change: "What if issue #X slips by N days?"
  *   - generate_release_notes: Automated release notes from merged PRs
  *   - optimize_session: Context-aware session planning and work prioritization
+ *   - review_pr: Structured PR analysis with scope, risk, and acceptance criteria
+ *   - auto_label: Automatic issue classification from content analysis
+ *   - get_session_history: Cross-session event history for an issue
+ *   - recover_context: Full context recovery to resume work on an issue
+ *   - bulk_triage: Triage all untriaged issues in one call
+ *   - bulk_move: Move multiple issues between workflow states
+ *   - get_risk_radar: Unified risk assessment synthesizing all intelligence
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -132,6 +139,10 @@ import {
 import { simulateDependencyChange } from "./whatif.js";
 import { generateReleaseNotes } from "./release.js";
 import { optimizeSession } from "./session.js";
+import { reviewPR, autoLabel } from "./review-intel.js";
+import { getSessionHistory, recoverContext } from "./context.js";
+import { bulkTriage, bulkMove } from "./batch.js";
+import { getRiskRadar } from "./risk-radar.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
@@ -2102,6 +2113,282 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "review_pr",
+  {
+    title: "Review PR",
+    description:
+      "Structured PR analysis: file classification, scope check, acceptance " +
+      "criteria verification, risk assessment (secrets, knowledge risk, large files), " +
+      "quality signals (tests, types, config changes), and verdict recommendation. " +
+      "Returns approve/request_changes/needs_discussion with specific blockers and suggestions.",
+    inputSchema: {
+      prNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Pull request number to review"),
+    },
+  },
+  async ({ prNumber }) => {
+    try {
+      const result = await reviewPR(prNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "auto_label",
+  {
+    title: "Auto Label",
+    description:
+      "Automatic issue classification from content analysis. Suggests type " +
+      "(bug/feature/spike/epic/chore), area (frontend/backend/contracts/infra), " +
+      "priority, risk level, and spec readiness based on title and body keyword matching. " +
+      "Returns suggestions with confidence scores — labels are NOT applied automatically.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to classify"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const result = await autoLabel(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_session_history",
+  {
+    title: "Get Session History",
+    description:
+      "Cross-session event history for an issue. Shows workflow transitions, " +
+      "decisions made, outcomes recorded, session gaps (>1 day), and approximate " +
+      "session count. Use to understand what happened with an issue over time.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to get history for"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const result = await getSessionHistory(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "recover_context",
+  {
+    title: "Recover Context",
+    description:
+      "Full context recovery to resume work on an issue. Loads: current state, " +
+      "previous plans, linked PR status, review feedback, decisions, event timeline, " +
+      "dependencies, predictions, and issue comments. Returns a resumption guide " +
+      "with detected mode (START/CONTINUE/REWORK/etc), next steps, warnings, " +
+      "and context files to load. The 'pick up where you left off' tool.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to recover context for"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const result = await recoverContext(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "bulk_triage",
+  {
+    title: "Bulk Triage",
+    description:
+      "Triage all untriaged issues in one call. Finds open issues missing type: " +
+      "or area: labels and suggests classifications for each. Labels are suggestions " +
+      "only — not applied automatically. Use for backlog grooming and project cleanup.",
+    inputSchema: {
+      maxIssues: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .default(20)
+        .describe("Maximum issues to process. Default 20"),
+    },
+  },
+  async ({ maxIssues }) => {
+    try {
+      const result = await bulkTriage(maxIssues);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "bulk_move",
+  {
+    title: "Bulk Move",
+    description:
+      "Move multiple issues between workflow states in one call. Supports dry " +
+      "run mode to preview changes. Use for sprint transitions (Ready → Active), " +
+      "cleanup (stale → Backlog), or batch state corrections.",
+    inputSchema: {
+      issueNumbers: z
+        .array(z.number().int().positive())
+        .describe("Array of issue numbers to move"),
+      targetState: z
+        .string()
+        .describe("Target workflow state (Backlog, Ready, Active, Review, Rework, Done)"),
+      dryRun: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("If true, preview changes without applying them"),
+    },
+  },
+  async ({ issueNumbers, targetState, dryRun }) => {
+    try {
+      const result = await bulkMove(issueNumbers, targetState, dryRun);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_risk_radar",
+  {
+    title: "Get Risk Radar",
+    description:
+      "Comprehensive risk assessment synthesizing ALL intelligence signals: " +
+      "delivery velocity, quality (rework rate, DORA CFR), knowledge (bus factor, " +
+      "critical files), process (stale items, WIP violations), dependencies " +
+      "(cycles, bottlenecks, orphaned), and capacity (deceleration). Returns " +
+      "overall risk score (0-100), prioritized risk list with trend arrows, " +
+      "health indicators per category, and actionable mitigations. " +
+      "The executive risk dashboard in one call.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const result = await getRiskRadar();
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
 
 const ALL_TOOLS = [
@@ -2121,6 +2408,10 @@ const ALL_TOOLS = [
   "detect_patterns",
   "triage_issue", "analyze_pr_impact", "decompose_issue",
   "simulate_dependency_change", "generate_release_notes", "optimize_session",
+  "review_pr", "auto_label",
+  "get_session_history", "recover_context",
+  "bulk_triage", "bulk_move",
+  "get_risk_radar",
 ];
 
 async function main() {
