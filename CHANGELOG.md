@@ -5,9 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [0.11.0] - 2026-02-19
 
 ### Added
+- **Project Health Dashboard:**
+  - MCP `get_project_dashboard` tool: comprehensive project health report that synthesizes ALL intelligence modules into one view. Gathers board state, velocity, DORA metrics, workflow health, dependency graph, team capacity, Monte Carlo simulation, and memory insights in parallel (9 concurrent queries). Returns: overall health score (0-100) computed as weighted average across 7 dimensions (velocity 20%, workflow 20%, DORA 15%, dependencies 15%, capacity 15%, knowledge risk 10%, learning 5%). Output is a formatted markdown report with: health signal table, board snapshot with active/stale items, velocity comparison table, dependency summary with critical path and bottlenecks, team capacity forecast, Monte Carlo throughput histogram, DORA metrics table, and top 5 prioritized recommendations. The "how is my project doing?" single call.
 - **Dependency Visualization:**
   - MCP `visualize_dependencies` tool: renders the issue dependency graph as human-readable ASCII art and Mermaid diagrams. Two modes: (1) Full graph — tree-style dependency rendering with critical path highlight, bottleneck summary, cycle warnings, orphaned blocked issues, and network metrics. (2) Single issue — focused upstream/downstream view showing blockers (with resolution status), dependents, chain visualization, and execution order. ASCII output uses status indicators: `[x]` Done, `[>]` Active, `[?]` Review, `[!]` Rework, `[ ]` Ready, `[-]` Backlog. Mermaid output produces color-coded flowcharts (green=Done, blue=Active, yellow=Review, gray=Ready, dashed=Backlog) with resolved dependencies as dotted lines and critical path edges highlighted in red. Renders natively in GitHub PRs/issues, Notion, and Obsidian.
-- `validate.sh`: Added check for visualize.ts
+- `validate.sh`: Added checks for visualize.ts and dashboard.ts
 
 ## [0.10.0] - 2026-02-19
 

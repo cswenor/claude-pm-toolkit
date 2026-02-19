@@ -169,6 +169,7 @@ OPTIONAL_FILES=(
   "tools/mcp/pm-intelligence/src/capacity.ts"
   "tools/mcp/pm-intelligence/src/planner.ts"
   "tools/mcp/pm-intelligence/src/visualize.ts"
+  "tools/mcp/pm-intelligence/src/dashboard.ts"
   "tools/scripts/pm-commit-guard.sh"
   "tools/scripts/pm-stop-guard.sh"
   "tools/scripts/pm-event-log.sh"

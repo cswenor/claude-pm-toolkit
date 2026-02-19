@@ -37,6 +37,7 @@
  *   - get_team_capacity: Team throughput analysis and sprint forecast
  *   - plan_sprint: AI-powered sprint planning combining all intelligence
  *   - visualize_dependencies: ASCII + Mermaid dependency graph visualization
+ *   - get_project_dashboard: Full project health report synthesizing all intelligence
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -100,6 +101,7 @@ import {
 import { getTeamCapacity } from "./capacity.js";
 import { planSprint } from "./planner.js";
 import { visualizeDependencies } from "./visualize.js";
+import { getProjectDashboard } from "./dashboard.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
@@ -1331,6 +1333,33 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "get_project_dashboard",
+  {
+    title: "Project Health Dashboard",
+    description:
+      "Comprehensive project health report that synthesizes ALL intelligence modules into one view. Gathers board state, velocity, DORA metrics, workflow health, dependency graph, team capacity, and sprint simulation in parallel. Returns: overall health score (0-100) with status, individual health signals for 7 dimensions (velocity, DORA, workflow, dependencies, capacity, knowledge risk, learning), formatted markdown report with board snapshot, velocity table, dependency summary, team capacity breakdown, Monte Carlo histogram, and top 5 actionable recommendations prioritized by impact. Use this as the first call when starting a session or when asked 'how is the project doing?'",
+  },
+  async () => {
+    try {
+      const result = await getProjectDashboard();
+      return {
+        content: [{ type: "text" as const, text: result.report }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -1522,6 +1551,7 @@ const ALL_TOOLS = [
   "analyze_dependency_graph", "get_issue_dependencies", "get_team_capacity",
   "plan_sprint",
   "visualize_dependencies",
+  "get_project_dashboard",
 ];
 
 async function main() {

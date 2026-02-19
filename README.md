@@ -91,6 +91,7 @@ A native MCP server that gives Claude direct access to project state — no bash
 | **Capacity** | `get_team_capacity` | Contributor profiles, sprint forecast, area coverage |
 | **Planning** | `plan_sprint` | AI-powered sprint planning combining all intelligence |
 | **Visualization** | `visualize_dependencies` | ASCII + Mermaid dependency graph rendering |
+| **Dashboard** | `get_project_dashboard` | Full health report synthesizing all intelligence |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |
