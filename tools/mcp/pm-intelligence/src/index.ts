@@ -146,7 +146,7 @@ import { getRiskRadar } from "./risk-radar.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.12.0",
+  version: "0.13.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -2417,7 +2417,7 @@ const ALL_TOOLS = [
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.12.0 running on stdio");
+  console.error("PM Intelligence MCP Server v0.13.0 running on stdio");
   console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
 }
 

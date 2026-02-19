@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.12.0] - 2026-02-19
+## [0.13.0] - 2026-02-19
 
 ### Added
 - **Operational Intelligence:**
