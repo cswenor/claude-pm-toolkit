@@ -7,6 +7,19 @@ on:
     branches: [main]
 
 jobs:
+  typescript-build:
+    name: TypeScript Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: tools/mcp/pm-intelligence/package-lock.json
+      - name: Build MCP server
+        run: make build
+
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest

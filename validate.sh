@@ -438,9 +438,50 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 9. GitHub connectivity (optional, non-blocking)
+# 9. PM Database (.pm/state.db)
 # ---------------------------------------------------------------------------
-log_section "9. GitHub Connectivity (optional)"
+log_section "9. PM Database"
+
+PM_DB="$TARGET/.pm/state.db"
+if [[ -f "$PM_DB" ]]; then
+  pass ".pm/state.db exists"
+
+  # Check if sqlite3 is available for deeper validation
+  if command -v sqlite3 &>/dev/null; then
+    # Check issues table has rows
+    ISSUE_COUNT=$(sqlite3 "$PM_DB" "SELECT COUNT(*) FROM issues;" 2>/dev/null || echo "0")
+    if [[ "$ISSUE_COUNT" -gt 0 ]]; then
+      pass "Database has $ISSUE_COUNT issues synced"
+    else
+      warn "Database has no issues — run 'pm sync' to populate"
+    fi
+
+    # Check last sync time
+    LAST_SYNC=$(sqlite3 "$PM_DB" "SELECT last_sync FROM sync_state WHERE resource='issues' LIMIT 1;" 2>/dev/null || echo "")
+    if [[ -n "$LAST_SYNC" ]]; then
+      pass "Last sync: $LAST_SYNC"
+    else
+      warn "No sync record found — run 'pm sync' to pull from GitHub"
+    fi
+
+    # Check schema version
+    SCHEMA_VER=$(sqlite3 "$PM_DB" "SELECT MAX(version) FROM schema_version;" 2>/dev/null || echo "0")
+    if [[ "$SCHEMA_VER" -ge 1 ]]; then
+      pass "Schema version: $SCHEMA_VER"
+    else
+      warn "Schema version unknown — database may need re-initialization"
+    fi
+  else
+    warn "sqlite3 not available — skipping deep database checks"
+  fi
+else
+  warn ".pm/state.db not found — run 'pm init' to initialize"
+fi
+
+# ---------------------------------------------------------------------------
+# 10. GitHub connectivity (optional, non-blocking)
+# ---------------------------------------------------------------------------
+log_section "10. GitHub Connectivity (optional)"
 
 if command -v gh &>/dev/null && gh auth status &>/dev/null; then
   pass "gh CLI authenticated"

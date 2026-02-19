@@ -346,14 +346,18 @@ if [[ -f "$SETTINGS" ]]; then
         JQ_SCRIPTS="${JQ_SCRIPTS:+$JQ_SCRIPTS, }\"$script\""
       done
 
-      if jq --arg scripts "placeholder" '
+      if jq '
         . as $root |
+        ['"$JQ_SCRIPTS"'] as $scripts |
         [$root.hooks // {} | keys[]] as $events |
         reduce $events[] as $event ($root;
           .hooks[$event] = [
             .hooks[$event][] |
             if .hooks then
-              .hooks = [.hooks[] | select(.command | IN('"$JQ_SCRIPTS"') | not)] |
+              .hooks = [.hooks[] | select(
+                .command as $cmd |
+                ($scripts | any(. as $s | $cmd | startswith($s))) | not
+              )] |
               if (.hooks | length) > 0 then . else empty end
             else
               .

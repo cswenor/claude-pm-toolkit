@@ -89,7 +89,6 @@ import {
   getBoardCache,
   recordDecision,
   recordOutcome,
-  updateBoardCache,
   getInsights,
 } from "./memory.js";
 import {
@@ -148,6 +147,8 @@ import { reviewPR, autoLabel } from "./review-intel.js";
 import { getSessionHistory, recoverContext } from "./context.js";
 import { bulkTriage, bulkMove } from "./batch.js";
 import { getRiskRadar } from "./risk-radar.js";
+import { log, withLogging, getToolMetrics } from "./logger.js";
+import { invalidateAll } from "./cache.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
@@ -280,7 +281,10 @@ server.registerTool(
   },
   async ({ force }) => {
     try {
-      const result = await syncFromGitHub({ force: force || false });
+      const result = await withLogging("sync_from_github", () =>
+        syncFromGitHub({ force: force || false })
+      );
+      invalidateAll(); // Clear cache after sync
       return {
         content: [
           { type: "text" as const, text: JSON.stringify(result, null, 2) },
@@ -588,7 +592,7 @@ server.registerTool(
         .string()
         .optional()
         .describe(
-          "Filter by event type (session_start, state_change, needs_input, error, etc.)"
+          "Filter by event type (session_start, workflow_change, needs_input, error, etc.)"
         ),
     },
   },
@@ -2509,6 +2513,7 @@ server.registerTool(
 
 const ALL_TOOLS = [
   "get_issue_status", "get_board_summary", "move_issue", "get_velocity",
+  "sync_from_github", "add_dependency", "get_cycle_times",
   "record_decision", "record_outcome", "get_memory_insights", "get_event_stream",
   "get_sprint_analytics", "suggest_approach", "check_readiness", "get_history_insights",
   "predict_completion", "predict_rework", "get_dora_metrics", "get_knowledge_risk",
@@ -2533,8 +2538,23 @@ const ALL_TOOLS = [
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.13.0 running on stdio");
-  console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
+  log("info", `PM Intelligence MCP Server v0.15.0 running on stdio (${ALL_TOOLS.length} tools)`);
+
+  // Lazy auto-sync: if database is empty, trigger initial sync in background
+  try {
+    const stale = await isSyncStale();
+    if (stale) {
+      log("info", "Database empty or stale — triggering background sync");
+      syncFromGitHub().then((result) => {
+        log("info", `Auto-sync complete: ${result.issues.synced} issues, ${result.prs.synced} PRs (${result.duration_ms}ms)`);
+        invalidateAll();
+      }).catch((err) => {
+        log("warn", `Auto-sync failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }
+  } catch {
+    // Non-fatal: server works without sync
+  }
 }
 
 process.on("SIGINT", async () => {

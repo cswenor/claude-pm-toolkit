@@ -19,6 +19,7 @@ import {
   getLastSync,
   getDb,
 } from "./db.js";
+import { getConfig } from "./config.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,55 +30,6 @@ async function gh(args: string[]): Promise<string> {
     maxBuffer: 10 * 1024 * 1024,
   });
   return stdout.trim();
-}
-
-// ─── Config ──────────────────────────────────────────────
-
-interface SyncConfig {
-  owner: string;
-  repo: string;
-}
-
-let _config: SyncConfig | null = null;
-
-/** Get repo owner/name from git remote or config */
-async function getConfig(): Promise<SyncConfig> {
-  if (_config) return _config;
-
-  // Try to read from .claude-pm-toolkit.json first
-  try {
-    const { stdout } = await execFileAsync("git", [
-      "rev-parse",
-      "--show-toplevel",
-    ]);
-    const root = stdout.trim();
-    const { readFile } = await import("node:fs/promises");
-    const configPath = `${root}/.claude-pm-toolkit.json`;
-    const content = await readFile(configPath, "utf-8");
-    const json = JSON.parse(content);
-    if (json.owner && json.repo) {
-      _config = { owner: json.owner, repo: json.repo };
-      return _config;
-    }
-  } catch {
-    // Fall through to git remote detection
-  }
-
-  // Detect from git remote
-  const { stdout } = await execFileAsync("git", [
-    "remote",
-    "get-url",
-    "origin",
-  ]);
-  const url = stdout.trim();
-  const match = url.match(/(?:github\.com[:/])([^/]+)\/([^/.\s]+)/);
-  if (!match) throw new Error(`Cannot parse repo from remote URL: ${url}`);
-
-  _config = {
-    owner: match[1],
-    repo: match[2].replace(/\.git$/, ""),
-  };
-  return _config;
 }
 
 // ─── Issue Sync ──────────────────────────────────────────

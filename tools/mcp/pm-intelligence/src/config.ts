@@ -109,3 +109,35 @@ export const ISSUE_TYPES = [
 ] as const;
 
 export type IssueType = (typeof ISSUE_TYPES)[number];
+
+// ─── Operational Defaults ────────────────────────────────
+// Centralized constants previously hardcoded across db.ts, sync.ts, analytics.ts
+
+/** Max concurrent Active issues (WIP limit enforced by moveIssueWorkflow) */
+export const WIP_LIMIT = 1;
+
+/** Sync is considered stale after this many milliseconds (1 hour) */
+export const SYNC_STALE_MS = 60 * 60 * 1000;
+
+/** Bottleneck thresholds (hours) for analytics detectBottlenecks */
+export const BOTTLENECK_THRESHOLDS = {
+  reviewAvgHours: 24,
+  reworkAvgHours: 8,
+  readyAvgHours: 48,
+  activeAvgHours: 72,
+} as const;
+
+/** Stale issue thresholds (days) for workflow health */
+export const STALE_THRESHOLDS = {
+  activeDays: 7,
+  reviewDays: 5,
+  reworkDays: 3,
+} as const;
+
+/** GitHub sync fetch limits */
+export const SYNC_LIMITS = {
+  issuesPerSync: 200,
+  prsPerSync: 100,
+  ghTimeoutMs: 30_000,
+  ghMaxBuffer: 10 * 1024 * 1024,
+} as const;

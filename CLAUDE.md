@@ -14,13 +14,14 @@ This is **your product**. You are the builder of this toolkit — the best PM in
 
 - **Codex** (`mcp__codex__codex`, `mcp__codex__codex-reply`): Launch autonomous Codex sessions for parallel workstreams — builds, tests, research, file operations. Use when tasks can run concurrently.
 - **Task agents**: Use subagents for parallel exploration, search, and planning.
-- **PM Intelligence MCP tools**: 49 tools available when the MCP server is running.
+- **PM Intelligence MCP tools**: 52 tools available when the MCP server is running.
 
 ## Build & Development
 
 ```bash
 make install    # Install dependencies (npm install in MCP server)
 make build      # Compile TypeScript
+make test       # Run unit tests (vitest)
 make dev        # Watch mode
 make clean      # Remove build artifacts
 make rebuild    # Clean + install + build
@@ -33,15 +34,21 @@ make rebuild    # Clean + install + build
 - **Local-first SQLite** (`better-sqlite3`) — no GitHub Projects v2 dependency
 - **Database**: `.pm/state.db` (created on `pm init`)
 - **Config**: `.claude-pm-toolkit.json` (owner/repo, prefix, commands)
-- **MCP server source**: `tools/mcp/pm-intelligence/src/` (20 source files)
-- **Main entry**: `tools/mcp/pm-intelligence/src/index.ts` (49 MCP tools)
+- **MCP server source**: `tools/mcp/pm-intelligence/src/` (31 source files)
+- **Main entry**: `tools/mcp/pm-intelligence/src/index.ts` (52 MCP tools)
 - **CLI**: `tools/mcp/pm-intelligence/src/cli.ts` (`pm board`, `pm status`, `pm move`, `pm sync`, `pm init`, `pm add`, `pm dep`, `pm history`)
+- **Auto-sync**: Server triggers background sync on startup if database is empty or stale (>1hr)
+- **Caching**: In-memory TTL cache (`cache.ts`) — GitHub 5min, Git 2min, DB 30s
+- **Logging**: Structured logging to stderr (`logger.ts`) with tool metrics tracking
 
 ## Key Technical Details
 
 - PMEvent fields: `event_type`, `to_value`, `from_value`, `metadata` (not the old `event`, `to_state`, `from_state`)
-- Priority values are lowercase: `critical`, `high`, `normal`, `low`
+- Priority values are lowercase: `critical`, `high`, `normal`
 - tsconfig uses `"lib": ["ES2023"]` for `Array.findLast()`
+- Event types: `workflow_change`, `priority_change`, `created`, `closed`, `sync`, `decision`, `outcome`, `dependency_added`, `dependency_resolved`
+- Workflow states: `Backlog` → `Ready` → `Active` → `Review` → `Rework` → `Done` (WIP limit: 1 Active)
+- Centralized config constants in `config.ts`: `WIP_LIMIT`, `SYNC_STALE_MS`, `BOTTLENECK_THRESHOLDS`, `STALE_THRESHOLDS`, `SYNC_LIMITS`
 - Installer sentinel merge: `<!-- claude-pm-toolkit:start/end -->` (CLAUDE.md), `# claude-pm-toolkit:start/end` (Makefile)
 
 ## E2E Test Target
@@ -54,14 +61,17 @@ make rebuild    # Clean + install + build
 
 ```
 install.sh              # Install/update toolkit into target repo
-validate.sh             # Post-install validation (97 checks)
+validate.sh             # Post-install validation (incl. PM Database checks)
 uninstall.sh            # Clean removal from target repo
 claude-md-sections.md   # Template content injected into target CLAUDE.md
-Makefile                # Build system entry points
+Makefile                # Build system entry points (install, build, test, dev, clean)
+.github/workflows/ci.yml # CI: TypeScript build + shellcheck
 tools/mcp/pm-intelligence/
-  src/                  # TypeScript source (20 files)
+  src/                  # TypeScript source (31 files)
+  src/__tests__/        # Unit + smoke tests (vitest, 52 tests)
   build/                # Compiled JS (gitignored in targets)
   package.json          # v0.15.0, deps: @modelcontextprotocol/sdk, better-sqlite3, zod
+  vitest.config.ts      # Test configuration
 tools/scripts/          # Shell scripts installed into target repos
 tools/config/           # Guard configs installed into target repos
 .claude/skills/         # Skill definitions (issue, pm-review, weekly, start)

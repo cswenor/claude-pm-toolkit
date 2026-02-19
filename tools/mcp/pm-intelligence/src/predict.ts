@@ -1,7 +1,7 @@
 /**
  * Predictive intelligence — forecasting and risk analysis.
  *
- * Uses historical data from JSONL memory, event stream, and git history
+ * Uses historical data from SQLite memory, event stream, and git history
  * to predict outcomes and identify risks before they materialize.
  *
  * Tools:
@@ -217,10 +217,10 @@ function computeCycleTimes(
     );
 
     const activeEvent = issueEvents.find(
-      (e) => e.event_type === "state_change" && e.to_value === "Active"
+      (e) => e.event_type === "workflow_change" && e.to_value === "Active"
     );
     const doneEvent = issueEvents.find(
-      (e) => e.event_type === "state_change" && e.to_value === "Done"
+      (e) => e.event_type === "workflow_change" && e.to_value === "Done"
     );
 
     if (activeEvent && doneEvent) {
@@ -247,7 +247,7 @@ function percentile(sorted: number[], p: number): number {
 /** Detect current state from events */
 function getCurrentState(events: PMEvent[]): string {
   const stateChanges = events
-    .filter((e) => e.event_type === "state_change" && e.to_value)
+    .filter((e) => e.event_type === "workflow_change" && e.to_value)
     .sort(
       (a, b) =>
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
@@ -337,7 +337,7 @@ export async function predictCompletion(
 
   // Factor 1: Has rework history
   const reworkEvents = issueEvents.filter(
-    (e) => e.event_type === "state_change" && e.to_value === "Rework"
+    (e) => e.event_type === "workflow_change" && e.to_value === "Rework"
   );
   if (reworkEvents.length > 0) {
     const contribution = Math.min(reworkEvents.length * 15, 30);
@@ -352,7 +352,7 @@ export async function predictCompletion(
 
   // Factor 2: Long time in current state
   const lastStateChange = issueEvents
-    .filter((e) => e.event_type === "state_change")
+    .filter((e) => e.event_type === "workflow_change")
     .sort(
       (a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -529,7 +529,7 @@ export async function predictRework(
 
   // Signal 1: Multiple rework cycles in event history
   const reworkCycles = issueEvents.filter(
-    (e) => e.event_type === "state_change" && e.to_value === "Rework"
+    (e) => e.event_type === "workflow_change" && e.to_value === "Rework"
   ).length;
   const hasReworkHistory = reworkCycles > 0;
   signals.push({
@@ -572,7 +572,7 @@ export async function predictRework(
 
   // Signal 4: Rapid state transitions (rushing)
   const stateChanges = issueEvents.filter(
-    (e) => e.event_type === "state_change"
+    (e) => e.event_type === "workflow_change"
   );
   const hasActiveToReviewFast = (() => {
     const activeEvent = stateChanges.find((e) => e.to_value === "Active");

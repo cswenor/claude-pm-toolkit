@@ -155,10 +155,10 @@ async function getCycleTimeSamples(
     );
 
     const activeEvent = issueEvents.find(
-      (e) => e.event_type === "state_change" && e.to_value === "Active"
+      (e) => e.event_type === "workflow_change" && e.to_value === "Active"
     );
     const doneEvent = issueEvents.find(
-      (e) => e.event_type === "state_change" && e.to_value === "Done"
+      (e) => e.event_type === "workflow_change" && e.to_value === "Done"
     );
 
     if (activeEvent && doneEvent) {
@@ -205,10 +205,10 @@ function getCycleTimeSamplesUnfiltered(
       (e) => e.issue_number === outcome.issue_number
     );
     const activeEvent = issueEvents.find(
-      (e) => e.event_type === "state_change" && e.to_value === "Active"
+      (e) => e.event_type === "workflow_change" && e.to_value === "Active"
     );
     const doneEvent = issueEvents.find(
-      (e) => e.event_type === "state_change" && e.to_value === "Done"
+      (e) => e.event_type === "workflow_change" && e.to_value === "Done"
     );
     if (activeEvent && doneEvent) {
       const days =

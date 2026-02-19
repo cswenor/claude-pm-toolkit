@@ -421,7 +421,7 @@ export async function getContextEfficiency(
 
   // Basic counts
   const sessions = events.filter((e) => e.event_type === "session_start");
-  const stateChanges = events.filter((e) => e.event_type === "state_change");
+  const stateChanges = events.filter((e) => e.event_type === "workflow_change");
   const reworkCycles = stateChanges.filter(
     (e) => e.to_value === "Rework"
   ).length;
@@ -687,7 +687,7 @@ export async function getWorkflowHealth(
     }
     const entry = issueMap.get(event.issue_number)!;
     entry.events.push(event);
-    if (event.event_type === "state_change" && event.to_value) {
+    if (event.event_type === "workflow_change" && event.to_value) {
       entry.states.push({
         state: event.to_value,
         timestamp: new Date(event.timestamp),

@@ -580,7 +580,7 @@ export async function addDependency(
   db.prepare(`
     INSERT INTO events (event_type, issue_number, from_value, to_value, actor, metadata)
     VALUES ('dependency_added', ?, ?, ?, 'claude', ?)
-  `).run(blockedIssue, null, String(blockerIssue), "claude",
+  `).run(blockedIssue, null, String(blockerIssue),
     JSON.stringify({ dep_type: depType, blocker: blockerIssue })
   );
 }
@@ -604,12 +604,12 @@ function checkForCycle(
 
     const deps = db
       .prepare(
-        "SELECT blocker_issue FROM dependencies WHERE blocked_issue = ? AND resolved_at IS NULL"
+        "SELECT blocked_issue FROM dependencies WHERE blocker_issue = ? AND resolved_at IS NULL"
       )
-      .all(current) as Array<{ blocker_issue: number }>;
+      .all(current) as Array<{ blocked_issue: number }>;
 
     for (const dep of deps) {
-      stack.push(dep.blocker_issue);
+      stack.push(dep.blocked_issue);
     }
   }
 

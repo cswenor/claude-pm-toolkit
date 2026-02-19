@@ -1,12 +1,8 @@
 /**
  * Memory system — backed by SQLite.
  *
- * v0.15.0: Migrated from JSONL files to SQLite database.
- * Decisions, outcomes, and events all live in .pm/state.db now.
- *
- * Backwards compatibility: if JSONL files exist in .claude/memory/,
- * they are imported on first access, then the directory is left in place
- * (not deleted) as a backup.
+ * v0.15.0: Fully migrated to SQLite database.
+ * Decisions, outcomes, and events all live in .pm/state.db.
  */
 
 import { getDb, queryEvents, type PMEvent } from "./db.js";
@@ -37,16 +33,6 @@ export interface Outcome {
   approach_summary: string | null;
   lessons: string | null;
   cycle_time_hours: number | null;
-}
-
-export interface BoardCache {
-  timestamp: string;
-  active: number;
-  review: number;
-  rework: number;
-  done: number;
-  backlog: number;
-  ready: number;
 }
 
 export { PMEvent };
@@ -147,8 +133,16 @@ export async function getEvents(
   });
 }
 
-/** Get board cache (computed from local DB, not cached JSON) */
-export async function getBoardCache(): Promise<BoardCache | null> {
+/** Get board snapshot (computed live from local DB) */
+export async function getBoardCache(): Promise<{
+  timestamp: string;
+  active: number;
+  review: number;
+  rework: number;
+  done: number;
+  backlog: number;
+  ready: number;
+} | null> {
   const db = await getDb();
 
   const counts = db
@@ -247,14 +241,6 @@ export async function recordOutcome(outcome: {
     INSERT INTO events (event_type, issue_number, pr_number, to_value, actor)
     VALUES ('outcome', ?, ?, ?, 'claude')
   `).run(outcome.issueNumber, outcome.prNumber ?? null, outcome.result);
-}
-
-/** Update board cache — now a no-op since board state is always live from DB */
-export async function updateBoardCache(
-  _state: Omit<BoardCache, "timestamp">
-): Promise<void> {
-  // No-op in v0.15+. Board state is always computed live from SQLite.
-  // Kept for API compatibility with existing tools.
 }
 
 // ─── Analytics ──────────────────────────────────────────

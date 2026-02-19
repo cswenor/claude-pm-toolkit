@@ -2,7 +2,7 @@
  * Sprint analytics — deep analysis from event stream and memory.
  *
  * Computes time-in-state, bottleneck detection, velocity trends,
- * cycle time distributions, and flow efficiency from JSONL event data.
+ * cycle time distributions, and flow efficiency from SQLite event data.
  */
 
 import { getEvents, getOutcomes, getDecisions, type PMEvent, type Outcome, type Decision } from "./memory.js";
@@ -146,7 +146,7 @@ export async function getSprintAnalytics(days = 14): Promise<SprintAnalytics> {
 function computeTimeInState(
   events: PMEvent[]
 ): Record<string, { avgHours: number; maxHours: number; count: number }> {
-  const stateChanges = events.filter((e) => e.event_type === "state_change");
+  const stateChanges = events.filter((e) => e.event_type === "workflow_change");
   const result: Record<string, { totalMs: number; maxMs: number; count: number }> = {};
 
   // Group state changes by issue, compute duration between transitions
@@ -250,7 +250,7 @@ function computeCycleTime(
   events: PMEvent[],
   outcomes: Outcome[]
 ): SprintAnalytics["cycleTime"] {
-  const stateChanges = events.filter((e) => e.event_type === "state_change");
+  const stateChanges = events.filter((e) => e.event_type === "workflow_change");
 
   // Find first Active timestamp and Done/merged timestamp per issue
   const issueTimelines = new Map<number, { start: number; end: number; area: string | null }>();
@@ -587,7 +587,7 @@ export async function checkReadiness(issueNumber: number): Promise<ReadinessChec
 
   // Check 1: Issue was moved to Active
   const wasActive = events.some(
-    (e) => e.event_type === "state_change" && e.to_value === "Active"
+    (e) => e.event_type === "workflow_change" && e.to_value === "Active"
   );
   checks.push({
     name: "Issue moved to Active",
@@ -608,9 +608,9 @@ export async function checkReadiness(issueNumber: number): Promise<ReadinessChec
     detail: `${sessionStarts.length} session(s) recorded for this issue`,
   });
 
-  // Check 3: Look for state_change to Review
+  // Check 3: Look for workflow_change to Review
   const moveToReview = events.some(
-    (e) => e.event_type === "state_change" && e.to_value === "Review"
+    (e) => e.event_type === "workflow_change" && e.to_value === "Review"
   );
   checks.push({
     name: "Not already in Review",
@@ -623,11 +623,11 @@ export async function checkReadiness(issueNumber: number): Promise<ReadinessChec
 
   // Check 4: No unresolved rework
   const reworkEvents = events.filter(
-    (e) => e.event_type === "state_change" && e.to_value === "Rework"
+    (e) => e.event_type === "workflow_change" && e.to_value === "Rework"
   );
   const activeAfterRework = reworkEvents.length > 0 && events.some(
     (e) =>
-      e.event_type === "state_change" &&
+      e.event_type === "workflow_change" &&
       e.to_value === "Active" &&
       new Date(e.timestamp) > new Date(reworkEvents[reworkEvents.length - 1].timestamp)
   );

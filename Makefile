@@ -4,7 +4,7 @@
 
 MCP_DIR := tools/mcp/pm-intelligence
 
-.PHONY: install build dev clean help
+.PHONY: install build dev clean test help
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -21,6 +21,9 @@ dev: ## Watch mode for TypeScript
 
 clean: ## Remove build artifacts
 	rm -rf $(MCP_DIR)/build $(MCP_DIR)/node_modules
+
+test: ## Run unit tests
+	cd $(MCP_DIR) && npm test
 
 rebuild: clean install build ## Clean rebuild
 
