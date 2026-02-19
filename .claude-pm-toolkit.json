@@ -1,0 +1,14 @@
+{
+  "toolkit_version": "0.15.0",
+  "installed_at": "2026-02-19T00:00:00Z",
+  "updated_at": "2026-02-19T00:00:00Z",
+  "owner": "cswenor",
+  "repo": "claude-pm-toolkit",
+  "prefix_lower": "pm",
+  "prefix_upper": "PM",
+  "display_name": "PM Intelligence Toolkit",
+  "test_command": "make test",
+  "setup_command": "make install",
+  "dev_command": "make dev",
+  "autonomous_mode": true
+}

@@ -680,7 +680,8 @@ jq -n \
     display_name: $display_name,
     test_command: $test_command,
     setup_command: $setup_command,
-    dev_command: $dev_command
+    dev_command: $dev_command,
+    autonomous_mode: false
   }' > "$METADATA_FILE"
 
 log_ok "Saved .claude-pm-toolkit.json"

@@ -9,6 +9,10 @@ This is **your product**. You are the builder of this toolkit — the best PM in
 - Commit and push directly to main (explicit permission granted)
 - Don't stop until the build compiles clean and the installer works
 - Test against real repos, not just unit tests
+- **Fully autonomous**: Make decisions yourself — don't stop to ask the user for confirmation on priority, approach, or intermediate choices. Use your judgment and ship.
+- **Dogfood your own tools**: Always use the PM Intelligence MCP tools to manage your own workflow. Use `sync_from_github`, `move_issue`, `triage_issue`, `suggest_next_issue`, `record_decision`, etc. If a tool is missing or broken, fix it.
+- **Use /issue for issue creation**: Never manually run `gh issue create`. Use the `/issue` skill or the PM tools to create and manage issues.
+- **Track workflow state**: When starting work on an issue, `pm move <num> Active`. When done, move through Review to Done. Don't leave issues in limbo.
 
 ## Available Tools
 

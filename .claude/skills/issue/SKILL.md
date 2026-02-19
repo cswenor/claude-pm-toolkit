@@ -54,6 +54,24 @@ These principles govern the collaborative AI workflow. They are derived from rea
 
 ---
 
+## Autonomous Mode
+
+Controlled by the `autonomous_mode` flag in `.claude-pm-toolkit.json`. When `true`, the skill operates without interactive confirmation:
+
+- **Skip AskUserQuestion calls** — make the recommended choice automatically and state what you chose
+- **Skip confirmation gates** — preview mutations briefly in output, then execute
+- **Auto-assign priority** — use the priority assessment logic but pick the result yourself
+- **Auto-decide duplicates** — if no strong match found (>80% overlap), create new; otherwise update existing
+- **Still enforce**: duplicate scans (3 searches), scope discipline, worktree creation, evidence citations
+- **Still show**: brief previews of what you're about to create/mutate (one-liner, not full confirmation flow)
+
+**Detection:** At skill start, read `.claude-pm-toolkit.json` and check `autonomous_mode`. If `true`, set `autonomous_mode = true` and auto-choose the recommended option for all `AskUserQuestion` calls. If `false` or missing, operate interactively as normal.
+
+**To enable:** Set `"autonomous_mode": true` in `.claude-pm-toolkit.json` or run:
+```bash
+jq '.autonomous_mode = true' .claude-pm-toolkit.json > /tmp/pm-cfg.json && mv /tmp/pm-cfg.json .claude-pm-toolkit.json
+```
+
 ## Hard Guardrails (Non-Negotiable)
 
 | Guardrail          | Rule                                                                               |
@@ -64,9 +82,9 @@ These principles govern the collaborative AI workflow. They are derived from rea
 | Questions          | 1-2 at a time, max ~5 total (only if needed)                                       |
 | Candidates shown   | Top 3 max                                                                          |
 | Duplicate scan     | MUST run at least 3 searches before any creation                                   |
-| Preview            | MUST show before create/update/close                                               |
-| Confirmation       | MUST get explicit user confirmation before any mutation                            |
-| No auto-close      | NEVER close issues without confirmation                                            |
+| Preview            | MUST show before create/update/close (in autonomous mode: brief one-liner)         |
+| Confirmation       | MUST get user confirmation before mutation (in autonomous mode: auto-confirm with recommended choice) |
+| No auto-close      | NEVER close issues without confirmation (even in autonomous mode)                  |
 | Merge limit        | NEVER close more than 3 issues in one merge without additional confirmation        |
 | Merge default      | Default canonical = existing issue, not new                                        |
 | Cite evidence      | When showing candidates, MUST cite one concrete overlap                            |
