@@ -1,0 +1,28 @@
+{
+  "name": "pm-intelligence",
+  "version": "0.5.0",
+  "description": "MCP server for PM intelligence — live project state, memory, and health metrics",
+  "type": "module",
+  "bin": {
+    "pm-intelligence": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod 755 build/index.js",
+    "dev": "tsc --watch",
+    "start": "node build/index.js"
+  },
+  "files": [
+    "build"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

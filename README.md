@@ -58,6 +58,28 @@ cd claude-pm-toolkit
 
 Requires a `PROJECT_WRITE_TOKEN` repository secret (classic PAT with `project` scope).
 
+### MCP Server (pm-intelligence)
+
+A native MCP server that gives Claude direct access to project state — no bash scripts needed.
+
+| Category | What | Description |
+|----------|------|-------------|
+| **Tools** | `get_issue_status` | Workflow state, priority, area, labels for any issue |
+| | `get_board_summary` | Full board with health score (0-100) and stale items |
+| | `move_issue` | Transition issue to any workflow state |
+| | `get_velocity` | Merge/close/open rates (7d and 30d windows) |
+| | `record_decision` | Log architectural decisions to persistent memory |
+| | `record_outcome` | Log work outcomes (merged, rework, etc.) |
+| | `get_memory_insights` | Analytics: rework rate, review patterns, area distribution |
+| **Resources** | `pm://board/overview` | Board state (cached, refreshed on tool use) |
+| | `pm://memory/decisions` | Recent architectural decisions |
+| | `pm://memory/outcomes` | Recent work outcomes |
+| | `pm://memory/insights` | Memory analytics and patterns |
+
+Activate after install: `cd tools/mcp/pm-intelligence && npm install && npm run build`
+
+Claude Code auto-discovers it from `.mcp.json`.
+
 ### Workflow Docs
 
 | Doc | Purpose |
@@ -209,7 +231,15 @@ tools/
     ├── find-plan.sh
     ├── pm-dashboard.sh
     ├── codex-mcp-overrides.sh
+    ├── pm-record.sh                  # JSONL memory writer
+    ├── pm-session-context.sh          # SessionStart hook
     └── claude-{command-guard,secret-*}.sh
+└── mcp/
+    └── pm-intelligence/               # MCP server (TypeScript)
+        ├── src/{index,config,github,memory}.ts
+        ├── package.json
+        └── build/                     # Compiled output (gitignored)
+.mcp.json                               # MCP server registration
 ```
 
 ### How Updates Work
@@ -219,6 +249,7 @@ tools/
 | **Managed** | SKILL.md, scripts, PM_PLAYBOOK.md | Copied | Overwritten |
 | **Workflows** | pm-post-merge.yml, pm-pr-check.yml | Copied | Overwritten |
 | **User Config** | PM_PROJECT_CONFIG.md, *.conf | Copied | **Preserved** |
+| **MCP Server** | pm-intelligence sources, .mcp.json | Copied + merged | Overwritten + merged |
 | **Merged** | settings.json | Created | Hooks merged |
 | **Sentinel** | CLAUDE.md PM sections | Appended | Block replaced |
 

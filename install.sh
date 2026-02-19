@@ -1211,6 +1211,68 @@ if [[ -d "$WORKFLOW_TEMPLATES" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# MCP Server (pm-intelligence)
+# ---------------------------------------------------------------------------
+MCP_SRC="$TOOLKIT_DIR/tools/mcp/pm-intelligence"
+MCP_DST="$TARGET/tools/mcp/pm-intelligence"
+COUNT_MCP=0
+
+if [[ -d "$MCP_SRC/src" ]]; then
+  log_section "MCP Server (pm-intelligence)"
+
+  mkdir -p "$MCP_DST/src"
+
+  # Copy source files with placeholder replacement
+  for ts_src in "$MCP_SRC/src"/*.ts; do
+    [[ ! -f "$ts_src" ]] && continue
+    ts_basename="$(basename "$ts_src")"
+    ts_dst="$MCP_DST/src/$ts_basename"
+
+    tmp_ts=$(mktemp)
+    TEMP_FILES+=("$tmp_ts")
+    apply_replacements_to_content "$ts_src" "$tmp_ts"
+    cp "$tmp_ts" "$ts_dst"
+    log_ok "Copied: tools/mcp/pm-intelligence/src/$ts_basename"
+    COUNT_MCP=$((COUNT_MCP+1))
+  done
+
+  # Copy package.json and tsconfig.json (no placeholder replacement needed)
+  for meta_file in package.json tsconfig.json; do
+    if [[ -f "$MCP_SRC/$meta_file" ]]; then
+      cp "$MCP_SRC/$meta_file" "$MCP_DST/$meta_file"
+      log_ok "Copied: tools/mcp/pm-intelligence/$meta_file"
+      COUNT_MCP=$((COUNT_MCP+1))
+    fi
+  done
+
+  # Merge pm-intelligence into .mcp.json
+  MCP_JSON="$TARGET/.mcp.json"
+  MCP_ENTRY='{"mcpServers":{"pm-intelligence":{"command":"node","args":["./tools/mcp/pm-intelligence/build/index.js"]}}}'
+
+  if [[ -f "$MCP_JSON" ]]; then
+    # Merge: add pm-intelligence to existing .mcp.json
+    tmp_mcp=$(mktemp)
+    TEMP_FILES+=("$tmp_mcp")
+    if jq -s '.[0] * .[1]' "$MCP_JSON" <(echo "$MCP_ENTRY") > "$tmp_mcp" 2>/dev/null; then
+      cp "$tmp_mcp" "$MCP_JSON"
+      log_ok "Merged pm-intelligence into existing .mcp.json"
+    else
+      log_warn "Failed to merge .mcp.json — add pm-intelligence entry manually"
+    fi
+  else
+    echo "$MCP_ENTRY" | jq '.' > "$MCP_JSON"
+    log_ok "Created .mcp.json with pm-intelligence server"
+  fi
+
+  printf "\n"
+  log_info "MCP server installed. To activate:"
+  log_info "  cd $TARGET/tools/mcp/pm-intelligence"
+  log_info "  npm install && npm run build"
+  log_info ""
+  log_info "Claude Code will auto-discover it from .mcp.json on next session."
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 log_section "Install complete"
@@ -1236,6 +1298,9 @@ printf "${GREEN}%-20s${RESET} %d\n" "Files merged:"   "$COUNT_MERGED"
 printf "${YELLOW}%-20s${RESET} %d\n" "Files skipped:" "$COUNT_SKIPPED"
 if [[ "${COUNT_WORKFLOWS:-0}" -gt 0 ]]; then
   printf "${CYAN}%-20s${RESET} %d\n" "Workflows:"     "$COUNT_WORKFLOWS"
+fi
+if [[ "${COUNT_MCP:-0}" -gt 0 ]]; then
+  printf "${CYAN}%-20s${RESET} %d\n" "MCP server:"    "$COUNT_MCP"
 fi
 
 if grep -rqF '{{' "$TARGET/tools" "$TARGET/.claude" \

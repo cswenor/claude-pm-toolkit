@@ -154,6 +154,12 @@ OPTIONAL_FILES=(
   "reports/weekly/analysis/.gitkeep"
   ".github/workflows/pm-post-merge.yml"
   ".github/workflows/pm-pr-check.yml"
+  "tools/mcp/pm-intelligence/package.json"
+  "tools/mcp/pm-intelligence/src/index.ts"
+  "tools/mcp/pm-intelligence/src/config.ts"
+  "tools/mcp/pm-intelligence/src/github.ts"
+  "tools/mcp/pm-intelligence/src/memory.ts"
+  ".mcp.json"
 )
 
 for f in "${OPTIONAL_FILES[@]}"; do

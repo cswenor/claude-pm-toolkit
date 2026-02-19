@@ -16,6 +16,15 @@ All notable changes to this project will be documented in this file.
 - `.claude/memory/`: Persistent memory directory for cross-session learning (decisions.jsonl, outcomes.jsonl, board-cache.json)
 - `settings.json`: SessionStart hook configuration (5-second timeout, fires on all session types)
 - `project-move.sh`: Auto-records outcome to `.claude/memory/outcomes.jsonl` on Done transition (linked PR, review rounds, area label)
+- `tools/mcp/pm-intelligence/`: MCP server exposing project state as native tools and resources
+  - **Tools:** `get_issue_status`, `get_board_summary`, `move_issue`, `get_velocity`, `record_decision`, `record_outcome`, `get_memory_insights`
+  - **Resources:** `pm://board/overview`, `pm://memory/decisions`, `pm://memory/outcomes`, `pm://memory/insights`
+  - Board health score (0-100) with stale item detection
+  - Velocity metrics (7-day and 30-day windows, average days-to-merge)
+  - Memory analytics (rework rate, review round patterns, area distribution)
+- `install.sh`: MCP server copy with placeholder replacement in config, `.mcp.json` merge
+- `validate.sh`: Optional file checks for MCP server sources and `.mcp.json`
+- `templates/mcp.json`: MCP server registration template
 
 ## [0.4.0] - 2026-02-18
 

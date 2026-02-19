@@ -4,3 +4,4 @@ node_modules/
 .codex-work/
 .claude/plans/
 .claude/memory/board-cache.json
+tools/mcp/*/build/
