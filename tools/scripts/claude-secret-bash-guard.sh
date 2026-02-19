@@ -41,7 +41,20 @@ command=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/nul
 # - Bash default-value expansion: cat ${HOME:-/tmp}/path — contains $, {
 # - Brace expansion: cat ~/.codex/{config.toml} — contains {
 
+# Early exit: if no file-read command names appear anywhere in the raw command,
+# there is nothing to check. This avoids false positives from the naive pipe-split
+# below shredding quoted arguments (e.g. gh --body "text with `backticks`") into
+# garbage subcmds that trigger metacharacter matches.
+_FILE_READ_CMDS='(cat|head|tail|less|more|bat|strings)'
+# shellcheck disable=SC2016
+if ! printf '%s' "$command" | grep -qE "(^|[[:space:];&|])(sudo[[:space:]]+)?$_FILE_READ_CMDS([[:space:]]|$)"; then
+    exit 0
+fi
+
 # Split command on separators (&&, ||, ;, |, newlines) into sub-commands.
+# NOTE: This does not respect quoting — it can shred quoted strings containing
+# | or ; into invalid fragments. The early exit above mitigates this for
+# non-file-read commands. A proper fix would use quote-aware splitting.
 subcmds=$(printf '%s' "$command" | sed $'s/&&/\\\n/g; s/||/\\\n/g; s/;/\\\n/g; s/|/\\\n/g')
 
 while IFS= read -r subcmd; do
