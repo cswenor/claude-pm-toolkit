@@ -32,7 +32,7 @@ fi
 
 # Try env var first
 if [[ -n "$PREFIX_LOWER" ]]; then
-  VAR_NAME="${PREFIX_LOWER^^}_ISSUE_NUM"
+  VAR_NAME="$(printf '%s' "$PREFIX_LOWER" | tr '[:lower:]' '[:upper:]')_ISSUE_NUM"
   ISSUE_NUM="${!VAR_NAME:-}"
 fi
 
