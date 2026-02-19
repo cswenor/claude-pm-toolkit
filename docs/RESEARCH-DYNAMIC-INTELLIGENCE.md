@@ -375,15 +375,18 @@ Instead of a user manually running `/issue 42` in one window and `/issue 57` in 
 | **P9** | Agent Teams prototype | Automated parallel development | 2 weeks | Experimental |
 | **P10** | Project-specific RAG | Semantic search across all knowledge | 2-3 weeks | Future |
 
-### Next Priorities (v0.8.0+)
+### Next Priorities (v0.9.0+)
 
 | Priority | What | Impact | Effort | Status |
 |----------|------|--------|--------|--------|
-| **P11** | E2E install test on real repo | Validates install works for new users | 0.5 day | Ready |
+| **P11** | E2E install test on real repo | Validates install works for new users | 0.5 day | ✅ Done (v0.7.0) |
 | **P12** | Graph-based memory (entity-relationship) | Multi-hop reasoning across sessions | 1-2 weeks | Research |
 | **P13** | Review sub-agents (specialist decomposition) | Parallel expert review per domain | 1 week | Design |
-| **P14** | Monte Carlo sprint simulation | Probability-based sprint forecasting | 1 day | Ready |
+| **P14** | Monte Carlo sprint simulation | Probability-based sprint forecasting | 1 day | ✅ Done (v0.8.0) |
 | **P15** | Context efficiency tracking | Measure AI context waste per issue | 0.5 day | Design |
+| **P16** | Dependency graph analysis | Detect blocked chains, critical path | 1 day | Ready |
+| **P17** | Team capacity modeling | Multi-contributor throughput simulation | 0.5 day | Ready |
+| **P18** | Scope creep detector | Alert when PR touches files outside plan | 0.5 day | Ready |
 
 ---
 

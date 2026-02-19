@@ -10,7 +10,11 @@ All notable changes to this project will be documented in this file.
   - MCP `forecast_backlog` tool: "when will we finish N items?" with P50/P80/P95 completion dates, sprint-by-sprint breakdown (cumulative progress, remaining items, per-sprint probability of completion), risk analysis (tail risk, variability ratio), and automatic synthetic fallback when historical data is insufficient.
   - Core simulation engine: WIP-aware sequential processing (default WIP=1 per PM policy), 0.25-day resolution, 50,000 trial cap, area-filtered cycle times with automatic all-area fallback
   - Synthetic distribution generation when fewer than 3 historical cycle times exist (3-7 day uniform, clearly warned)
-- `validate.sh`: Added check for simulate.ts
+- **Runtime Guardrails:**
+  - MCP `detect_scope_creep` tool: compares implementation plan to actual file changes in the working tree. Extracts planned files from plan content (backtick paths, bullet lists, file sections), diffs against git changes (staged, unstaged, branch vs main), calculates scope creep ratio, flags infrastructure/dependency drift patterns, and recommends when to trigger Discovered Work sub-playbook
+  - MCP `get_context_efficiency` tool: per-issue AI context efficiency metrics — session count, rework cycles, needs-input frequency, error rate, time-in-state analysis, session gap detection, and overall efficiency score (0-100). Identifies context waste patterns and generates specific recommendations
+  - MCP `get_workflow_health` tool: cross-issue portfolio health — per-issue health scores, stale issue detection (state-aware thresholds), bottleneck identification (which workflow state has the most stuck items), and systemic pattern analysis
+- `validate.sh`: Added checks for simulate.ts and guardrails.ts
 
 ## [0.7.0] - 2026-02-19
 

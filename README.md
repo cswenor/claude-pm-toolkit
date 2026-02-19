@@ -83,6 +83,9 @@ A native MCP server that gives Claude direct access to project state — no bash
 | | `get_knowledge_risk` | Bus factor, knowledge decay, per-file risk scoring |
 | **Simulation** | `simulate_sprint` | Monte Carlo sprint throughput (P10-P90, histogram) |
 | | `forecast_backlog` | "When will we finish N items?" with sprint breakdown |
+| **Guardrails** | `detect_scope_creep` | Compare plan to actual changes, flag drift |
+| | `get_context_efficiency` | AI context waste metrics per issue (0-100 score) |
+| | `get_workflow_health` | Cross-issue health, bottlenecks, stale detection |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |

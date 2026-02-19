@@ -29,6 +29,9 @@
  *   - check_decision_decay: Flag stale decisions based on context drift
  *   - simulate_sprint: Monte Carlo sprint throughput simulation
  *   - forecast_backlog: Monte Carlo backlog completion forecast
+ *   - detect_scope_creep: Compare plan to actual changes
+ *   - get_context_efficiency: AI context waste metrics per issue
+ *   - get_workflow_health: Cross-issue health and bottleneck analysis
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -80,6 +83,11 @@ import {
   simulateSprint,
   forecastBacklog,
 } from "./simulate.js";
+import {
+  detectScopeCreep,
+  getContextEfficiency,
+  getWorkflowHealth,
+} from "./guardrails.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
@@ -1001,6 +1009,118 @@ server.registerTool(
   }
 );
 
+// ─── GUARDRAIL TOOLS ──────────────────────────────────
+
+server.registerTool(
+  "detect_scope_creep",
+  {
+    title: "Detect Scope Creep",
+    description:
+      "Compare the implementation plan to actual file changes in the working tree. Identifies out-of-scope files (changed but not in plan), untouched plan files, and calculates a scope creep ratio. Flags infrastructure changes, dependency changes, and patterns that indicate scope mixing. Use this during implementation to catch drift early — before it becomes unmergeable.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Issue number to find the plan for (searches .claude/plans/)"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const report = await detectScopeCreep(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(report, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_context_efficiency",
+  {
+    title: "Context Efficiency Report",
+    description:
+      "Measure AI context efficiency for a specific issue: session count, rework cycles, needs-input frequency, error rate, time-in-state metrics, session timing patterns, and an overall efficiency score (0-100). Identifies context waste patterns (long gaps between sessions, excessive rework, high error rates) and provides specific recommendations. Use this after completing an issue to learn from the process, or during work to identify inefficiencies.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to analyze"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const report = await getContextEfficiency(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(report, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_workflow_health",
+  {
+    title: "Workflow Health Analysis",
+    description:
+      "Cross-issue workflow health analysis: per-issue health scores, stale issue detection, bottleneck identification (which workflow state has the most stuck items), and systemic pattern detection. Returns a portfolio-level view of project health. Use this during sprint planning, weekly reviews, or when you suspect workflow issues.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Analysis period in days (default 30)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const health = await getWorkflowHealth(days ?? 30);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(health, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -1188,6 +1308,7 @@ const ALL_TOOLS = [
   "predict_completion", "predict_rework", "get_dora_metrics", "get_knowledge_risk",
   "record_review_outcome", "get_review_calibration", "check_decision_decay",
   "simulate_sprint", "forecast_backlog",
+  "detect_scope_creep", "get_context_efficiency", "get_workflow_health",
 ];
 
 async function main() {
