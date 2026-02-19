@@ -35,6 +35,7 @@
  *   - analyze_dependency_graph: Full dependency graph with critical path
  *   - get_issue_dependencies: Dependencies for a single issue
  *   - get_team_capacity: Team throughput analysis and sprint forecast
+ *   - plan_sprint: AI-powered sprint planning combining all intelligence
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -96,10 +97,11 @@ import {
   getIssueDependencies,
 } from "./graph.js";
 import { getTeamCapacity } from "./capacity.js";
+import { planSprint } from "./planner.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.9.0",
+  version: "0.10.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -1233,6 +1235,45 @@ server.registerTool(
   }
 );
 
+// ─── PLANNING TOOLS ─────────────────────────────────────
+
+server.registerTool(
+  "plan_sprint",
+  {
+    title: "Sprint Planning Assistant",
+    description:
+      "AI-powered sprint planning that combines all intelligence modules: dependency graph (what's unblocked), team capacity (who can work on what), Monte Carlo simulation (confidence scoring), and backlog state (what's ready vs blocked). Returns a recommended sprint plan with: ordered items scored by priority/dependencies/capacity, stretch goals, deferred items with reasons, carry-over from in-progress work, confidence intervals, dependency warnings, and actionable recommendations. The 'killer feature' — use this for sprint planning, commitment decisions, and backlog prioritization.",
+    inputSchema: {
+      durationDays: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Sprint duration in days (default 14)"),
+    },
+  },
+  async ({ durationDays }) => {
+    try {
+      const result = await planSprint(durationDays ?? 14);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -1422,12 +1463,13 @@ const ALL_TOOLS = [
   "simulate_sprint", "forecast_backlog",
   "detect_scope_creep", "get_context_efficiency", "get_workflow_health",
   "analyze_dependency_graph", "get_issue_dependencies", "get_team_capacity",
+  "plan_sprint",
 ];
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.9.0 running on stdio");
+  console.error("PM Intelligence MCP Server v0.10.0 running on stdio");
   console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
 }
 

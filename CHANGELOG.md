@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-02-19
+
+### Added
+- **Sprint Planning Assistant:**
+  - MCP `plan_sprint` tool: AI-powered sprint planning that combines all intelligence modules into actionable recommendations. Gathers dependency graph, team capacity, Monte Carlo simulation, and backlog state in parallel. Scores issues by priority weight, workflow state, blocking bonus (items that unblock others get priority), blocked penalty, and estimate factor. Returns: ordered recommended items with suggested assignees and prerequisites, stretch goals (up to 30% over capacity), deferred items with reasons, carry-over from in-progress work, Monte Carlo confidence intervals (all-items and top-priority probability), capacity summary with area coverage, dependency warnings (cycles, orphaned blocked, critical bottlenecks), and actionable recommendations. The "killer feature" that ties all intelligence together for sprint planning and commitment decisions.
+- `validate.sh`: Added check for planner.ts
+
 ## [0.9.0] - 2026-02-19
 
 ### Added

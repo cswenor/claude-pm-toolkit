@@ -89,6 +89,7 @@ A native MCP server that gives Claude direct access to project state — no bash
 | **Graph** | `analyze_dependency_graph` | Critical path, bottleneck issues, cycle detection |
 | | `get_issue_dependencies` | Upstream/downstream chains, execution order, unblocked check |
 | **Capacity** | `get_team_capacity` | Contributor profiles, sprint forecast, area coverage |
+| **Planning** | `plan_sprint` | AI-powered sprint planning combining all intelligence |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |
