@@ -7,4 +7,5 @@ node_modules/
 .claude/memory/decisions.jsonl
 .claude/memory/outcomes.jsonl
 .claude/memory/events.jsonl
+.claude/memory/review-findings.jsonl
 tools/mcp/*/build/

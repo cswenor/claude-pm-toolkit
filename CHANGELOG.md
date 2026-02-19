@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-02-19
+
+### Added
+- **Predictive Intelligence:**
+  - MCP `predict_completion` tool: P50/P80/P95 completion date predictions with risk scoring (0-100), confidence levels, similar issue comparison, and state-adjusted estimates
+  - MCP `predict_rework` tool: rework probability prediction with weighted signal analysis (rework history, rushed pace, missing decisions, area baseline), risk levels, and specific mitigations
+  - MCP `get_dora_metrics` tool: automated DORA metrics — deployment frequency, lead time for changes, change failure rate, mean time to restore — rated against industry benchmarks (elite/high/medium/low)
+  - MCP `get_knowledge_risk` tool: bus factor analysis, knowledge decay detection, per-file risk scoring (single contributor + high churn = critical), area-level aggregation, and decay alerts for stale files
+- **Review Learning:**
+  - MCP `record_review_outcome` tool: track review finding dispositions (accepted/dismissed/modified/deferred) to close the feedback loop
+  - MCP `get_review_calibration` tool: hit rate analysis by finding type/severity/area, false positive pattern detection, trend analysis (improving/stable/declining), calibration recommendations
+  - MCP `check_decision_decay` tool: detects stale architectural decisions based on age, file churn, potential supersession, and area activity — returns decay score (0-100) with review recommendations
+- MCP `pm://analytics/dora` resource: DORA metrics as a resource
+- `validate.sh`: Added checks for predict.ts and review-learning.ts
+
 ## [0.6.0] - 2026-02-19
 
 ### Added

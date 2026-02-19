@@ -20,6 +20,13 @@
  *   - suggest_approach: Query past decisions/outcomes for similar work
  *   - check_readiness: Pre-review validation from event stream
  *   - get_history_insights: Git history mining (hotspots, coupling, risk)
+ *   - predict_completion: P50/P80/P95 completion dates + risk score
+ *   - predict_rework: Rework probability with weighted signals
+ *   - get_dora_metrics: DORA metrics (deploy freq, lead time, CFR, MTTR)
+ *   - get_knowledge_risk: Bus factor and knowledge decay analysis
+ *   - record_review_outcome: Track review finding dispositions
+ *   - get_review_calibration: Review hit rate and false positive patterns
+ *   - check_decision_decay: Flag stale decisions based on context drift
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -27,6 +34,7 @@
  *   - pm://memory/outcomes: Recent outcomes
  *   - pm://memory/insights: Memory analytics
  *   - pm://analytics/sprint: Sprint analytics for current period
+ *   - pm://analytics/dora: DORA performance metrics
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -55,10 +63,21 @@ import {
   checkReadiness,
 } from "./analytics.js";
 import { getHistoryInsights } from "./history.js";
+import {
+  predictCompletion,
+  predictRework,
+  getDORAMetrics,
+  getKnowledgeRisk,
+} from "./predict.js";
+import {
+  recordReviewOutcome,
+  getReviewCalibration,
+  checkDecisionDecay,
+} from "./review-learning.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.6.0",
+  version: "0.7.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -568,6 +587,290 @@ server.registerTool(
   }
 );
 
+// ─── PREDICTIVE INTELLIGENCE TOOLS ──────────────────────
+
+server.registerTool(
+  "predict_completion",
+  {
+    title: "Predict Issue Completion",
+    description:
+      "Predict when an issue will be completed using historical cycle time data. Returns P50/P80/P95 completion dates, a risk score (0-100) with specific risk factors, confidence level based on data quality, and similar issues for comparison. Use this when planning timelines or evaluating if an issue is on track.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to predict completion for"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const prediction = await predictCompletion(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(prediction, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "predict_rework",
+  {
+    title: "Predict Rework Probability",
+    description:
+      "Predict the probability that an issue will require rework before it's approved. Analyzes historical rework patterns, development signals (pace, session count, decisions documented), and area-specific baselines. Returns probability (0-1), risk level, weighted signals, and specific mitigations. Use this before moving to Review to catch high-risk PRs early.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to predict rework for"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const prediction = await predictRework(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(prediction, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_dora_metrics",
+  {
+    title: "DORA Metrics",
+    description:
+      "Calculate DORA (DevOps Research and Assessment) performance metrics: Deployment Frequency (merge rate), Lead Time for Changes (first commit to merge), Change Failure Rate (rework ratio), Mean Time to Restore (bug fix speed). Each metric is rated elite/high/medium/low per industry benchmarks. Use this for engineering health assessment and team performance tracking.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Analysis period in days (default 30)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const metrics = await getDORAMetrics(days ?? 30);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(metrics, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_knowledge_risk",
+  {
+    title: "Knowledge Risk Analysis",
+    description:
+      "Analyze knowledge distribution and bus factor risks across the codebase. Identifies files where knowledge is concentrated in a single contributor (bus factor 1), areas with high knowledge concentration, and files showing knowledge decay (active files that haven't been touched recently). Use this to identify cross-training needs and knowledge sharing priorities.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Analysis period in days (default 90)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const risk = await getKnowledgeRisk(days ?? 90);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(risk, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+// ─── REVIEW LEARNING TOOLS ─────────────────────────────
+
+server.registerTool(
+  "record_review_outcome",
+  {
+    title: "Record Review Finding Outcome",
+    description:
+      "Record the disposition of a review finding (accepted, dismissed, modified, deferred). Called after a review cycle completes. This data is used to calibrate future reviews — tracking which finding types have high hit rates vs high false positive rates. Use this after /pm-review to close the feedback loop.",
+    inputSchema: {
+      issueNumber: z.number().int().positive().describe("Issue number"),
+      prNumber: z.number().int().optional().describe("PR number"),
+      findingType: z
+        .string()
+        .describe("Finding category (e.g., scope_verification, failure_mode, comment_verification, adversarial_edge_case, hook_overhead, path_robustness)"),
+      severity: z
+        .enum(["blocking", "non_blocking", "suggestion"])
+        .describe("Finding severity"),
+      disposition: z
+        .enum(["accepted", "dismissed", "modified", "deferred"])
+        .describe("What happened: accepted (fixed), dismissed (not valid), modified (partially addressed), deferred (tracked for later)"),
+      reason: z
+        .string()
+        .optional()
+        .describe("Why this disposition was chosen (especially important for dismissals)"),
+      area: z.string().optional().describe("Area of the finding"),
+      files: z
+        .array(z.string())
+        .optional()
+        .describe("Files related to the finding"),
+    },
+  },
+  async ({ issueNumber, prNumber, findingType, severity, disposition, reason, area, files }) => {
+    try {
+      const result = await recordReviewOutcome({
+        issueNumber,
+        prNumber,
+        findingType,
+        severity,
+        disposition,
+        reason,
+        area,
+        files,
+      });
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_review_calibration",
+  {
+    title: "Review Calibration Report",
+    description:
+      "Analyze review finding history to calculate hit rates (accepted vs dismissed), identify false positive patterns, and generate calibration data by finding type, severity, and area. Includes trend analysis (improving/stable/declining) and specific recommendations for adjusting review focus. Use this to improve review quality over time.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Analysis period in days (default 90)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const calibration = await getReviewCalibration(days ?? 90);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(calibration, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "check_decision_decay",
+  {
+    title: "Check Decision Decay",
+    description:
+      "Detect stale architectural decisions whose context has drifted. Analyzes decisions based on: age, file churn (referenced files changed since), potential supersession (newer decisions in same area), and area activity level. Returns a decay score (0-100) per decision with specific signals and recommendations. Use this periodically to maintain decision hygiene.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Look-back period in days (default 180)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const report = await checkDecisionDecay(days ?? 180);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(report, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -714,18 +1017,52 @@ server.registerResource(
   }
 );
 
+server.registerResource(
+  "dora-metrics",
+  "pm://analytics/dora",
+  {
+    title: "DORA Metrics",
+    description:
+      "DORA performance metrics: deployment frequency, lead time, change failure rate, MTTR",
+    mimeType: "application/json",
+  },
+  async (uri) => {
+    try {
+      const metrics = await getDORAMetrics(30);
+      return {
+        contents: [
+          { uri: uri.href, text: JSON.stringify(metrics, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            text: JSON.stringify({
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          },
+        ],
+      };
+    }
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
 
 const ALL_TOOLS = [
   "get_issue_status", "get_board_summary", "move_issue", "get_velocity",
   "record_decision", "record_outcome", "get_memory_insights", "get_event_stream",
   "get_sprint_analytics", "suggest_approach", "check_readiness", "get_history_insights",
+  "predict_completion", "predict_rework", "get_dora_metrics", "get_knowledge_risk",
+  "record_review_outcome", "get_review_calibration", "check_decision_decay",
 ];
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.6.0 running on stdio");
+  console.error("PM Intelligence MCP Server v0.7.0 running on stdio");
   console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
 }
 

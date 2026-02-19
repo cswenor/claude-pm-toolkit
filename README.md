@@ -39,7 +39,7 @@ cd claude-pm-toolkit
 | **`/pm-review`** | Adversarial reviewer. Scope verification, failure mode analysis, comment skepticism, deep code comparison, split completeness/robustness verdict. |
 | **`/weekly`** | AI narrative from weekly snapshots. Stakeholder-ready summaries, health scores, trend analysis. |
 
-### 18 Scripts
+### 22 Scripts
 
 | Category | Scripts | Purpose |
 |----------|---------|---------|
@@ -47,7 +47,8 @@ cd claude-pm-toolkit
 | **Worktrees** | `worktree-setup.sh`, `worktree-detect.sh`, `worktree-cleanup.sh` | Parallel development with port isolation |
 | **Portfolio** | `tmux-session.sh`, `portfolio-notify.sh` | Multi-session management with tmux alerts |
 | **Security** | `claude-command-guard.sh`, `claude-secret-*.sh` | Block dangerous commands, detect secrets |
-| **Utilities** | `find-plan.sh`, `pm-dashboard.sh`, `pm.config.sh`, `codex-mcp-overrides.sh` | Plan discovery, health dashboard, config |
+| **Smart Hooks** | `pm-commit-guard.sh`, `pm-stop-guard.sh`, `pm-event-log.sh`, `pm-session-context.sh` | Commit convention enforcement, incomplete work detection, event logging |
+| **Utilities** | `find-plan.sh`, `pm-dashboard.sh`, `pm.config.sh`, `codex-mcp-overrides.sh`, `pm-record.sh` | Plan discovery, health dashboard, config, memory writer |
 
 ### GitHub Actions (Automated)
 
@@ -64,24 +65,32 @@ A native MCP server that gives Claude direct access to project state — no bash
 
 | Category | What | Description |
 |----------|------|-------------|
-| **Tools** | `get_issue_status` | Workflow state, priority, area, labels for any issue |
+| **Core** | `get_issue_status` | Workflow state, priority, area, labels for any issue |
 | | `get_board_summary` | Full board with health score (0-100) and stale items |
 | | `move_issue` | Transition issue to any workflow state |
 | | `get_velocity` | Merge/close/open rates (7d and 30d windows) |
-| | `record_decision` | Log architectural decisions to persistent memory |
+| **Memory** | `record_decision` | Log architectural decisions to persistent memory |
 | | `record_outcome` | Log work outcomes (merged, rework, etc.) |
 | | `get_memory_insights` | Analytics: rework rate, review patterns, area distribution |
 | | `get_event_stream` | Query structured event stream with filters |
-| | `get_sprint_analytics` | Cycle time, bottlenecks, flow efficiency, trends |
+| **Analytics** | `get_sprint_analytics` | Cycle time, bottlenecks, flow efficiency, trends |
 | | `suggest_approach` | Query past work to suggest approaches for new issues |
 | | `check_readiness` | Pre-review validation with readiness score (0-100) |
 | | `get_history_insights` | Git history mining: hotspots, coupling, risk areas |
+| **Prediction** | `predict_completion` | P50/P80/P95 completion dates with risk score (0-100) |
+| | `predict_rework` | Rework probability with weighted signals and mitigations |
+| | `get_dora_metrics` | DORA metrics rated against industry benchmarks |
+| | `get_knowledge_risk` | Bus factor, knowledge decay, per-file risk scoring |
+| **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
+| | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
+| | `check_decision_decay` | Detect stale decisions based on context drift |
 | **Resources** | `pm://board/overview` | Board state (cached, refreshed on tool use) |
 | | `pm://memory/decisions` | Recent architectural decisions |
 | | `pm://memory/outcomes` | Recent work outcomes |
 | | `pm://memory/insights` | Memory analytics and patterns |
 | | `pm://events/recent` | Last 50 events from the event stream |
 | | `pm://analytics/sprint` | Current sprint analytics |
+| | `pm://analytics/dora` | DORA performance metrics |
 
 Activate after install: `cd tools/mcp/pm-intelligence && npm install && npm run build`
 

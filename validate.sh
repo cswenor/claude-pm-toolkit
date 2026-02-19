@@ -159,6 +159,13 @@ OPTIONAL_FILES=(
   "tools/mcp/pm-intelligence/src/config.ts"
   "tools/mcp/pm-intelligence/src/github.ts"
   "tools/mcp/pm-intelligence/src/memory.ts"
+  "tools/mcp/pm-intelligence/src/analytics.ts"
+  "tools/mcp/pm-intelligence/src/history.ts"
+  "tools/mcp/pm-intelligence/src/predict.ts"
+  "tools/mcp/pm-intelligence/src/review-learning.ts"
+  "tools/scripts/pm-commit-guard.sh"
+  "tools/scripts/pm-stop-guard.sh"
+  "tools/scripts/pm-event-log.sh"
   ".mcp.json"
 )
 
