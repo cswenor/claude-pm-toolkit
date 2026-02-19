@@ -11,7 +11,7 @@
 - [ ] Confirmation required before creation
 - [ ] Priority reasoning shown with factor table after draft confirmation, before issue creation
 - [ ] User given choice to accept or override recommended priority
-- [ ] Selected priority (including overrides) is passed to project-add.sh
+- [ ] Selected priority (including overrides) is passed to pm add
 
 ## Create Mode - Update Existing
 

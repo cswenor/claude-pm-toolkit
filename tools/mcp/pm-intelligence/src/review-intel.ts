@@ -8,11 +8,10 @@
  *     suggests type, area, priority, and risk labels
  */
 
-import { getIssueStatus, getBoardSummary } from "./github.js";
+import { getIssue } from "./db.js";
 import { getHistoryInsights } from "./history.js";
 import { predictRework } from "./predict.js";
 import { getKnowledgeRisk } from "./predict.js";
-import { PM_CONFIG } from "./config.js";
 import { execSync } from "child_process";
 
 // ─── Types ───────────────────────────────────────────────
@@ -418,7 +417,10 @@ export async function reviewPR(prNumber: number): Promise<PRReview> {
 // ─── auto_label ──────────────────────────────────────────
 
 export async function autoLabel(issueNumber: number): Promise<LabelSuggestion> {
-  const status = await getIssueStatus(issueNumber);
+  const status = await getIssue(issueNumber);
+  if (!status) {
+    throw new Error(`Issue #${issueNumber} not found in local database. Run 'pm sync' first.`);
+  }
 
   let body = "";
   try {

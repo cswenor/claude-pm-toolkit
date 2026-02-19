@@ -6,7 +6,8 @@
  *   - compare_estimates: Prediction accuracy tracking for calibration
  */
 
-import { getIssueStatus, getVelocity } from "./github.js";
+import { getVelocity } from "./github.js";
+import { getIssue } from "./db.js";
 import { getEvents, getOutcomes, getInsights } from "./memory.js";
 import { getSprintAnalytics } from "./analytics.js";
 import { getIssueDependencies } from "./graph.js";
@@ -90,15 +91,20 @@ export async function explainDelay(
   issueNumber: number
 ): Promise<DelayExplanation> {
   // Gather all data in parallel
-  const [status, deps, events, completion, rework, analytics] =
+  const [issueOrNull, deps, events, completion, rework, analytics] =
     await Promise.all([
-      getIssueStatus(issueNumber),
+      getIssue(issueNumber),
       getIssueDependencies(issueNumber).catch(() => null),
       getEvents(500, { issueNumber }),
       predictCompletion(issueNumber).catch(() => null),
       predictRework(issueNumber).catch(() => null),
       getSprintAnalytics(60).catch(() => null),
     ]);
+
+  if (!issueOrNull) {
+    throw new Error(`Issue #${issueNumber} not found in local database. Run 'pm sync' first.`);
+  }
+  const status = issueOrNull;
 
   const factors: DelayFactor[] = [];
   const timeline: DelayExplanation["timeline"] = [];
@@ -117,7 +123,7 @@ export async function explainDelay(
       });
     } else if (evt.event === "tool_use" && evt.tool) {
       // Only include significant tool uses
-      if (["project-move.sh", "project-add.sh"].some((t) => evt.tool?.includes(t))) {
+      if (["move_issue", "pm move", "pm add"].some((t) => evt.tool?.includes(t))) {
         timeline.push({
           date: evt.timestamp.split("T")[0],
           event: evt.event,
@@ -354,13 +360,15 @@ export async function compareEstimates(
   for (const outcome of recentOutcomes.slice(0, 20)) {
     // Limit for performance
     try {
-      const [status, completion, rework] = await Promise.all([
-        getIssueStatus(outcome.issue_number),
+      const [statusOrNull, completion, rework] = await Promise.all([
+        getIssue(outcome.issue_number),
         predictCompletion(outcome.issue_number).catch(() => null),
         predictRework(outcome.issue_number).catch(() => null),
       ]);
 
-      if (!completion) continue;
+      if (!statusOrNull || !completion) continue;
+      const status = statusOrNull;
+      const area = status.labels.find((l) => l.startsWith("area:"))?.replace("area:", "") ?? null;
 
       // Calculate actual cycle time from events
       const events = await getEvents(100, { issueNumber: outcome.issue_number });
@@ -398,7 +406,7 @@ export async function compareEstimates(
       comparisons.push({
         issueNumber: outcome.issue_number,
         title: status.title,
-        area: status.area,
+        area,
         predicted: {
           p50Days: completion.prediction.p50Days,
           p80Days: completion.prediction.p80Days,

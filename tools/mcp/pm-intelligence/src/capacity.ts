@@ -10,7 +10,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { PM_CONFIG } from "./config.js";
+import { getConfig } from "./config.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -110,8 +110,8 @@ interface PRData {
 }
 
 async function fetchMergedPRs(days: number): Promise<PRData[]> {
-  const repo = await getRepoName();
-  const fullRepo = `${PM_CONFIG.owner}/${repo}`;
+  const config = await getConfig();
+  const fullRepo = `${config.owner}/${config.repo}`;
 
   const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
 

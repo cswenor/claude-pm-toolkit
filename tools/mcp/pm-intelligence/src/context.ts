@@ -7,7 +7,7 @@
  *     decisions, PR state, review feedback, event timeline
  */
 
-import { getIssueStatus, getBoardSummary } from "./github.js";
+import { getIssue } from "./db.js";
 import {
   getDecisions,
   getOutcomes,
@@ -122,12 +122,17 @@ interface ContextRecovery {
 export async function getSessionHistory(
   issueNumber: number
 ): Promise<SessionHistoryResult> {
-  const [status, events, decisions, outcomes] = await Promise.all([
-    getIssueStatus(issueNumber),
+  const [statusOrNull, events, decisions, outcomes] = await Promise.all([
+    getIssue(issueNumber),
     getEvents(500, { issueNumber }),
     getDecisions(50, issueNumber),
     getOutcomes(20, { issueNumber }),
   ]);
+
+  if (!statusOrNull) {
+    throw new Error(`Issue #${issueNumber} not found in local database. Run 'pm sync' first.`);
+  }
+  const status = statusOrNull;
 
   // Build timeline
   const timeline: SessionEvent[] = events.map((e) => ({
@@ -214,13 +219,18 @@ export async function recoverContext(
   issueNumber: number
 ): Promise<ContextRecovery> {
   // Gather everything in parallel
-  const [status, events, decisions, outcomes, deps] = await Promise.all([
-    getIssueStatus(issueNumber),
+  const [statusOrNull, events, decisions, outcomes, deps] = await Promise.all([
+    getIssue(issueNumber),
     getEvents(100, { issueNumber }),
     getDecisions(20, issueNumber),
     getOutcomes(5, { issueNumber }),
     getIssueDependencies(issueNumber).catch(() => null),
   ]);
+
+  if (!statusOrNull) {
+    throw new Error(`Issue #${issueNumber} not found in local database. Run 'pm sync' first.`);
+  }
+  const status = statusOrNull;
 
   // Try to get predictions
   let completionP50: string | null = null;
@@ -413,14 +423,15 @@ export async function recoverContext(
   }
 
   // Context files based on area
-  if (status.area) {
+  const area = status.labels.find((l) => l.startsWith("area:"))?.replace("area:", "") ?? null;
+  if (area) {
     const areaFiles: Record<string, string[]> = {
       frontend: ["docs/development/LOCAL_DEV.md", "docs/architecture/OVERVIEW.md"],
       backend: ["docs/architecture/DATABASE.md", "docs/architecture/OVERVIEW.md"],
       contracts: ["docs/contracts/GAME_CONTRACT_INTERFACE.md"],
       infra: ["docs/ENV_WORKFLOW.md", "docs/SECRETS.md"],
     };
-    contextFiles.push(...(areaFiles[status.area] || []));
+    contextFiles.push(...(areaFiles[area] || []));
   }
   contextFiles.push("CLAUDE.md", "docs/PM_PLAYBOOK.md");
 

@@ -9,7 +9,8 @@
  *     plan with estimated time and context requirements.
  */
 
-import { getBoardSummary, getVelocity } from "./github.js";
+import { getVelocity } from "./github.js";
+import { getLocalBoardSummary } from "./db.js";
 import { getEvents, getInsights } from "./memory.js";
 import { analyzeDependencyGraph } from "./graph.js";
 import { getWorkflowHealth } from "./guardrails.js";
@@ -58,7 +59,7 @@ export async function optimizeSession(
   // Gather all state in parallel
   const [board, velocity, events, insights, graph, health, anomalies] =
     await Promise.all([
-      getBoardSummary().catch(() => null),
+      getLocalBoardSummary().catch(() => null),
       getVelocity().catch(() => null),
       getEvents(100).catch(() => []),
       getInsights().catch(() => null),
@@ -71,8 +72,8 @@ export async function optimizeSession(
   let impactCounter = 100;
 
   // ─── 1. Urgent: Active issues with no recent activity ──────
-  if (board?.activeItems) {
-    for (const item of board.activeItems) {
+  if (board?.activeIssues) {
+    for (const item of board.activeIssues) {
       // Check if we have recent events for this issue
       const recentActivity = events.filter(
         (e) =>
@@ -112,8 +113,8 @@ export async function optimizeSession(
   }
 
   // ─── 2. Review queue (high priority — unblocks others) ─────
-  if (board?.reviewItems) {
-    for (const item of board.reviewItems) {
+  if (board?.reviewIssues) {
+    for (const item of board.reviewIssues) {
       tasks.push({
         rank: 0,
         action: `Review PR for issue`,
@@ -135,8 +136,8 @@ export async function optimizeSession(
   }
 
   // ─── 3. Rework items (address feedback before new work) ────
-  if (board?.reworkItems) {
-    for (const item of board.reworkItems) {
+  if (board?.reworkIssues) {
+    for (const item of board.reworkIssues) {
       tasks.push({
         rank: 0,
         action: `Address review feedback`,
@@ -203,25 +204,8 @@ export async function optimizeSession(
     }
   }
 
-  // ─── 6. Stale items (prevent rot) ─────────────────────────
-  if (board?.staleItems) {
-    for (const stale of board.staleItems.slice(0, 3)) {
-      if (stale.daysSinceUpdate > 14) {
-        tasks.push({
-          rank: 0,
-          action: `Triage stale issue (${stale.daysSinceUpdate}d since update)`,
-          issueNumber: stale.number,
-          title: stale.title,
-          type: "triage",
-          estimatedMinutes: 10,
-          reason: `No updates in ${stale.daysSinceUpdate} days — needs decision (continue/deprioritize/close)`,
-          contextNeeded: [`Issue #${stale.number}`, "Last activity"],
-          urgency: "normal",
-          impactScore: impactCounter--,
-        });
-      }
-    }
-  }
+  // ─── 6. Blocked issues with resolved blockers (quick unblock) ──
+  // (staleItems no longer available from local board — skipped)
 
   // ─── 7. Anomaly responses ─────────────────────────────────
   if (anomalies?.anomalies) {
@@ -317,17 +301,17 @@ export async function optimizeSession(
 
   // ─── Warnings ──────────────────────────────────────────────
   const warnings: string[] = [];
-  if (board && board.activeItems.length > 1) {
+  if (board && board.activeIssues.length > 1) {
     warnings.push(
-      `WIP limit violation: ${board.activeItems.length} active issues (limit: 1)`
+      `WIP limit violation: ${board.activeIssues.length} active issues (limit: 1)`
     );
   }
   if (anomalies && anomalies.anomalies.filter((a) => a.severity === "critical").length > 0) {
     warnings.push("Critical anomalies detected — address before new work");
   }
-  if (board && board.reviewItems.length > 2) {
+  if (board && board.reviewIssues.length > 2) {
     warnings.push(
-      `Review queue backing up: ${board.reviewItems.length} items waiting`
+      `Review queue backing up: ${board.reviewIssues.length} items waiting`
     );
   }
   if (
@@ -346,7 +330,7 @@ export async function optimizeSession(
   } else if (recommendedPlan[0].type === "implement") {
     sessionGoal = `Ship progress on #${recommendedPlan[0].issueNumber}: ${recommendedPlan[0].title}`;
   } else if (recommendedPlan[0].type === "review") {
-    sessionGoal = `Clear review queue (${board?.reviewItems.length || 0} items) to unblock merging`;
+    sessionGoal = `Clear review queue (${board?.reviewIssues.length || 0} items) to unblock merging`;
   } else if (recommendedPlan[0].type === "fix") {
     sessionGoal = `Address rework feedback to move items back to Review`;
   } else if (recommendedPlan[0].type === "unblock") {
@@ -387,9 +371,9 @@ export async function optimizeSession(
     sessionContext: {
       currentTime: new Date().toISOString(),
       availableMinutes,
-      activeIssues: board?.activeItems.length || 0,
-      reviewQueue: board?.reviewItems.length || 0,
-      reworkPending: board?.reworkItems.length || 0,
+      activeIssues: board?.activeIssues.length || 0,
+      reviewQueue: board?.reviewIssues.length || 0,
+      reworkPending: board?.reworkIssues.length || 0,
       anomaliesDetected: anomalies?.anomalies.length || 0,
       healthScore: health?.summary?.healthScore || 0,
     },

@@ -171,7 +171,7 @@ Move to Review when:
 - PR is opened with `Fixes #<issue>`
 - All tests passing (CI green)
 
-**Trigger:** Manual via `./tools/scripts/project-move.sh <num> Review` immediately after opening PR.
+**Trigger:** Manual via `pm move <num> Review` immediately after opening PR.
 
 ### Review Exit Criteria
 
@@ -434,7 +434,7 @@ Issues without `spec:ready` may still be in `Ready` workflow state, but the assi
 ### 1. Update the Project Workflow field to "Done"
 
 ```bash
-./tools/scripts/project-move.sh <ISSUE_NUMBER> Done
+pm move <ISSUE_NUMBER> Done
 ```
 
 ### 2. Verify the issue is closed
@@ -564,7 +564,7 @@ We use continuous flow (Kanban), not fixed sprints.
 2. Look for items with Workflow = "Ready"
 3. Pick highest priority item you can own
 4. Assign yourself to the issue
-5. **Move issue to Active** (`./tools/scripts/project-move.sh <num> Active`)
+5. **Move issue to Active** (`pm move <num> Active`)
 6. Create branch and start work
 
 **WIP Limits:**
@@ -679,8 +679,8 @@ This produces `YYYY-MM-DD.ai.md` with:
 2. **Sync with default branch:** `git checkout main && git pull`
 3. **Search for existing issue:** `gh issue list --search "keywords"`
 4. **Create issue if none exists** (see Tier 1 section above for template)
-5. **Add to project:** `./tools/scripts/project-add.sh <ISSUE_NUMBER> <priority>`
-6. **Move to Active:** `./tools/scripts/project-move.sh <ISSUE_NUMBER> Active`
+5. **Add to project:** `pm add <ISSUE_NUMBER> <priority>`
+6. **Move to Active:** `pm move <ISSUE_NUMBER> Active`
 7. **Create branch:** `git checkout -b <type>/<short-desc>`
 8. **Begin implementation**
 
@@ -697,7 +697,7 @@ This produces `YYYY-MM-DD.ai.md` with:
 ### After Opening a PR
 
 1. **Ensure PR body includes `Fixes #<issue>`** (canonical linkage)
-2. **Move issue to Review:** `./tools/scripts/project-move.sh <num> Review`
+2. **Move issue to Review:** `pm move <num> Review`
 3. Request reviewers if not auto-assigned
 
 ### When Blocked
@@ -709,29 +709,29 @@ This produces `YYYY-MM-DD.ai.md` with:
 ### Completing Work (Post-Merge)
 
 1. Merge PR (auto-closes issue if using `Fixes`)
-2. **Move to Done:** `./tools/scripts/project-move.sh <num> Done`
+2. **Move to Done:** `pm move <num> Done`
 3. **Check off "Code merged"** in Definition of Done
 4. Verify issue is closed
 
 ### When Changes Requested
 
-1. **Move to Rework:** `./tools/scripts/project-move.sh <num> Rework`
+1. **Move to Rework:** `pm move <num> Rework`
 2. Address reviewer feedback
 3. Push updates to PR
-4. **Move back to Review:** `./tools/scripts/project-move.sh <num> Review` when ready for re-review
+4. **Move back to Review:** `pm move <num> Review` when ready for re-review
 
 ### Workflow Transitions
 
-| Transition      | Trigger                          | Who      | Command                        |
-| --------------- | -------------------------------- | -------- | ------------------------------ |
-| → Backlog       | Issue created + project-add      | AI/Human | `project-add.sh <num> <pri>`   |
-| Backlog → Ready | Work authorized                  | AI/Human | `project-move.sh <num> Ready`  |
-| Ready → Active  | **STOP**: Work begins            | AI/Human | `project-move.sh <num> Active` |
-| Active → Review | PR opened                        | AI/Human | `project-move.sh <num> Review` |
-| Review → Rework | Changes requested                | AI/Human | `project-move.sh <num> Rework` |
-| Rework → Review | Feedback addressed, re-requested | AI/Human | `project-move.sh <num> Review` |
-| Review → Done   | PR merged + post-merge checklist | AI/Human | `project-move.sh <num> Done`   |
-| Active → Ready  | Work abandoned (with reason)     | AI/Human | `project-move.sh <num> Ready`  |
+| Transition      | Trigger                          | Who      | Command                     |
+| --------------- | -------------------------------- | -------- | --------------------------- |
+| → Backlog       | Issue created + pm add           | AI/Human | `pm add <num> <pri>`        |
+| Backlog → Ready | Work authorized                  | AI/Human | `pm move <num> Ready`       |
+| Ready → Active  | **STOP**: Work begins            | AI/Human | `pm move <num> Active`      |
+| Active → Review | PR opened                        | AI/Human | `pm move <num> Review`      |
+| Review → Rework | Changes requested                | AI/Human | `pm move <num> Rework`      |
+| Rework → Review | Feedback addressed, re-requested | AI/Human | `pm move <num> Review`      |
+| Review → Done   | PR merged + post-merge checklist | AI/Human | `pm move <num> Done`        |
+| Active → Ready  | Work abandoned (with reason)     | AI/Human | `pm move <num> Ready`       |
 
 **Note:** Review → Done is NOT automated. The post-merge checklist requires running the command manually.
 
@@ -743,33 +743,33 @@ This produces `YYYY-MM-DD.ai.md` with:
 
 ```bash
 # Use the helper script (idempotent - safe to run multiple times)
-./tools/scripts/project-add.sh <ISSUE_NUMBER> <priority>
+pm add <ISSUE_NUMBER> <priority>
 # priority: critical | high | normal
 # Area is derived from the issue's area:* label
 
 # Example:
-./tools/scripts/project-add.sh 42 high
+pm add 42 high
 ```
 
 ### Moving Issues Between States
 
 ```bash
 # Move an issue to a workflow state
-./tools/scripts/project-move.sh <ISSUE_NUMBER> <state>
+pm move <ISSUE_NUMBER> <state>
 # state: Backlog | Ready | Active | Review | Done
 
 # Examples:
-./tools/scripts/project-move.sh 42 Ready    # Authorize work
-./tools/scripts/project-move.sh 42 Active   # Begin implementation (MANDATORY before coding)
-./tools/scripts/project-move.sh 42 Review   # PR opened, ready for review
-./tools/scripts/project-move.sh 42 Done     # Mark complete (after PR merge)
+pm move 42 Ready    # Authorize work
+pm move 42 Active   # Begin implementation (MANDATORY before coding)
+pm move 42 Review   # PR opened, ready for review
+pm move 42 Done     # Mark complete (after PR merge)
 ```
 
 ### Checking Issue Status
 
 ```bash
 # Show current workflow state and labels for an issue
-./tools/scripts/project-status.sh <ISSUE_NUMBER>
+pm status <ISSUE_NUMBER>
 
 # Example output:
 # {

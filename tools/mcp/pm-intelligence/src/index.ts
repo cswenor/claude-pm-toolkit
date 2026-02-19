@@ -72,11 +72,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { WORKFLOW_STATES } from "./config.js";
 import {
-  getIssueStatus,
-  getBoardSummary,
-  moveIssue,
-  getVelocity,
-} from "./github.js";
+  getIssue,
+  getLocalBoardSummary,
+  moveIssueWorkflow,
+  addDependency,
+  getDependencies,
+  getCycleTimes,
+  type WorkflowState,
+} from "./db.js";
+import { syncFromGitHub, isSyncStale } from "./sync.js";
+import { getVelocity } from "./github.js";
 import {
   getDecisions,
   getOutcomes,
@@ -146,7 +151,7 @@ import { getRiskRadar } from "./risk-radar.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.14.0",
+  version: "0.15.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -156,21 +161,33 @@ server.registerTool(
   {
     title: "Get Issue Status",
     description:
-      "Get the current workflow state, priority, area, labels, and assignees for a GitHub issue. Returns the issue's position on the project board.",
+      "Get the current workflow state, priority, labels, assignees, and dependencies for an issue. Reads from local SQLite database (instant). Run sync_from_github first if data might be stale.",
     inputSchema: {
       issueNumber: z
         .number()
         .int()
         .positive()
-        .describe("GitHub issue number"),
+        .describe("Issue number"),
     },
   },
   async ({ issueNumber }) => {
     try {
-      const status = await getIssueStatus(issueNumber);
+      const issue = await getIssue(issueNumber);
+      if (!issue) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Issue #${issueNumber} not found in local database. Run sync_from_github to pull from GitHub.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+      const deps = await getDependencies(issueNumber);
       return {
         content: [
-          { type: "text" as const, text: JSON.stringify(status, null, 2) },
+          { type: "text" as const, text: JSON.stringify({ ...issue, dependencies: deps }, null, 2) },
         ],
       };
     } catch (error) {
@@ -192,22 +209,11 @@ server.registerTool(
   {
     title: "Project Board Summary",
     description:
-      "Get a comprehensive project board summary: issue counts by workflow state, priority distribution, active/review/rework items, stale item detection, and a health score (0-100). Use this to understand the current state of the project.",
+      "Get a comprehensive project board summary from local database: issue counts by workflow state, priority distribution, active/review/rework items, blocked items with dependency info, and a health score (0-100). Instant — no GitHub API calls.",
   },
   async () => {
     try {
-      const summary = await getBoardSummary();
-
-      // Also update the board cache for SessionStart hook
-      await updateBoardCache({
-        active: summary.byWorkflow["Active"] || 0,
-        review: summary.byWorkflow["Review"] || 0,
-        rework: summary.byWorkflow["Rework"] || 0,
-        done: summary.byWorkflow["Done"] || 0,
-        backlog: summary.byWorkflow["Backlog"] || 0,
-        ready: summary.byWorkflow["Ready"] || 0,
-      });
-
+      const summary = await getLocalBoardSummary();
       return {
         content: [
           { type: "text" as const, text: JSON.stringify(summary, null, 2) },
@@ -232,9 +238,9 @@ server.registerTool(
   {
     title: "Move Issue",
     description:
-      "Move a GitHub issue to a new workflow state on the project board. Valid states: Backlog, Ready, Active, Review, Rework, Done. NOTE: Use the bash script project-move.sh for the Review transition (it includes pre-review test gates).",
+      "Move an issue to a new workflow state in the local database. Enforces transition rules and WIP limits. Valid states: Backlog, Ready, Active, Review, Rework, Done. Every transition is recorded in the event log with timestamp.",
     inputSchema: {
-      issueNumber: z.number().int().positive().describe("GitHub issue number"),
+      issueNumber: z.number().int().positive().describe("Issue number"),
       targetState: z
         .enum(WORKFLOW_STATES)
         .describe("Target workflow state"),
@@ -242,10 +248,120 @@ server.registerTool(
   },
   async ({ issueNumber, targetState }) => {
     try {
-      const result = await moveIssue(issueNumber, targetState);
+      const result = await moveIssueWorkflow(issueNumber, targetState as WorkflowState);
       return {
         content: [
           { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "sync_from_github",
+  {
+    title: "Sync from GitHub",
+    description:
+      "Pull latest issues and PRs from GitHub into the local database. Runs incrementally (only items updated since last sync). Use force=true for a full refresh. Typically runs on session start.",
+    inputSchema: {
+      force: z.boolean().optional().describe("Force full sync instead of incremental"),
+    },
+  },
+  async ({ force }) => {
+    try {
+      const result = await syncFromGitHub({ force: force || false });
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "add_dependency",
+  {
+    title: "Add Dependency",
+    description:
+      "Add a dependency between two issues. The blocker must be completed before the blocked issue can proceed. Includes cycle detection — will reject if adding the dependency would create a circular dependency.",
+    inputSchema: {
+      blockerIssue: z.number().int().positive().describe("Issue that blocks"),
+      blockedIssue: z.number().int().positive().describe("Issue that is blocked"),
+      depType: z.enum(["blocks", "prerequisite", "related"]).optional().describe("Dependency type"),
+    },
+  },
+  async ({ blockerIssue, blockedIssue, depType }) => {
+    try {
+      await addDependency(blockerIssue, blockedIssue, depType || "blocks");
+      return {
+        content: [
+          { type: "text" as const, text: `Dependency added: #${blockerIssue} blocks #${blockedIssue}` },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_cycle_times",
+  {
+    title: "Get Cycle Times",
+    description:
+      "Get cycle times (Active → Done) for completed issues. Shows hours from first Active transition to Done, plus the full workflow path taken. Useful for velocity analysis and estimation.",
+    inputSchema: {
+      days: z.number().int().positive().optional().describe("Lookback period in days (default: 90)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const times = await getCycleTimes(days || 90);
+      const avgHours = times.length > 0
+        ? Math.round((times.reduce((s, t) => s + t.hours, 0) / times.length) * 10) / 10
+        : null;
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              count: times.length,
+              averageHours: avgHours,
+              averageDays: avgHours ? Math.round((avgHours / 24) * 10) / 10 : null,
+              issues: times,
+            }, null, 2),
+          },
         ],
       };
     } catch (error) {
@@ -357,7 +473,7 @@ server.registerTool(
   {
     title: "Record Outcome",
     description:
-      "Record a work outcome (merged, rework, reverted, abandoned) to persistent JSONL memory. Automatically called by project-move.sh on Done transitions, but can be called directly for manual recording with richer detail.",
+      "Record a work outcome (merged, rework, reverted, abandoned) to persistent memory. Automatically called on Done transitions, but can be called directly for manual recording with richer detail.",
     inputSchema: {
       issueNumber: z.number().int().positive().describe("Issue number"),
       result: z
@@ -1421,7 +1537,7 @@ server.registerResource(
           contents: [{ uri: uri.href, text: JSON.stringify(cache, null, 2) }],
         };
       }
-      const summary = await getBoardSummary();
+      const summary = await getLocalBoardSummary();
       return {
         contents: [{ uri: uri.href, text: JSON.stringify(summary, null, 2) }],
       };

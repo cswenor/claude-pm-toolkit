@@ -1,30 +1,20 @@
 /**
- * Memory system — reads and writes JSONL decision/outcome logs.
+ * Memory system — backed by SQLite.
  *
- * Integrates with the pm-record.sh JSONL format for cross-session learning.
- * The MCP server can both read memory (for context) and write memory
- * (recording decisions/outcomes without shelling out to pm-record.sh).
+ * v0.15.0: Migrated from JSONL files to SQLite database.
+ * Decisions, outcomes, and events all live in .pm/state.db now.
+ *
+ * Backwards compatibility: if JSONL files exist in .claude/memory/,
+ * they are imported on first access, then the directory is left in place
+ * (not deleted) as a backup.
  */
 
-import { readFile, appendFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { getDb, queryEvents, type PMEvent } from "./db.js";
 
-const execFileAsync = promisify(execFile);
-
-/** Find the repo root */
-async function getRepoRoot(): Promise<string> {
-  const { stdout } = await execFileAsync("git", [
-    "rev-parse",
-    "--show-toplevel",
-  ]);
-  return stdout.trim();
-}
-
-// ─── Types ──────────────────────────────────────────────
+// ─── Types (preserved from v0.14 for API compatibility) ──
 
 export interface Decision {
+  id?: number;
   timestamp: string;
   issue_number: number | null;
   area: string | null;
@@ -36,6 +26,7 @@ export interface Decision {
 }
 
 export interface Outcome {
+  id?: number;
   timestamp: string;
   issue_number: number;
   pr_number: number | null;
@@ -45,6 +36,7 @@ export interface Outcome {
   area: string | null;
   approach_summary: string | null;
   lessons: string | null;
+  cycle_time_hours: number | null;
 }
 
 export interface BoardCache {
@@ -57,107 +49,133 @@ export interface BoardCache {
   ready: number;
 }
 
-export interface PMEvent {
-  timestamp: string;
-  event: string;
-  issue_number?: number;
-  session_id?: string;
-  tool?: string;
-  from_state?: string;
-  to_state?: string;
-  message?: string;
-  data?: Record<string, unknown>;
-}
+export { PMEvent };
 
 // ─── Read Operations ────────────────────────────────────
-
-/** Read JSONL file and return parsed lines */
-async function readJsonl<T>(filePath: string): Promise<T[]> {
-  if (!existsSync(filePath)) return [];
-  const content = await readFile(filePath, "utf-8");
-  return content
-    .trim()
-    .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as T);
-}
 
 /** Get recent decisions, optionally filtered by issue */
 export async function getDecisions(
   limit = 20,
   issueNumber?: number
 ): Promise<Decision[]> {
-  const root = await getRepoRoot();
-  const path = `${root}/.claude/memory/decisions.jsonl`;
-  let decisions = await readJsonl<Decision>(path);
+  const db = await getDb();
+
+  let query = "SELECT * FROM decisions";
+  const params: unknown[] = [];
 
   if (issueNumber !== undefined) {
-    decisions = decisions.filter((d) => d.issue_number === issueNumber);
+    query += " WHERE issue_number = ?";
+    params.push(issueNumber);
   }
 
-  return decisions.slice(-limit);
+  query += " ORDER BY timestamp DESC LIMIT ?";
+  params.push(limit);
+
+  const rows = db.prepare(query).all(...params) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    id: row.id as number,
+    timestamp: row.timestamp as string,
+    issue_number: row.issue_number as number | null,
+    area: row.area as string | null,
+    type: row.decision_type as string,
+    decision: row.decision as string,
+    rationale: row.rationale as string | null,
+    alternatives_considered: row.alternatives
+      ? JSON.parse(row.alternatives as string)
+      : [],
+    files: row.files ? JSON.parse(row.files as string) : [],
+  }));
 }
 
-/** Get recent outcomes, optionally filtered by issue or area */
+/** Get recent outcomes, optionally filtered */
 export async function getOutcomes(
   limit = 20,
   filters?: { issueNumber?: number; area?: string; result?: string }
 ): Promise<Outcome[]> {
-  const root = await getRepoRoot();
-  const path = `${root}/.claude/memory/outcomes.jsonl`;
-  let outcomes = await readJsonl<Outcome>(path);
+  const db = await getDb();
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
 
   if (filters?.issueNumber !== undefined) {
-    outcomes = outcomes.filter((o) => o.issue_number === filters.issueNumber);
+    conditions.push("issue_number = ?");
+    params.push(filters.issueNumber);
   }
   if (filters?.area) {
-    outcomes = outcomes.filter((o) => o.area === filters.area);
+    conditions.push("area = ?");
+    params.push(filters.area);
   }
   if (filters?.result) {
-    outcomes = outcomes.filter((o) => o.result === filters.result);
+    conditions.push("result = ?");
+    params.push(filters.result);
   }
 
-  return outcomes.slice(-limit);
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  params.push(limit);
+
+  const rows = db
+    .prepare(`SELECT * FROM outcomes ${where} ORDER BY timestamp DESC LIMIT ?`)
+    .all(...params) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    id: row.id as number,
+    timestamp: row.timestamp as string,
+    issue_number: row.issue_number as number,
+    pr_number: row.pr_number as number | null,
+    result: row.result as string,
+    review_rounds: row.review_rounds as number | null,
+    rework_reasons: row.rework_reasons
+      ? JSON.parse(row.rework_reasons as string)
+      : [],
+    area: row.area as string | null,
+    approach_summary: row.approach as string | null,
+    lessons: row.lessons as string | null,
+    cycle_time_hours: row.cycle_time_hours as number | null,
+  }));
 }
 
-/** Get recent events from event stream, optionally filtered */
+/** Get recent events from event stream */
 export async function getEvents(
   limit = 50,
   filters?: { issueNumber?: number; eventType?: string }
 ): Promise<PMEvent[]> {
-  const root = await getRepoRoot();
-  const path = `${root}/.claude/memory/events.jsonl`;
-  let events = await readJsonl<PMEvent>(path);
-
-  if (filters?.issueNumber !== undefined) {
-    events = events.filter((e) => e.issue_number === filters.issueNumber);
-  }
-  if (filters?.eventType) {
-    events = events.filter((e) => e.event === filters.eventType);
-  }
-
-  return events.slice(-limit);
+  return queryEvents({
+    issueNumber: filters?.issueNumber,
+    eventType: filters?.eventType,
+    limit,
+  });
 }
 
-/** Get cached board state */
+/** Get board cache (computed from local DB, not cached JSON) */
 export async function getBoardCache(): Promise<BoardCache | null> {
-  const root = await getRepoRoot();
-  const path = `${root}/.claude/memory/board-cache.json`;
-  if (!existsSync(path)) return null;
+  const db = await getDb();
 
-  const content = await readFile(path, "utf-8");
-  const cache = JSON.parse(content) as BoardCache;
+  const counts = db
+    .prepare(
+      "SELECT workflow, COUNT(*) as count FROM issues WHERE state = 'open' GROUP BY workflow"
+    )
+    .all() as Array<{ workflow: string; count: number }>;
 
-  // Check if cache is stale (>1 hour)
-  const age = Date.now() - new Date(cache.timestamp).getTime();
-  if (age > 60 * 60 * 1000) return null;
+  const byWorkflow: Record<string, number> = {};
+  for (const row of counts) {
+    byWorkflow[row.workflow] = row.count;
+  }
 
-  return cache;
+  return {
+    timestamp: new Date().toISOString(),
+    active: byWorkflow["Active"] || 0,
+    review: byWorkflow["Review"] || 0,
+    rework: byWorkflow["Rework"] || 0,
+    done: byWorkflow["Done"] || 0,
+    backlog: byWorkflow["Backlog"] || 0,
+    ready: byWorkflow["Ready"] || 0,
+  };
 }
 
 // ─── Write Operations ───────────────────────────────────
 
-/** Record a decision to JSONL */
+/** Record a decision */
 export async function recordDecision(decision: {
   issueNumber?: number;
   area?: string;
@@ -166,26 +184,36 @@ export async function recordDecision(decision: {
   rationale?: string;
   alternatives?: string[];
   files?: string[];
+  sessionId?: string;
 }): Promise<void> {
-  const root = await getRepoRoot();
-  const dir = `${root}/.claude/memory`;
-  await mkdir(dir, { recursive: true });
+  const db = await getDb();
 
-  const record: Decision = {
-    timestamp: new Date().toISOString(),
-    issue_number: decision.issueNumber ?? null,
-    area: decision.area ?? null,
-    type: decision.type ?? "architectural",
-    decision: decision.decision,
-    rationale: decision.rationale ?? null,
-    alternatives_considered: decision.alternatives ?? [],
-    files: decision.files ?? [],
-  };
+  db.prepare(`
+    INSERT INTO decisions (issue_number, area, decision_type, decision, rationale, alternatives, files, session_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    decision.issueNumber ?? null,
+    decision.area ?? null,
+    decision.type ?? "architectural",
+    decision.decision,
+    decision.rationale ?? null,
+    decision.alternatives ? JSON.stringify(decision.alternatives) : null,
+    decision.files ? JSON.stringify(decision.files) : null,
+    decision.sessionId ?? null
+  );
 
-  await appendFile(`${dir}/decisions.jsonl`, JSON.stringify(record) + "\n");
+  // Also record as event
+  db.prepare(`
+    INSERT INTO events (event_type, issue_number, to_value, actor, session_id)
+    VALUES ('decision', ?, ?, 'claude', ?)
+  `).run(
+    decision.issueNumber ?? null,
+    decision.decision.slice(0, 200),
+    decision.sessionId ?? null
+  );
 }
 
-/** Record an outcome to JSONL */
+/** Record an outcome */
 export async function recordOutcome(outcome: {
   issueNumber: number;
   prNumber?: number;
@@ -195,40 +223,38 @@ export async function recordOutcome(outcome: {
   area?: string;
   summary?: string;
   lessons?: string;
+  cycleTimeHours?: number;
 }): Promise<void> {
-  const root = await getRepoRoot();
-  const dir = `${root}/.claude/memory`;
-  await mkdir(dir, { recursive: true });
+  const db = await getDb();
 
-  const record: Outcome = {
-    timestamp: new Date().toISOString(),
-    issue_number: outcome.issueNumber,
-    pr_number: outcome.prNumber ?? null,
-    result: outcome.result,
-    review_rounds: outcome.reviewRounds ?? null,
-    rework_reasons: outcome.reworkReasons ?? [],
-    area: outcome.area ?? null,
-    approach_summary: outcome.summary ?? null,
-    lessons: outcome.lessons ?? null,
-  };
+  db.prepare(`
+    INSERT INTO outcomes (issue_number, pr_number, result, review_rounds, rework_reasons, area, approach, lessons, cycle_time_hours)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    outcome.issueNumber,
+    outcome.prNumber ?? null,
+    outcome.result,
+    outcome.reviewRounds ?? null,
+    outcome.reworkReasons ? JSON.stringify(outcome.reworkReasons) : null,
+    outcome.area ?? null,
+    outcome.summary ?? null,
+    outcome.lessons ?? null,
+    outcome.cycleTimeHours ?? null
+  );
 
-  await appendFile(`${dir}/outcomes.jsonl`, JSON.stringify(record) + "\n");
+  // Also record as event
+  db.prepare(`
+    INSERT INTO events (event_type, issue_number, pr_number, to_value, actor)
+    VALUES ('outcome', ?, ?, ?, 'claude')
+  `).run(outcome.issueNumber, outcome.prNumber ?? null, outcome.result);
 }
 
-/** Update board cache */
+/** Update board cache — now a no-op since board state is always live from DB */
 export async function updateBoardCache(
-  state: Omit<BoardCache, "timestamp">
+  _state: Omit<BoardCache, "timestamp">
 ): Promise<void> {
-  const root = await getRepoRoot();
-  const dir = `${root}/.claude/memory`;
-  await mkdir(dir, { recursive: true });
-
-  const cache: BoardCache = {
-    timestamp: new Date().toISOString(),
-    ...state,
-  };
-
-  await writeFile(`${dir}/board-cache.json`, JSON.stringify(cache, null, 2));
+  // No-op in v0.15+. Board state is always computed live from SQLite.
+  // Kept for API compatibility with existing tools.
 }
 
 // ─── Analytics ──────────────────────────────────────────
@@ -245,54 +271,62 @@ export interface MemoryInsights {
 
 /** Analyze memory for patterns and insights */
 export async function getInsights(): Promise<MemoryInsights> {
-  const decisions = await getDecisions(1000);
-  const outcomes = await getOutcomes(1000);
+  const db = await getDb();
+
+  const totalDecisions = (
+    db.prepare("SELECT COUNT(*) as c FROM decisions").get() as { c: number }
+  ).c;
+
+  const totalOutcomes = (
+    db.prepare("SELECT COUNT(*) as c FROM outcomes").get() as { c: number }
+  ).c;
 
   // Rework rate
-  const totalResults = outcomes.length;
-  const reworkCount = outcomes.filter((o) => o.result === "rework").length;
-  const reworkRate = totalResults > 0 ? reworkCount / totalResults : 0;
+  const reworkCount = (
+    db
+      .prepare("SELECT COUNT(*) as c FROM outcomes WHERE result = 'rework'")
+      .get() as { c: number }
+  ).c;
+  const reworkRate =
+    totalOutcomes > 0 ? Math.round((reworkCount / totalOutcomes) * 100) / 100 : 0;
 
   // Average review rounds
-  const withRounds = outcomes.filter((o) => o.review_rounds !== null);
-  const avgRounds =
-    withRounds.length > 0
-      ? withRounds.reduce((sum, o) => sum + (o.review_rounds || 0), 0) /
-        withRounds.length
-      : 0;
+  const avgRounds = (
+    db
+      .prepare(
+        "SELECT AVG(review_rounds) as avg FROM outcomes WHERE review_rounds IS NOT NULL"
+      )
+      .get() as { avg: number | null }
+  ).avg;
 
   // Top areas
-  const areaCounts: Record<string, number> = {};
-  for (const o of outcomes) {
-    if (o.area) areaCounts[o.area] = (areaCounts[o.area] || 0) + 1;
-  }
-  const topAreas = Object.entries(areaCounts)
-    .map(([area, count]) => ({ area, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+  const topAreas = db
+    .prepare(
+      "SELECT area, COUNT(*) as count FROM outcomes WHERE area IS NOT NULL GROUP BY area ORDER BY count DESC LIMIT 5"
+    )
+    .all() as Array<{ area: string; count: number }>;
 
   // Recent lessons
-  const recentLessons = outcomes
-    .filter((o) => o.lessons)
-    .slice(-5)
-    .map((o) => o.lessons!);
+  const lessons = db
+    .prepare(
+      "SELECT lessons FROM outcomes WHERE lessons IS NOT NULL ORDER BY timestamp DESC LIMIT 5"
+    )
+    .all() as Array<{ lessons: string }>;
 
-  // Decision type patterns
-  const typeCounts: Record<string, number> = {};
-  for (const d of decisions) {
-    typeCounts[d.type] = (typeCounts[d.type] || 0) + 1;
-  }
-  const decisionPatterns = Object.entries(typeCounts)
-    .map(([type, count]) => ({ type, count }))
-    .sort((a, b) => b.count - a.count);
+  // Decision patterns
+  const patterns = db
+    .prepare(
+      "SELECT decision_type as type, COUNT(*) as count FROM decisions GROUP BY decision_type ORDER BY count DESC"
+    )
+    .all() as Array<{ type: string; count: number }>;
 
   return {
-    totalDecisions: decisions.length,
-    totalOutcomes: outcomes.length,
-    reworkRate: Math.round(reworkRate * 100) / 100,
-    averageReviewRounds: Math.round(avgRounds * 10) / 10,
+    totalDecisions,
+    totalOutcomes,
+    reworkRate,
+    averageReviewRounds: avgRounds ? Math.round(avgRounds * 10) / 10 : 0,
     topAreas,
-    recentLessons,
-    decisionPatterns,
+    recentLessons: lessons.map((l) => l.lessons),
+    decisionPatterns: patterns,
   };
 }

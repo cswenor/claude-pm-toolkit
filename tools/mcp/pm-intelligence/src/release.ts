@@ -7,9 +7,10 @@
  *     highlights breaking changes, and generates stakeholder summaries.
  */
 
-import { getVelocity, getBoardSummary } from "./github.js";
+import { getVelocity } from "./github.js";
+import { getLocalBoardSummary } from "./db.js";
 import { getEvents, getOutcomes } from "./memory.js";
-import { PM_CONFIG } from "./config.js";
+import { getConfig } from "./config.js";
 import { execSync } from "child_process";
 
 // ─── Types ───────────────────────────────────────────────
@@ -129,9 +130,10 @@ function cleanTitle(title: string): string {
     .trim();
 }
 
-function getMergedPRs(since: string, until: string): MergedPR[] {
+async function getMergedPRs(since: string, until: string): Promise<MergedPR[]> {
   try {
-    const owner = PM_CONFIG.owner;
+    const config = await getConfig();
+    const owner = config.owner;
     const cmd =
       `gh pr list --repo ${owner}/$(gh repo view --json name -q .name 2>/dev/null || echo "unknown") ` +
       `--state merged --json number,title,mergedAt,author,labels,body,files,additions,deletions ` +
@@ -219,13 +221,13 @@ export async function generateReleaseNotes(
   // Gather data in parallel
   const [velocity, board, events, outcomes] = await Promise.all([
     getVelocity().catch(() => null),
-    getBoardSummary().catch(() => null),
+    getLocalBoardSummary().catch(() => null),
     getEvents(200, { eventType: "workflow_transition" }).catch(() => []),
     getOutcomes(50).catch(() => []),
   ]);
 
   // Get merged PRs from git history
-  const mergedPRs = getMergedPRs(sinceDate, untilDate);
+  const mergedPRs = await getMergedPRs(sinceDate, untilDate);
 
   // Classify each PR
   const changes: ReleaseChange[] = mergedPRs.map((pr) => {

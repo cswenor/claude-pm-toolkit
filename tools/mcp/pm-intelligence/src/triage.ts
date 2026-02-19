@@ -7,7 +7,8 @@
  *   - decompose_issue: Break large issues into dependency-ordered subtasks
  */
 
-import { getIssueStatus, getBoardSummary, getVelocity } from "./github.js";
+import { getVelocity } from "./github.js";
+import { getIssue, getLocalBoardSummary } from "./db.js";
 import {
   getDecisions,
   getOutcomes,
@@ -174,7 +175,7 @@ export async function triageIssue(
 ): Promise<TriageResult> {
   // Gather all intelligence in parallel
   const [
-    status,
+    statusOrNull,
     completion,
     rework,
     approach,
@@ -182,7 +183,7 @@ export async function triageIssue(
     deps,
     board,
   ] = await Promise.all([
-    getIssueStatus(issueNumber),
+    getIssue(issueNumber),
     predictCompletion(issueNumber).catch(() => null),
     predictRework(issueNumber).catch(() => null),
     suggestApproach(
@@ -191,8 +192,13 @@ export async function triageIssue(
     ).catch(() => null),
     getTeamCapacity(60).catch(() => null),
     getIssueDependencies(issueNumber).catch(() => null),
-    getBoardSummary(),
+    getLocalBoardSummary(),
   ]);
+
+  if (!statusOrNull) {
+    throw new Error(`Issue #${issueNumber} not found in local database. Run 'pm sync' first.`);
+  }
+  const status = statusOrNull;
 
   // ─── Classification ────────────────────────────────
   const labels = status.labels;
@@ -481,7 +487,7 @@ export async function analyzePRImpact(
   const [graph, knowledge, board, velocity, analytics] = await Promise.all([
     analyzeDependencyGraph().catch(() => null),
     getKnowledgeRisk(90).catch(() => null),
-    getBoardSummary(),
+    getLocalBoardSummary(),
     getVelocity(),
     getSprintAnalytics(14).catch(() => null),
   ]);
@@ -566,8 +572,8 @@ export async function analyzePRImpact(
   const blockers: string[] = [];
   const warnings: string[] = [];
 
-  if (board.activeItems.length > 1) {
-    warnings.push(`${board.activeItems.length} items currently active — check WIP limits`);
+  if (board.activeIssues.length > 1) {
+    warnings.push(`${board.activeIssues.length} items currently active — check WIP limits`);
   }
 
   if (knowledgeRiskFiles.length > 3) {
@@ -635,9 +641,9 @@ export async function decomposeIssue(
   issueNumber: number
 ): Promise<DecompositionResult> {
   // Gather intelligence
-  const [status, completion, rework, deps, analytics, insights] =
+  const [statusOrNull2, completion, rework, deps, analytics, insights] =
     await Promise.all([
-      getIssueStatus(issueNumber),
+      getIssue(issueNumber),
       predictCompletion(issueNumber).catch(() => null),
       predictRework(issueNumber).catch(() => null),
       getIssueDependencies(issueNumber).catch(() => null),
@@ -645,8 +651,13 @@ export async function decomposeIssue(
       getInsights(),
     ]);
 
+  if (!statusOrNull2) {
+    throw new Error(`Issue #${issueNumber} not found in local database. Run 'pm sync' first.`);
+  }
+  const status = statusOrNull2;
+
   const title = status.title;
-  const area = status.area ?? "unknown";
+  const area = status.labels.find((l) => l.startsWith("area:"))?.replace("area:", "") ?? "unknown";
   const labels = status.labels;
 
   // Determine complexity

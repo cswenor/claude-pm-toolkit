@@ -1,59 +1,88 @@
 /**
- * PM configuration — values replaced by install.sh placeholder system.
+ * PM configuration — minimal, local-first.
  *
- * These match the bash pm.config.sh variables. When install.sh processes
- * this file, it replaces {{PLACEHOLDERS}} with real project values.
+ * v0.15.0: Dropped all GitHub Projects field/option IDs.
+ * Workflow state, priority, and dependencies live in local SQLite.
+ * Only owner/repo are needed for GitHub API calls (issue sync, PR sync).
+ *
+ * Config is read from .claude-pm-toolkit.json in the repo root,
+ * with fallback to git remote URL detection.
  */
 
-export const PM_CONFIG = {
-  owner: "{{OWNER}}",
-  projectNumber: Number("{{PROJECT_NUMBER}}") || 0,
-  projectId: "{{PROJECT_ID}}",
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
-  fields: {
-    workflow: "{{FIELD_WORKFLOW}}",
-    priority: "{{FIELD_PRIORITY}}",
-    area: "{{FIELD_AREA}}",
-    issueType: "{{FIELD_ISSUE_TYPE}}",
-    risk: "{{FIELD_RISK}}",
-    estimate: "{{FIELD_ESTIMATE}}",
-  },
+const execFileAsync = promisify(execFile);
 
-  workflow: {
-    backlog: "{{OPT_WF_BACKLOG}}",
-    ready: "{{OPT_WF_READY}}",
-    active: "{{OPT_WF_ACTIVE}}",
-    review: "{{OPT_WF_REVIEW}}",
-    rework: "{{OPT_WF_REWORK}}",
-    done: "{{OPT_WF_DONE}}",
-  },
+// ─── Config Types ────────────────────────────────────────
 
-  priority: {
-    critical: "{{OPT_PRI_CRITICAL}}",
-    high: "{{OPT_PRI_HIGH}}",
-    normal: "{{OPT_PRI_NORMAL}}",
-  },
+export interface PMConfig {
+  owner: string;
+  repo: string;
+}
 
-  type: {
-    bug: "{{OPT_TYPE_BUG}}",
-    feature: "{{OPT_TYPE_FEATURE}}",
-    spike: "{{OPT_TYPE_SPIKE}}",
-    epic: "{{OPT_TYPE_EPIC}}",
-    chore: "{{OPT_TYPE_CHORE}}",
-  },
-} as const;
+// ─── Config Loading ──────────────────────────────────────
 
-/** Map state names to option IDs */
-export const WORKFLOW_MAP: Record<string, string> = {
-  Backlog: PM_CONFIG.workflow.backlog,
-  Ready: PM_CONFIG.workflow.ready,
-  Active: PM_CONFIG.workflow.active,
-  Review: PM_CONFIG.workflow.review,
-  Rework: PM_CONFIG.workflow.rework,
-  Done: PM_CONFIG.workflow.done,
-};
+let _config: PMConfig | null = null;
+let _repoRoot: string | null = null;
 
-/** Valid workflow states */
+/** Get the repo root */
+export async function getRepoRoot(): Promise<string> {
+  if (_repoRoot) return _repoRoot;
+  const { stdout } = await execFileAsync("git", [
+    "rev-parse",
+    "--show-toplevel",
+  ]);
+  _repoRoot = stdout.trim();
+  return _repoRoot;
+}
+
+/** Load PM config from .claude-pm-toolkit.json or git remote */
+export async function getConfig(): Promise<PMConfig> {
+  if (_config) return _config;
+
+  const root = await getRepoRoot();
+  const configPath = join(root, ".claude-pm-toolkit.json");
+
+  // Try config file first
+  if (existsSync(configPath)) {
+    const content = await readFile(configPath, "utf-8");
+    const json = JSON.parse(content);
+    if (json.owner && json.repo) {
+      _config = { owner: json.owner, repo: json.repo };
+      return _config;
+    }
+  }
+
+  // Fall back to git remote detection
+  const { stdout } = await execFileAsync("git", [
+    "remote",
+    "get-url",
+    "origin",
+  ]);
+  const url = stdout.trim();
+  const match = url.match(/(?:github\.com[:/])([^/]+)\/([^/.\s]+)/);
+  if (!match) throw new Error(`Cannot parse repo from remote URL: ${url}`);
+
+  _config = {
+    owner: match[1],
+    repo: match[2].replace(/\.git$/, ""),
+  };
+  return _config;
+}
+
+/** Get full repo slug (owner/repo) */
+export async function getRepoSlug(): Promise<string> {
+  const config = await getConfig();
+  return `${config.owner}/${config.repo}`;
+}
+
+// ─── Workflow Constants ──────────────────────────────────
+
+/** Valid workflow states (managed locally, not on GitHub Projects) */
 export const WORKFLOW_STATES = [
   "Backlog",
   "Ready",
@@ -64,3 +93,19 @@ export const WORKFLOW_STATES = [
 ] as const;
 
 export type WorkflowState = (typeof WORKFLOW_STATES)[number];
+
+/** Valid priority levels */
+export const PRIORITY_LEVELS = ["critical", "high", "normal"] as const;
+
+export type Priority = (typeof PRIORITY_LEVELS)[number];
+
+/** Valid issue types */
+export const ISSUE_TYPES = [
+  "bug",
+  "feature",
+  "spike",
+  "epic",
+  "chore",
+] as const;
+
+export type IssueType = (typeof ISSUE_TYPES)[number];

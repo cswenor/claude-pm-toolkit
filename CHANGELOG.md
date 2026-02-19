@@ -2,6 +2,81 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.15.0] - 2026-02-19
+
+### Architecture — Local-First PM State
+
+**GitHub for what it's great at. Local SQLite for everything else.**
+
+This release fundamentally changes where PM state lives. GitHub Projects (with its
+painful GraphQL API, missing field history, and rate limiting) is replaced by a local
+SQLite database that stores workflow state, priorities, dependencies, and full event
+history. GitHub remains the source of truth for issue content, PRs, labels, and CI.
+
+### Added
+- **SQLite database** (`.pm/state.db`):
+  - Issues table (mirrored from GitHub + local workflow/priority enrichment)
+  - Events table (every state change with timestamp — the history GitHub never had)
+  - Dependencies table (real graph with cycle detection, not label hacks)
+  - Decisions and outcomes tables (migrated from JSONL files)
+  - Pull requests table with issue linking
+  - Session tracking
+  - WAL mode for performance, automatic migrations
+
+- **GitHub sync adapter** (`sync.ts`):
+  - Pulls issues and PRs from GitHub into local SQLite
+  - Incremental sync (only updated-since items)
+  - Auto-detects closed issues and transitions to Done
+  - Runs on session start (~2-5 seconds)
+
+- **Local workflow engine** (`db.ts`):
+  - State machine: Backlog → Ready → Active → Review → Rework → Done
+  - Enforces transition rules (can't go Active → Done directly)
+  - WIP limit enforcement (1 Active issue at a time)
+  - Cycle detection for dependencies (prevents circular deps)
+  - Every transition recorded with timestamp and actor
+
+- **CLI** (`pm` command):
+  - `pm init` — first-time setup, create DB, initial sync
+  - `pm sync [--force]` — pull from GitHub
+  - `pm board` — terminal kanban board with color-coded columns
+  - `pm status [num]` — project overview or issue detail with deps and events
+  - `pm move <num> <state>` — workflow transition
+  - `pm add <num> [priority]` — start tracking an issue
+  - `pm dep <blocker> <blocked>` — add dependency
+  - `pm history [num]` — event history
+
+- **New MCP tools:**
+  - `sync_from_github` — trigger sync from Claude
+  - `add_dependency` — create dependency with cycle detection
+  - `get_cycle_times` — Active → Done cycle time analysis
+
+### Changed
+- **All MCP tools now query local SQLite instead of GitHub API:**
+  - `get_issue_status` reads from local DB (instant, includes dependencies)
+  - `get_board_summary` computed from local DB (includes blocked issues)
+  - `move_issue` updates local DB with transition validation and event recording
+  - All 49 intelligence tools benefit from faster, richer local data
+
+- **`config.ts` simplified:**
+  - Dropped all GitHub Projects field IDs and option IDs
+  - Only needs `owner` and `repo` (detected from git remote or `.claude-pm-toolkit.json`)
+
+- **`github.ts` stripped down:**
+  - Removed all GraphQL project board operations
+  - Kept only: velocity metrics, `gh` CLI wrapper for sync
+
+- **`memory.ts` migrated to SQLite:**
+  - Decisions and outcomes now stored in SQLite tables
+  - Board cache computed live from DB (no stale JSON)
+  - API preserved for backwards compatibility
+
+### Removed
+- GitHub Projects dependency (the entire `fields`, `workflow` option IDs, GraphQL mutations)
+- `PM_PROJECT_CONFIG.md` (no longer needed — no project field IDs to configure)
+- JSONL file storage for decisions/outcomes (migrated to SQLite)
+- `project-move.sh`, `project-status.sh`, `project-add.sh`, `project-archive-done.sh` (replaced by local DB operations)
+
 ## [0.14.0] - 2026-02-19
 
 ### Added

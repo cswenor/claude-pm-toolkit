@@ -2,9 +2,9 @@
 
 **Stop Claude Code from winging it.**
 
-Claude Code is powerful — but without structure, it creates duplicate issues, bundles unrelated work into unmergeable PRs, rubber-stamps reviews, loses context between sessions, and leaves your project board in shambles.
+Claude Code is powerful — but without structure, it creates duplicate issues, bundles unrelated work into unmergeable PRs, rubber-stamps reviews, loses context between sessions, and ignores workflow discipline.
 
-This toolkit gives Claude a PM brain: structured workflows, adversarial reviews, parallel development, and portfolio management — all backed by GitHub Projects v2.
+This toolkit gives Claude a PM brain: structured workflows, adversarial reviews, parallel development, and persistent memory — all backed by a local-first SQLite database that syncs with GitHub.
 
 **Install into any existing repo in 2 minutes. No framework dependencies.**
 
@@ -24,8 +24,9 @@ cd claude-pm-toolkit
 | Feature PR includes surprise Docker upgrade | Scope discipline creates separate issue + blocker |
 | "LGTM" review misses unhandled edge cases | Adversarial review with mandatory failure mode analysis |
 | Context lost between sessions — starts over | `/issue 42` loads full state: issue, comments, PR, plan |
-| Project board stuck in "Review" for weeks | Auto-transitions: Active → Review → Done |
+| Workflow state drifts and nobody notices | Local DB enforces transitions with WIP limits |
 | One issue at a time, serial development | Worktrees + tmux = parallel Claude sessions |
+| No memory of past decisions or rework reasons | SQLite event stream tracks everything across sessions |
 
 ---
 
@@ -40,37 +41,20 @@ cd claude-pm-toolkit
 | **`/pm-review`** | Adversarial reviewer. Enriched with automated PR analysis, blast radius modeling, knowledge risk, rework prediction, and review calibration learning. |
 | **`/weekly`** | AI narrative from weekly snapshots. Enhanced with risk radar, DORA metrics, Monte Carlo forecasts, anomaly detection, and delivery metrics. |
 
-### 22 Scripts
+### MCP Server (pm-intelligence) — 49 Tools
 
-| Category | Scripts | Purpose |
-|----------|---------|---------|
-| **Project** | `project-add.sh`, `project-move.sh`, `project-status.sh`, `project-archive-done.sh` | GitHub Projects v2 integration |
-| **Worktrees** | `worktree-setup.sh`, `worktree-detect.sh`, `worktree-cleanup.sh` | Parallel development with port isolation |
-| **Portfolio** | `tmux-session.sh`, `portfolio-notify.sh` | Multi-session management with tmux alerts |
-| **Security** | `claude-command-guard.sh`, `claude-secret-*.sh` | Block dangerous commands, detect secrets |
-| **Smart Hooks** | `pm-commit-guard.sh`, `pm-stop-guard.sh`, `pm-event-log.sh`, `pm-session-context.sh` | Commit convention enforcement, incomplete work detection, event logging |
-| **Utilities** | `find-plan.sh`, `pm-dashboard.sh`, `pm.config.sh`, `codex-mcp-overrides.sh`, `pm-record.sh` | Plan discovery, health dashboard, config, memory writer |
+A native MCP server that gives Claude direct access to project intelligence. All workflow state lives in a local SQLite database (`.pm/state.db`) that syncs from GitHub.
 
-### GitHub Actions (Automated)
-
-| Workflow | Trigger | What it does |
-|----------|---------|-------------|
-| **`pm-post-merge.yml`** | PR merged with `Fixes #N` | Moves issue to Done, posts completion comment |
-| **`pm-pr-check.yml`** | PR opened/edited | Validates conventional commit, issue link, workflow state |
-
-Requires a `PROJECT_WRITE_TOKEN` repository secret (classic PAT with `project` scope).
-
-### MCP Server (pm-intelligence)
-
-A native MCP server that gives Claude direct access to project state — no bash scripts needed.
-
-| Category | What | Description |
+| Category | Tool | Description |
 |----------|------|-------------|
-| **Core** | `get_issue_status` | Workflow state, priority, area, labels for any issue |
+| **Core** | `get_issue_status` | Workflow state, priority, labels from local DB |
 | | `get_board_summary` | Full board with health score (0-100) and stale items |
-| | `move_issue` | Transition issue to any workflow state |
+| | `move_issue` | Transition issue with WIP limit enforcement |
 | | `get_velocity` | Merge/close/open rates (7d and 30d windows) |
-| **Memory** | `record_decision` | Log architectural decisions to persistent memory |
+| | `sync_from_github` | Pull latest issues/PRs into local DB |
+| | `add_dependency` | Create dependency edges with cycle detection |
+| | `get_cycle_times` | Per-issue cycle time analytics from event stream |
+| **Memory** | `record_decision` | Log architectural decisions to persistent DB |
 | | `record_outcome` | Log work outcomes (merged, rework, etc.) |
 | | `get_memory_insights` | Analytics: rework rate, review patterns, area distribution |
 | | `get_event_stream` | Query structured event stream with filters |
@@ -88,10 +72,10 @@ A native MCP server that gives Claude direct access to project state — no bash
 | | `get_context_efficiency` | AI context waste metrics per issue (0-100 score) |
 | | `get_workflow_health` | Cross-issue health, bottlenecks, stale detection |
 | **Graph** | `analyze_dependency_graph` | Critical path, bottleneck issues, cycle detection |
-| | `get_issue_dependencies` | Upstream/downstream chains, execution order, unblocked check |
+| | `get_issue_dependencies` | Upstream/downstream chains, execution order |
+| | `visualize_dependencies` | ASCII + Mermaid dependency graph rendering |
 | **Capacity** | `get_team_capacity` | Contributor profiles, sprint forecast, area coverage |
 | **Planning** | `plan_sprint` | AI-powered sprint planning combining all intelligence |
-| **Visualization** | `visualize_dependencies` | ASCII + Mermaid dependency graph rendering |
 | **Dashboard** | `get_project_dashboard` | Full health report synthesizing all intelligence |
 | **Operations** | `suggest_next_issue` | "What should I work on next?" ranked recommendations |
 | | `generate_standup` | Auto-generated daily standup from project activity |
@@ -108,24 +92,37 @@ A native MCP server that gives Claude direct access to project state — no bash
 | **Review** | `review_pr` | Structured PR analysis with scope, risk, verdict |
 | | `auto_label` | Automatic issue classification with confidence scores |
 | **Context** | `get_session_history` | Cross-session event history for an issue |
-| | `recover_context` | Full context recovery to resume work ("pick up where you left off") |
+| | `recover_context` | Full context recovery ("pick up where you left off") |
 | **Batch** | `bulk_triage` | Triage all untriaged issues in one call |
 | | `bulk_move` | Move multiple issues between states (with dry-run) |
 | **Risk** | `get_risk_radar` | Unified risk dashboard synthesizing all intelligence |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |
-| **Resources** | `pm://board/overview` | Board state (cached, refreshed on tool use) |
-| | `pm://memory/decisions` | Recent architectural decisions |
-| | `pm://memory/outcomes` | Recent work outcomes |
-| | `pm://memory/insights` | Memory analytics and patterns |
-| | `pm://events/recent` | Last 50 events from the event stream |
-| | `pm://analytics/sprint` | Current sprint analytics |
-| | `pm://analytics/dora` | DORA performance metrics |
 
-Activate after install: `cd tools/mcp/pm-intelligence && npm install && npm run build`
+Plus 7 MCP resources for direct context access: `pm://board/overview`, `pm://memory/*`, `pm://events/recent`, `pm://analytics/*`.
 
-Claude Code auto-discovers it from `.mcp.json`.
+### CLI (`pm`)
+
+Terminal commands for managing workflow state without Claude:
+
+```bash
+pm board                 # Color-coded kanban board
+pm status 42             # Issue details and workflow state
+pm move 42 Active        # Transition with WIP limit enforcement
+pm sync                  # Pull latest from GitHub
+pm add 42 high           # Create issue in local DB with priority
+pm dep 42 --blocks 57    # Add dependency edge
+pm history 42            # Event timeline for an issue
+pm dashboard             # Full project health summary
+```
+
+### GitHub Actions (Automated)
+
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| **`pm-post-merge.yml`** | PR merged with `Fixes #N` | Moves issue to Done, posts completion comment |
+| **`pm-pr-check.yml`** | PR opened/edited | Validates conventional commit, issue link, workflow state |
 
 ### How Intelligence Tools Get Used
 
@@ -149,13 +146,6 @@ Every tool is wired into the workflow — Claude calls them automatically at the
 | **Sprint planning** | On demand | `plan_sprint`, `simulate_sprint`, `get_team_capacity`, `visualize_dependencies` |
 | **What-if analysis** | On demand | `simulate_dependency_change` |
 
-### Workflow Docs
-
-| Doc | Purpose |
-|-----|---------|
-| `PM_PLAYBOOK.md` | Workflow states, transition rules, field IDs, command reference |
-| `PM_PROJECT_CONFIG.md` | Your project's doc paths, library mappings, port services |
-
 ---
 
 ## Quick Start
@@ -163,8 +153,8 @@ Every tool is wired into the workflow — Claude calls them automatically at the
 ### Prerequisites
 
 - [GitHub CLI](https://cli.github.com) (`gh`) — authenticated
+- [Node.js](https://nodejs.org) 18+ (for MCP server)
 - [jq](https://jqlang.github.io/jq/)
-- `gh auth refresh -s project` (adds project scope)
 
 ### Install
 
@@ -173,13 +163,21 @@ Every tool is wired into the workflow — Claude calls them automatically at the
 ```
 
 The installer:
-1. Prompts for GitHub owner, repo, project number (or creates a new board)
+1. Prompts for GitHub owner and repo name
 2. **Auto-detects your stack** (React, Svelte, Next.js, Python, etc.) and suggests area options
-3. Discovers all field IDs via GraphQL — you never look up IDs manually
-4. Links project to repo, sets it public with description
-5. Copies files with all placeholders resolved
-6. Merges hooks into `.claude/settings.json`
-7. Prints board view setup instructions
+3. Copies skills, scripts, hooks, and actions with all placeholders resolved
+4. Installs the MCP server (`npm install && npm run build`)
+5. Merges hooks into `.claude/settings.json`
+6. Initializes the local database (`.pm/state.db`) on first sync
+
+### First Run
+
+After install, sync your GitHub data into the local DB:
+
+```bash
+cd /path/to/your/repo
+pm sync        # or: Claude will auto-sync via MCP tool
+```
 
 ### Update
 
@@ -188,12 +186,12 @@ cd claude-pm-toolkit && git pull
 ./install.sh --update /path/to/your/repo
 ```
 
-Reads saved config, refreshes field IDs, overwrites toolkit files, preserves your customizations.
+Reads saved config, overwrites toolkit files, preserves your customizations.
 
 ### Validate
 
 ```bash
-./validate.sh /path/to/your/repo            # 76-check validation suite
+./validate.sh /path/to/your/repo            # Full validation suite
 ./validate.sh --fix /path/to/your/repo      # Auto-fix permissions, .gitignore
 ```
 
@@ -228,7 +226,7 @@ Reads saved config, refreshes field IDs, overwrites toolkit files, preserves you
 | **Rework** | Address feedback | → Review |
 | **Done** | Nothing | Archive after 30 days |
 
-**WIP limit:** Claude may have only 1 issue in Active at a time.
+**WIP limit:** Claude may have only 1 issue in Active at a time. Enforced at the database level.
 
 ### Parallel Development
 
@@ -256,61 +254,72 @@ make claude            # Start tmux session
 
 ## Architecture
 
+### Local-First Design
+
+The toolkit uses a **local-first architecture** where workflow state, priorities, dependencies, and analytics live in a SQLite database (`.pm/state.db`). GitHub remains the source of truth for issue content, PRs, and git — but lifecycle management happens locally.
+
 ```
-.claude-pm-toolkit.json              # Install metadata (enables --update)
+GitHub (content)              Local SQLite (lifecycle)
+─────────────────             ─────────────────────────
+Issues → title, body,    ←── sync ──→  workflow state
+         labels, comments                priority
+PRs → diff, reviews,                    dependencies
+       merge status                      event history
+                                         decisions
+                                         outcomes
+                                         cycle times
+```
+
+**Why local-first?**
+
+- **Speed:** No GraphQL queries for every state check. Board summary in <1ms.
+- **Reliability:** No rate limits, no API lag, no field ID discovery.
+- **Richer model:** Dependencies, cycle detection, event sourcing — things GitHub Projects can't do.
+- **Works offline:** Full workflow management without network access.
+
+### File Layout
+
+```
+.pm/
+└── state.db                             # SQLite database (gitignored)
+.claude-pm-toolkit.json                  # Install metadata (enables --update)
 .github/workflows/
-├── pm-post-merge.yml                # Auto-move issues to Done on merge
-└── pm-pr-check.yml                  # PR quality gate (conventions, issue link)
+├── pm-post-merge.yml                    # Auto-move issues to Done on merge
+└── pm-pr-check.yml                      # PR quality gate
 .claude/
-├── settings.json                    # Hooks: security guards, portfolio notifications
+├── settings.json                        # Hooks: security guards, portfolio notifications
 └── skills/
-    └── issue/
-        ├── SKILL.md                 # Router (~1,300 lines)
-        ├── VERIFICATION.md          # Regression checklist
-        ├── sub-playbooks/           # 7 extracted playbooks
-        │   ├── duplicate-scan.md
-        │   ├── update-existing.md
-        │   ├── merge-consolidate.md
-        │   ├── discovered-work.md
-        │   ├── collaborative-planning.md
-        │   ├── implementation-review.md
-        │   └── post-implementation.md
-        └── appendices/              # 6 reference files
-            ├── templates.md
-            ├── briefing-format.md
-            ├── worktrees.md
-            ├── priority.md
-            ├── codex-reference.md
-            └── design-rationale.md
-    ├── pm-review/SKILL.md           # Adversarial reviewer (~1,000 lines)
-    └── weekly/SKILL.md              # Weekly analysis
+    ├── issue/SKILL.md                   # Full issue lifecycle skill
+    ├── pm-review/SKILL.md               # Adversarial reviewer
+    └── weekly/SKILL.md                  # Weekly analysis
 docs/
-├── PM_PLAYBOOK.md                   # Workflow definitions, field IDs
-└── PM_PROJECT_CONFIG.md             # Your project config (user-editable)
+├── PM_PLAYBOOK.md                       # Workflow definitions and rules
+└── PM_PROJECT_CONFIG.md                 # Your project config (user-editable)
 tools/
-├── config/                          # User-editable security configs
+├── config/                              # User-editable security configs
 │   ├── command-guard.conf
 │   ├── secret-patterns.json
 │   └── secret-paths.conf
-└── scripts/                         # 18 scripts (all support --help)
-    ├── pm.config.sh                 # Central config (auto-generated field IDs)
-    ├── project-{add,move,status,archive-done}.sh
-    ├── worktree-{setup,detect,cleanup}.sh
-    ├── worktree-{ports,urls}.conf   # User-editable port config
-    ├── tmux-session.sh
-    ├── portfolio-notify.sh
-    ├── find-plan.sh
-    ├── pm-dashboard.sh
-    ├── codex-mcp-overrides.sh
-    ├── pm-record.sh                  # JSONL memory writer
-    ├── pm-session-context.sh          # SessionStart hook
-    └── claude-{command-guard,secret-*}.sh
+├── scripts/                             # Shell scripts
+│   ├── worktree-{setup,detect,cleanup}.sh
+│   ├── tmux-session.sh
+│   ├── portfolio-notify.sh
+│   ├── find-plan.sh
+│   └── claude-{command-guard,secret-*}.sh
 └── mcp/
-    └── pm-intelligence/               # MCP server (TypeScript)
-        ├── src/{index,config,github,memory}.ts
+    └── pm-intelligence/                 # MCP server (TypeScript)
+        ├── src/
+        │   ├── index.ts                 # MCP tool definitions (49 tools)
+        │   ├── db.ts                    # SQLite schema, workflow engine
+        │   ├── sync.ts                  # GitHub sync adapter
+        │   ├── cli.ts                   # Terminal CLI
+        │   ├── config.ts               # Repo config
+        │   ├── github.ts               # Git/GitHub operations
+        │   ├── memory.ts               # Decision/outcome storage
+        │   └── ...                      # 15+ intelligence modules
         ├── package.json
-        └── build/                     # Compiled output (gitignored)
-.mcp.json                               # MCP server registration
+        └── build/                       # Compiled output (gitignored)
+.mcp.json                                # MCP server registration
 ```
 
 ### How Updates Work
@@ -323,6 +332,7 @@ tools/
 | **MCP Server** | pm-intelligence sources, .mcp.json | Copied + merged | Overwritten + merged |
 | **Merged** | settings.json | Created | Hooks merged |
 | **Sentinel** | CLAUDE.md PM sections | Appended | Block replaced |
+| **Local State** | .pm/state.db | Created on sync | **Never touched** |
 
 ---
 
@@ -353,56 +363,26 @@ Updates replace only this block. Your custom content is never touched.
 
 ---
 
-## GitHub Projects v2
-
-The installer can create a board with all required fields:
-
-| Field | Options |
-|-------|---------|
-| **Workflow** | Backlog, Ready, Active, Review, Rework, Done |
-| **Priority** | Critical, High, Normal |
-| **Area** | (auto-detected from your stack) |
-| **Issue Type** | Bug, Feature, Spike, Epic, Chore |
-| **Risk** | Low, Medium, High |
-| **Estimate** | Small, Medium, Large |
-
-After install, the project is linked to your repo and made public. Set up a Board view grouped by Workflow for a Kanban-style experience.
-
----
-
 ## Troubleshooting
 
 <details>
-<summary><code>gh CLI token missing 'project' scope</code></summary>
+<summary><code>Database not found</code></summary>
+
+The local database is created on first sync:
 
 ```bash
-gh auth refresh -s project --hostname github.com
+pm sync     # Creates .pm/state.db and pulls from GitHub
 ```
 </details>
 
 <details>
-<summary><code>Issue #X not found in project</code></summary>
+<summary><code>MCP server not responding</code></summary>
 
 ```bash
-./tools/scripts/project-add.sh 123 normal
+cd tools/mcp/pm-intelligence && npm install && npm run build
 ```
-</details>
 
-<details>
-<summary><code>pm.config.sh contains unreplaced {{placeholders}}</code></summary>
-
-```bash
-./install.sh --update /path/to/your/repo
-```
-</details>
-
-<details>
-<summary><code>Could not find project #N for owner 'X'</code></summary>
-
-- Check `PM_OWNER` in `tools/scripts/pm.config.sh`
-- Verify project at `https://github.com/orgs/YOUR_ORG/projects`
-- Run `gh auth refresh -s project`
-- If user-owned (not org), owner = your username
+Check `.mcp.json` points to the correct build path.
 </details>
 
 <details>
@@ -439,26 +419,6 @@ git checkout .claude/settings.json    # Restore
 make claude    # Creates tmux session and launches Claude
 ```
 </details>
-
-### Placeholder Convention
-
-| Placeholder | Case | Purpose | After Install |
-|------------|------|---------|--------------|
-| `{{prefix}}` | lowercase | Directory names, session names | `hov`, `myapp` |
-| `{{PREFIX}}` | UPPERCASE | Environment variable names | `HOV`, `MYAPP` |
-
----
-
-## Script Reference
-
-Every script supports `--help`:
-
-```bash
-./tools/scripts/project-move.sh --help
-./tools/scripts/project-add.sh --help
-./tools/scripts/worktree-setup.sh --help
-./tools/scripts/pm-dashboard.sh --help
-```
 
 ---
 

@@ -140,7 +140,7 @@ $RECENT_OUTCOMES"
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Read cached board state (from pm-dashboard.sh --json or manual cache)
+# 4. Read cached board state (from pm board --json or manual cache)
 # ---------------------------------------------------------------------------
 BOARD_CONTEXT=""
 BOARD_CACHE="$MEMORY_DIR/board-cache.json"

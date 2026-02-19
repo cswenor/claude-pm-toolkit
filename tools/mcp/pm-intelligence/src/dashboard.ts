@@ -12,11 +12,10 @@
  */
 
 import {
-  getBoardSummary,
   getVelocity,
   type VelocityMetrics,
-  type BoardSummary,
 } from "./github.js";
+import { getLocalBoardSummary } from "./db.js";
 import {
   getDORAMetrics,
   getKnowledgeRisk,
@@ -55,8 +54,10 @@ export interface ProjectDashboard {
 
 // ─── Data Gathering ─────────────────────────────────────
 
+type LocalBoardSummary = Awaited<ReturnType<typeof getLocalBoardSummary>>;
+
 interface DashboardData {
-  board: BoardSummary | null;
+  board: LocalBoardSummary | null;
   velocity: VelocityMetrics | null;
   dora: DORAMetrics | null;
   knowledgeRisk: KnowledgeRisk | null;
@@ -80,7 +81,7 @@ async function gatherData(): Promise<DashboardData> {
     simulation,
     memoryInsights,
   ] = await Promise.allSettled([
-    getBoardSummary(),
+    getLocalBoardSummary(),
     getVelocity(),
     getDORAMetrics(30),
     getKnowledgeRisk(90),
@@ -448,19 +449,19 @@ function formatReport(
     lines.push(`**${b.total} items** — ${parts.join(" | ")}`);
     lines.push(`Board health: ${b.healthScore}/100`);
 
-    if (b.activeItems.length > 0) {
+    if (b.activeIssues.length > 0) {
       lines.push("");
       lines.push("Active:");
-      for (const item of b.activeItems) {
+      for (const item of b.activeIssues) {
         lines.push(`- #${item.number} ${item.title}`);
       }
     }
 
-    if (b.staleItems.length > 0) {
+    if (b.blockedIssues.length > 0) {
       lines.push("");
-      lines.push("Stale:");
-      for (const item of b.staleItems.slice(0, 5)) {
-        lines.push(`- #${item.number} ${item.title} (${item.daysSinceUpdate}d)`);
+      lines.push("Blocked:");
+      for (const item of b.blockedIssues.slice(0, 5)) {
+        lines.push(`- #${item.issue.number} ${item.issue.title} (by ${item.blockedBy.map((n) => `#${n}`).join(", ")})`);
       }
     }
     lines.push("");

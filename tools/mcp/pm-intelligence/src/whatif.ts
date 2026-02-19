@@ -8,7 +8,7 @@
  */
 
 import { analyzeDependencyGraph } from "./graph.js";
-import { getIssueStatus, getBoardSummary } from "./github.js";
+import { getIssue, getLocalBoardSummary } from "./db.js";
 import { predictCompletion } from "./predict.js";
 
 // ─── simulate_dependency_change ──────────────────────────
@@ -61,11 +61,16 @@ export async function simulateDependencyChange(
   removeIssue = false
 ): Promise<WhatIfResult> {
   // Gather data in parallel
-  const [graph, status, board] = await Promise.all([
+  const [graph, statusOrNull, board] = await Promise.all([
     analyzeDependencyGraph(),
-    getIssueStatus(issueNumber),
-    getBoardSummary(),
+    getIssue(issueNumber),
+    getLocalBoardSummary(),
   ]);
+
+  if (!statusOrNull) {
+    throw new Error(`Issue #${issueNumber} not found in local database. Run 'pm sync' first.`);
+  }
+  const status = statusOrNull;
 
   // Find the node in the graph
   const node = graph.nodes.find((n) => n.number === issueNumber);

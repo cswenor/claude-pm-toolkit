@@ -232,8 +232,8 @@ Before reviewing code, verify the PM process was followed and **FIX any violatio
 
 ### 2. Issue is in correct workflow state
 
-- Check with: `./tools/scripts/project-status.sh <issue_number>`
-- **If the command fails** (issue not in project, GraphQL error): Note "Unable to verify workflow state" and continue — don't block the review on PM infrastructure issues
+- Check with: `pm status <issue_number>`
+- **If the command fails** (database not synced, issue not found): Note "Unable to verify workflow state — run `pm sync` first" and continue
 - If PR is open but issue is in Backlog/Ready → Move issue to Review
 - If PR is merged but issue is in Review → Move issue to Done
 - If issue is in Active but no PR exists → Note this is expected (work in progress)
@@ -241,7 +241,7 @@ Before reviewing code, verify the PM process was followed and **FIX any violatio
 ### 3. Issue was properly tracked
 
 - Check issue has area label → If missing, add based on changed files
-- Check issue is in project → If missing, add with `./tools/scripts/project-add.sh`
+- Check issue is in project → If missing, add with `pm add`
 
 ### 4. PR follows conventions
 
@@ -674,7 +674,7 @@ Execute these steps in order:
 3. **Move issue to Done:**
 
    ```bash
-   ./tools/scripts/project-move.sh <issue_number> Done
+   pm move <issue_number> Done
    ```
 
 4. **Verify issue closed:**
@@ -859,7 +859,7 @@ Execute these steps in order:
    }
    ```
 
-3. **Move issue to Rework:** `./tools/scripts/project-move.sh <issue_number> Rework`
+3. **Move issue to Rework:** `pm move <issue_number> Rework`
 
 ### FIX_PM_ISSUES
 

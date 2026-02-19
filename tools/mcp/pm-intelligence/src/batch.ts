@@ -6,7 +6,7 @@
  *   - bulkMove: Move multiple issues between workflow states
  */
 
-import { getIssueStatus, getBoardSummary, moveIssue } from "./github.js";
+import { getIssue, getLocalBoardSummary, moveIssueWorkflow } from "./db.js";
 import { autoLabel } from "./review-intel.js";
 import { triageIssue } from "./triage.js";
 import { execSync } from "child_process";
@@ -59,7 +59,7 @@ export async function bulkTriage(
   state?: string
 ): Promise<BulkTriageResult> {
   // Find untriaged issues (no type or area label)
-  const board = await getBoardSummary();
+  const board = await getLocalBoardSummary();
 
   // Get all open issues that lack labels
   let issues: Array<{ number: number; title: string }> = [];
@@ -85,8 +85,9 @@ export async function bulkTriage(
         title: issue.title,
       }));
   } catch {
-    // Fall back to board stale items
-    issues = (board?.staleItems || []).slice(0, maxIssues).map((s) => ({
+    // Fall back to active + review issues from board
+    const fallbackIssues = [...board.activeIssues, ...board.reviewIssues];
+    issues = fallbackIssues.slice(0, maxIssues).map((s) => ({
       number: s.number,
       title: s.title,
     }));
@@ -174,7 +175,18 @@ export async function bulkMove(
 
   for (const num of issueNumbers) {
     try {
-      const status = await getIssueStatus(num);
+      const status = await getIssue(num);
+      if (!status) {
+        results.push({
+          issueNumber: num,
+          title: `Issue #${num}`,
+          fromState: null,
+          toState: targetState,
+          status: "error",
+          error: `Issue #${num} not found in local database. Run 'pm sync' first.`,
+        });
+        continue;
+      }
 
       if (status.workflow === targetState) {
         results.push({
@@ -188,7 +200,7 @@ export async function bulkMove(
       }
 
       if (!dryRun) {
-        await moveIssue(num, targetState);
+        await moveIssueWorkflow(num, targetState as any);
       }
 
       results.push({

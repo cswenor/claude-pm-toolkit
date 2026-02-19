@@ -5,7 +5,7 @@
 ### Before Starting Work
 
 - [ ] Read the ENTIRE issue (Problem, Non-goals, Acceptance Criteria, Definition of Done)
-- [ ] Issue is in Active state (`./tools/scripts/project-move.sh <num> Active`)
+- [ ] Issue is in Active state (`pm move <num> Active`)
 - [ ] On a feature branch, not main
 - [ ] For Tier 1 work: issue exists and is linked
 
@@ -21,12 +21,12 @@
 
 - [ ] CI is passing (`gh pr checks <PR_NUMBER>`)
 - [ ] Local tests passed — if tests fail, fix them (never skip or bypass)
-- [ ] Issue is in Review state (`./tools/scripts/project-status.sh <num>`)
+- [ ] Issue is in Review state (`pm status <num>`)
 - [ ] PR body contains `Fixes #<issue>`
 
 ### After Merging
 
-- [ ] Move issue to Done: `./tools/scripts/project-move.sh <num> Done`
+- [ ] Move issue to Done: `pm move <num> Done`
 - [ ] Verify issue closed (auto-closes if PR used `Fixes #`)
 - [ ] Check parent epic if applicable
 
@@ -185,18 +185,18 @@ Claude should call intelligence tools **automatically** at these moments — no 
 
 **When tests fail during the Review transition, you MUST fix the failures.**
 
-`project-move.sh Review` runs the test suite before allowing the transition. If tests fail:
+`pm move <num> Review` runs the test suite before allowing the transition. If tests fail:
 
 1. **Read the error output** — understand what failed and why
 2. **Fix the root cause** — do not work around it
 3. **Re-run the tests** — confirm the fix
-4. **Then retry the transition** — `./tools/scripts/project-move.sh <num> Review`
+4. **Then retry the transition** — `pm move <num> Review`
 
 **FORBIDDEN:**
 
 - Re-running with any bypass flags
 - Commenting out or modifying test infrastructure to make tests pass
-- Moving to Review manually (via `gh project item-edit`) to skip the gate
+- Modifying the local database directly to skip the gate
 - Declaring "ready for review" when tests haven't passed
 
 ### PREFER GITHUB MCP TOOLS
@@ -275,8 +275,8 @@ Is this a new feature, bug fix, or code refactor?
 ├─ YES → TIER 1: MUST have issue first
 │        ├─ Search for existing issue: gh issue list --search "keywords"
 │        ├─ Create issue if none exists
-│        ├─ Add to project: ./tools/scripts/project-add.sh <num> <priority>
-│        ├─ Move to Active: ./tools/scripts/project-move.sh <num> Active
+│        ├─ Add to project: pm add <num> <priority>
+│        ├─ Move to Active: pm move <num> Active
 │        ├─ Use prefix: feat: / fix: / refactor:
 │        └─ PR body MUST include: Fixes #<issue-number>
 │
@@ -296,7 +296,7 @@ Before running `gh pr create`, verify:
 1. **Was I given an issue number?** If yes, `Fixes #<num>` is REQUIRED regardless of tier
 2. **Did I choose the right prefix?** (feat/fix/refactor vs chore/docs/ci)
 3. **If Tier 1, do I have an issue?** (Check with `gh issue view <num>`)
-4. **If Tier 1, is the issue in Active state?** (Check with `./tools/scripts/project-status.sh <num>`)
+4. **If Tier 1, is the issue in Active state?** (Check with `pm status <num>`)
 5. **Does my PR body have `Fixes #<num>`?** (Required if issue exists)
 
 **FAILURE TO FOLLOW THIS WILL CAUSE CI CHECK FAILURES.**
@@ -339,7 +339,7 @@ When acting as a reviewer, Claude Code MUST:
 
 1. Post review to PR (what's missing, specific code locations)
 2. Post summary to Issue (criteria NOT met, link to PR review)
-3. Move issue to Rework: `./tools/scripts/project-move.sh <num> Rework`
+3. Move issue to Rework: `pm move <num> Rework`
 
 ### Before Creating PR (MANDATORY)
 
@@ -361,7 +361,7 @@ When acting as a reviewer, Claude Code MUST:
 2. **Move issue to Review:**
 
    ```bash
-   ./tools/scripts/project-move.sh <ISSUE_NUMBER> Review
+   pm move <ISSUE_NUMBER> Review
    ```
 
 3. Request reviewers if not auto-assigned
@@ -374,15 +374,15 @@ When acting as a reviewer, Claude Code MUST:
 2. **Issue is in Review state** - Verify with:
 
    ```bash
-   ./tools/scripts/project-status.sh <ISSUE_NUMBER>
+   pm status <ISSUE_NUMBER>
    ```
 
-   Check the `workflow` field in the output. If not "Review", run `./tools/scripts/project-move.sh <ISSUE_NUMBER> Review`
+   Check the `workflow` field in the output. If not "Review", run `pm move <ISSUE_NUMBER> Review`
 
    **WARNING:** Do NOT use `gh issue view --json projectItems` - it returns incorrect values for custom project fields.
 
 3. **PR has issue link** - PR body must contain `Fixes #<issue>`
-4. **Local tests passed** — enforced by `project-move.sh`
+4. **Local tests passed** — enforced by `pm move`
 
 **This applies every time you claim something is ready, even after amending commits or pushing fixes.** Re-verify the checklist each time before telling the user.
 
@@ -393,7 +393,7 @@ When acting as a reviewer, Claude Code MUST:
 1. **Update the Project Workflow field to "Done":**
 
    ```bash
-   ./tools/scripts/project-move.sh <ISSUE_NUMBER> Done
+   pm move <ISSUE_NUMBER> Done
    ```
 
 2. **Verify the issue is closed** (should auto-close if PR used `Fixes #`)
@@ -411,7 +411,7 @@ When acting as a reviewer, Claude Code MUST:
 1. **Check issue state before acting:**
 
    ```bash
-   ./tools/scripts/project-status.sh <ISSUE_NUMBER>
+   pm status <ISSUE_NUMBER>
    ```
 
 2. **Follow state-appropriate behavior:**

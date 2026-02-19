@@ -15,19 +15,7 @@ import { analyzeDependencyGraph } from "./graph.js";
 import { getTeamCapacity, type TeamCapacityResult } from "./capacity.js";
 import { simulateSprint, type SprintSimulationResult } from "./simulate.js";
 import { getWorkflowHealth, type WorkflowHealth } from "./guardrails.js";
-import { PM_CONFIG } from "./config.js";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-
-async function gh(args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("gh", args, {
-    timeout: 30_000,
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  return stdout.trim();
-}
+import { getDb } from "./db.js";
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -123,33 +111,44 @@ export interface SprintPlanResult {
  * Fetch all backlog items with project board metadata.
  */
 async function fetchBacklogItems(): Promise<BacklogItem[]> {
-  const boardRaw = await gh([
-    "project",
-    "item-list",
-    String(PM_CONFIG.projectNumber),
-    "--owner",
-    PM_CONFIG.owner,
-    "--format",
-    "json",
-    "--limit",
-    "200",
-  ]);
+  const db = await getDb();
 
-  const board = JSON.parse(boardRaw);
-  const items: Array<Record<string, unknown>> = board.items || [];
+  // Query all open issues from local SQLite
+  const rows = db.prepare(`
+    SELECT i.number, i.title, i.workflow, i.priority, i.state,
+           GROUP_CONCAT(DISTINCT il.label) as labels,
+           GROUP_CONCAT(DISTINCT ia.login) as assignees
+    FROM issues i
+    LEFT JOIN issue_labels il ON i.number = il.issue_number
+    LEFT JOIN issue_assignees ia ON i.number = ia.issue_number
+    WHERE i.state = 'open'
+    GROUP BY i.number
+  `).all() as Array<{
+    number: number;
+    title: string;
+    workflow: string;
+    priority: string;
+    state: string;
+    labels: string | null;
+    assignees: string | null;
+  }>;
 
-  return items.map((item) => ({
-    number: (item.number as number) || 0,
-    title: (item.title as string) || "",
-    workflow: (item.workflow as string) || (item.status as string) || "Unknown",
-    priority: (item.priority as string) || "None",
-    area: (item.area as string) || "None",
-    estimate: (item.estimate as string) || "None",
-    labels: ((item.labels as string[]) || []),
-    isBlocked: ((item.labels as string[]) || []).some((l: string) => l.startsWith("blocked:")),
-    blockedBy: [], // Will be populated from dependency graph
-    assignees: ((item.assignees as string[]) || []),
-  }));
+  return rows.map((row) => {
+    const labels = row.labels ? row.labels.split(",") : [];
+    const areaLabel = labels.find((l) => l.startsWith("area:"));
+    return {
+      number: row.number,
+      title: row.title,
+      workflow: row.workflow || "Backlog",
+      priority: row.priority || "Normal",
+      area: areaLabel ? areaLabel.replace("area:", "") : "None",
+      estimate: "Medium", // TODO: add estimate field to local DB if needed
+      labels,
+      isBlocked: labels.some((l) => l.startsWith("blocked:")),
+      blockedBy: [],
+      assignees: row.assignees ? row.assignees.split(",") : [],
+    };
+  });
 }
 
 /**

@@ -8,7 +8,8 @@
  *     trend arrows and actionable mitigations.
  */
 
-import { getBoardSummary, getVelocity } from "./github.js";
+import { getVelocity } from "./github.js";
+import { getLocalBoardSummary } from "./db.js";
 import { analyzeDependencyGraph } from "./graph.js";
 import { getWorkflowHealth } from "./guardrails.js";
 import { getKnowledgeRisk, getDORAMetrics } from "./predict.js";
@@ -81,7 +82,7 @@ export async function getRiskRadar(): Promise<RiskRadarResult> {
     insights,
     anomalies,
   ] = await Promise.all([
-    getBoardSummary().catch(() => null),
+    getLocalBoardSummary().catch(() => null),
     getVelocity().catch(() => null),
     analyzeDependencyGraph().catch(() => null),
     getWorkflowHealth().catch(() => null),
@@ -278,20 +279,20 @@ export async function getRiskRadar(): Promise<RiskRadarResult> {
       });
     }
 
-    if (board && board.activeItems.length > 1) {
+    if (board && board.activeIssues.length > 1) {
       risks.push({
         id: "process-wip-violation",
         category: "process",
         severity: "high",
-        title: `WIP limit violated: ${board.activeItems.length} active`,
+        title: `WIP limit violated: ${board.activeIssues.length} active`,
         description: "AI WIP limit is 1 Active issue at a time",
         evidence: [
-          `${board.activeItems.length} issues in Active`,
+          `${board.activeIssues.length} issues in Active`,
           `Policy: max 1 Active`,
         ],
         trend: "new",
         affectedAreas: [],
-        affectedIssues: board.activeItems.map((i) => i.number),
+        affectedIssues: board.activeIssues.map((i) => i.number),
         mitigations: [
           { action: "Move extra active items back to Ready", effort: "low", impact: "high" },
           { action: "Focus on completing one item before starting another", effort: "low", impact: "high" },

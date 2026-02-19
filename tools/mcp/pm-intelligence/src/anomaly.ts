@@ -7,7 +7,8 @@
  *   - detect_patterns: Cross-cutting anomaly detection
  */
 
-import { getBoardSummary, getVelocity } from "./github.js";
+import { getVelocity } from "./github.js";
+import { getLocalBoardSummary } from "./db.js";
 import { getInsights, getEvents, getOutcomes } from "./memory.js";
 import { getSprintAnalytics } from "./analytics.js";
 import { getTeamCapacity } from "./capacity.js";
@@ -66,7 +67,7 @@ export async function detectPatterns(): Promise<PatternReport> {
     events,
     outcomes,
   ] = await Promise.all([
-    getBoardSummary(),
+    getLocalBoardSummary(),
     getVelocity(),
     getInsights(),
     getSprintAnalytics(14).catch(() => null),
@@ -183,43 +184,23 @@ export async function detectPatterns(): Promise<PatternReport> {
 
   // ─── Process Anomalies ─────────────────────────────
 
-  // Stale items
-  const staleItems = board.staleItems.filter((s) => s.daysSinceUpdate > 14);
-  if (staleItems.length > 0) {
-    anomalies.push({
-      id: `anomaly-${++anomalyId}`,
-      category: "process",
-      severity: staleItems.length > 5 ? "warning" : "info",
-      title: `${staleItems.length} stale issue(s) (14+ days without update)`,
-      description:
-        `Oldest: #${staleItems[0].number} "${staleItems[0].title}" ` +
-        `(${staleItems[0].daysSinceUpdate} days). ` +
-        `These issues are accumulating on the board without progress.`,
-      evidence: staleItems
-        .slice(0, 5)
-        .map((s) => `#${s.number} (${s.daysSinceUpdate}d)`)
-        .join(", "),
-      trend: "stable",
-      affectedIssues: staleItems.map((s) => s.number),
-      suggestedAction: "Triage stale items: close, reprioritize, or break into smaller chunks.",
-    });
-  }
+  // Stale items (no staleItems in local board — skip if unavailable)
 
   // WIP limit violation
-  if (board.activeItems.length > 1) {
+  if (board.activeIssues.length > 1) {
     anomalies.push({
       id: `anomaly-${++anomalyId}`,
       category: "process",
-      severity: board.activeItems.length > 2 ? "critical" : "warning",
-      title: `WIP limit exceeded (${board.activeItems.length} active issues)`,
+      severity: board.activeIssues.length > 2 ? "critical" : "warning",
+      title: `WIP limit exceeded (${board.activeIssues.length} active issues)`,
       description:
-        `Policy allows 1 active issue at a time, but ${board.activeItems.length} are currently Active. ` +
+        `Policy allows 1 active issue at a time, but ${board.activeIssues.length} are currently Active. ` +
         "This splits focus and increases context switching.",
-      evidence: board.activeItems
+      evidence: board.activeIssues
         .map((a) => `#${a.number} "${a.title}"`)
         .join(", "),
       trend: "new",
-      affectedIssues: board.activeItems.map((a) => a.number),
+      affectedIssues: board.activeIssues.map((a) => a.number),
       suggestedAction: "Complete or park excess active items. Focus on one at a time.",
     });
   }
@@ -238,9 +219,9 @@ export async function detectPatterns(): Promise<PatternReport> {
         description:
           `Issues averaging ${reviewBottleneck.avgHours.toFixed(0)} hours in Review. ` +
           reviewBottleneck.reason,
-        evidence: `Review queue: ${board.reviewItems.length} items`,
+        evidence: `Review queue: ${board.reviewIssues.length} items`,
         trend: "stable",
-        affectedIssues: board.reviewItems.map((r) => r.number),
+        affectedIssues: board.reviewIssues.map((r) => r.number),
         suggestedAction: "Speed up reviews — use /pm-review for automated pre-review.",
       });
     }

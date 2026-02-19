@@ -7,8 +7,9 @@
  *   - generate_retro: Sprint retrospective from data
  */
 
-import { getIssueStatus, getBoardSummary, getVelocity } from "./github.js";
-import type { IssueStatus } from "./github.js";
+import { getVelocity } from "./github.js";
+import { getIssue, getLocalBoardSummary } from "./db.js";
+import type { LocalIssue } from "./db.js";
 import {
   getEvents,
   getOutcomes,
@@ -117,7 +118,7 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
   // Gather data in parallel
   const [board, graphResult, velocity, insights, health] =
     await Promise.all([
-      getBoardSummary(),
+      getLocalBoardSummary(),
       analyzeDependencyGraph().catch(() => null),
       getVelocity(),
       getInsights(),
@@ -129,7 +130,7 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
   const allIssueNumbers: number[] = [];
 
   // Collect from board — active items tell us WIP
-  const activeCount = board.activeItems.length;
+  const activeCount = board.activeIssues.length;
 
   // Get all issue numbers from board that are in candidate states
   // Board doesn't expose all issues by workflow, so we use the graph
@@ -148,10 +149,10 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
     }
   }
 
-  // Also check stale items from board (they might be stuck in Ready)
-  for (const item of board.staleItems) {
-    if (!allIssueNumbers.includes(item.number)) {
-      allIssueNumbers.push(item.number);
+  // Also check blocked issues from board
+  for (const blocked of board.blockedIssues) {
+    if (!allIssueNumbers.includes(blocked.issue.number)) {
+      allIssueNumbers.push(blocked.issue.number);
     }
   }
 
@@ -184,7 +185,7 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
     // Limit to 20 for performance
     try {
       const [status, deps, completion, rework] = await Promise.all([
-        getIssueStatus(issueNum),
+        getIssue(issueNum),
         graphResult
           ? getIssueDependencies(issueNum).catch(() => null)
           : Promise.resolve(null),
@@ -192,6 +193,7 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
         predictRework(issueNum).catch(() => null),
       ]);
 
+      if (!status) continue; // Not in local DB
       if (status.workflow === "Ready") readyCount++;
 
       // Check if blocked
@@ -245,7 +247,7 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
 }
 
 function scoreIssue(
-  status: IssueStatus,
+  status: LocalIssue,
   deps: { blocksCount?: number; downstreamChain?: number[]; executionOrder?: number; isUnblocked?: boolean } | null,
   completion: { riskScore?: number; prediction?: { p50Days: number; p80Days: number } } | null,
   rework: { riskLevel?: string; reworkProbability?: number } | null,
@@ -330,7 +332,7 @@ function scoreIssue(
     title: status.title,
     workflow: status.workflow,
     priority: status.priority,
-    area: status.area,
+    area: status.labels.find((l) => l.startsWith("area:"))?.replace("area:", "") ?? null,
     score,
     reasons,
     warnings,
@@ -350,7 +352,7 @@ export async function generateStandup(
 
   // Gather data in parallel
   const [board, velocity, events, graphResult, health] = await Promise.all([
-    getBoardSummary(),
+    getLocalBoardSummary(),
     getVelocity(),
     getEvents(200), // Get recent events
     analyzeDependencyGraph().catch(() => null),
@@ -368,11 +370,11 @@ export async function generateStandup(
   for (const evt of doneEvents) {
     if (evt.issue_number) {
       try {
-        const status = await getIssueStatus(evt.issue_number);
+        const issue = await getIssue(evt.issue_number);
         completed.push({
           number: evt.issue_number,
-          title: status.title,
-          area: status.area,
+          title: issue?.title ?? `Issue #${evt.issue_number}`,
+          area: issue?.labels.find((l) => l.startsWith("area:"))?.replace("area:", "") ?? null,
           completedAt: evt.timestamp,
         });
       } catch {
@@ -388,7 +390,7 @@ export async function generateStandup(
 
   // In Progress: currently active issues
   const inProgress: StandupReport["inProgress"] = [];
-  for (const item of board.activeItems) {
+  for (const item of board.activeIssues) {
     // Find last event for this issue
     const issueEvents = events.filter(
       (e) => e.issue_number === item.number
@@ -411,24 +413,13 @@ export async function generateStandup(
         )
       : 0;
 
-    try {
-      const status = await getIssueStatus(item.number);
-      inProgress.push({
-        number: item.number,
-        title: item.title,
-        area: status.area,
-        daysSinceActive,
-        lastEvent,
-      });
-    } catch {
-      inProgress.push({
-        number: item.number,
-        title: item.title,
-        area: null,
-        daysSinceActive,
-        lastEvent,
-      });
-    }
+    inProgress.push({
+      number: item.number,
+      title: item.title,
+      area: item.labels.find((l) => l.startsWith("area:"))?.replace("area:", "") ?? null,
+      daysSinceActive,
+      lastEvent,
+    });
   }
 
   // Blocked: issues with unresolved blockers
@@ -453,11 +444,11 @@ export async function generateStandup(
     for (const node of readyNodes.slice(0, 5)) {
       try {
         const deps = await getIssueDependencies(node.number);
-        const status = await getIssueStatus(node.number);
+        const issue = await getIssue(node.number);
         upcoming.push({
           number: node.number,
           title: node.title,
-          priority: status.priority,
+          priority: issue?.priority ?? null,
           isUnblocked: deps.isUnblocked,
         });
       } catch {

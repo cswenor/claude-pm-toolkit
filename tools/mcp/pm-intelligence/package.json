@@ -1,13 +1,14 @@
 {
   "name": "pm-intelligence",
-  "version": "0.14.0",
-  "description": "MCP server for PM intelligence — live project state, memory, and health metrics",
+  "version": "0.15.0",
+  "description": "MCP server for PM intelligence — local-first project state, GitHub sync, and AI-powered analytics",
   "type": "module",
   "bin": {
-    "pm-intelligence": "./build/index.js"
+    "pm-intelligence": "./build/index.js",
+    "pm": "./build/cli.js"
   },
   "scripts": {
-    "build": "tsc && chmod 755 build/index.js",
+    "build": "tsc && chmod 755 build/index.js build/cli.js",
     "dev": "tsc --watch",
     "start": "node build/index.js"
   },
@@ -16,9 +17,11 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "better-sqlite3": "^11.8.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
   },

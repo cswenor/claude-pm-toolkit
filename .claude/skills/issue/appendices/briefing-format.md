@@ -66,8 +66,8 @@
    c. Both must pass on the same commit — if fixing one invalidates the other, iterate
    d. Create PR (or push to existing) with `Fixes #<num>`
    e. Run `/pm-review` self-check (ANALYSIS_ONLY action) — address findings, return to (b) if code changed
-   f. Move to Review: `./tools/scripts/project-move.sh <num> Review`
-4. After merge: `./tools/scripts/project-move.sh <num> Done`
+   f. Move to Review: `pm move <num> Review`
+4. After merge: `pm move <num> Done`
 ```
 
 ## Compact Format (CLOSED mode)

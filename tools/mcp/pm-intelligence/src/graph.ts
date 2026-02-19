@@ -11,7 +11,8 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { PM_CONFIG } from "./config.js";
+import { getConfig } from "./config.js";
+import { getDb, getIssuesByWorkflow } from "./db.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -137,8 +138,8 @@ export interface IssueDependenciesResult {
  * Fetch all open issues with their relationships from the project board.
  */
 async function fetchProjectIssues(): Promise<GraphNode[]> {
-  const repo = await getRepoName();
-  const fullRepo = `${PM_CONFIG.owner}/${repo}`;
+  const config = await getConfig();
+  const fullRepo = `${config.owner}/${config.repo}`;
 
   // Get all open issues with labels
   const issuesRaw = await gh([
@@ -162,28 +163,15 @@ async function fetchProjectIssues(): Promise<GraphNode[]> {
     body: string;
   }> = JSON.parse(issuesRaw);
 
-  // Get project board state for workflow info
-  const boardRaw = await gh([
-    "project",
-    "item-list",
-    String(PM_CONFIG.projectNumber),
-    "--owner",
-    PM_CONFIG.owner,
-    "--format",
-    "json",
-    "--limit",
-    "200",
-  ]);
+  // Get workflow state from local DB instead of GitHub Projects
+  const db = await getDb();
+  const dbIssues = db
+    .prepare("SELECT number, workflow FROM issues")
+    .all() as Array<{ number: number; workflow: string }>;
 
-  const board = JSON.parse(boardRaw);
-  const boardItems: Array<Record<string, unknown>> = board.items || [];
-
-  // Build lookup: issue number → workflow state
   const workflowMap = new Map<number, string>();
-  for (const item of boardItems) {
-    const num = item.number as number;
-    const workflow = (item.workflow as string) || (item.status as string) || null;
-    if (num && workflow) workflowMap.set(num, workflow);
+  for (const row of dbIssues) {
+    if (row.workflow) workflowMap.set(row.number, row.workflow);
   }
 
   // Parse relationships

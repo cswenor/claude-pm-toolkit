@@ -160,7 +160,7 @@ jobs:
                       check: 'Project Board',
                       status: 'fail',
                       message: `Issue #${issueNumber} is not on project board #${PROJECT_NUMBER}`,
-                      help: `Run: ./tools/scripts/project-add.sh ${issueNumber} normal`
+                      help: `Run: pm add ${issueNumber} normal`
                     });
                     hasBlocker = true;
                     findings.push({
@@ -189,7 +189,7 @@ jobs:
                         check: 'Workflow State',
                         status: 'fail',
                         message: `Issue #${issueNumber} is in "${workflowState}" state (expected Active, Rework, or Review)`,
-                        help: `Run: ./tools/scripts/project-move.sh ${issueNumber} Active`
+                        help: `Run: pm move ${issueNumber} Active`
                       });
                       hasBlocker = true;
                     }

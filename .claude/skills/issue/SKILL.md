@@ -2,7 +2,7 @@
 name: issue
 description: Create new issues (PM interview) or work on existing issues. Use without arguments to create, with issue number to execute.
 argument-hint: '[issue-number]'
-allowed-tools: Read, Glob, Bash(./tools/scripts/project-add.sh *), Bash(./tools/scripts/project-move.sh *), Bash(./tools/scripts/project-status.sh *), Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(./tools/scripts/codex-mcp-overrides.sh), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git diff *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), Bash(codex exec -s read-only *), Bash(codex exec -s workspace-write *), Bash(codex exec -c *), mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__pm_intelligence__triage_issue, mcp__pm_intelligence__auto_label, mcp__pm_intelligence__decompose_issue, mcp__pm_intelligence__recover_context, mcp__pm_intelligence__get_session_history, mcp__pm_intelligence__predict_completion, mcp__pm_intelligence__predict_rework, mcp__pm_intelligence__suggest_approach, mcp__pm_intelligence__get_issue_dependencies, mcp__pm_intelligence__check_readiness, mcp__pm_intelligence__detect_scope_creep, mcp__pm_intelligence__explain_delay, mcp__pm_intelligence__record_decision, mcp__pm_intelligence__get_history_insights, AskUserQuestion, EnterPlanMode, TaskOutput
+allowed-tools: Read, Glob, Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(./tools/scripts/codex-mcp-overrides.sh), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git diff *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), Bash(codex exec -s read-only *), Bash(codex exec -s workspace-write *), Bash(codex exec -c *), mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__pm_intelligence__get_issue_status, mcp__pm_intelligence__get_board_summary, mcp__pm_intelligence__move_issue, mcp__pm_intelligence__sync_from_github, mcp__pm_intelligence__add_dependency, mcp__pm_intelligence__triage_issue, mcp__pm_intelligence__auto_label, mcp__pm_intelligence__decompose_issue, mcp__pm_intelligence__recover_context, mcp__pm_intelligence__get_session_history, mcp__pm_intelligence__predict_completion, mcp__pm_intelligence__predict_rework, mcp__pm_intelligence__suggest_approach, mcp__pm_intelligence__get_issue_dependencies, mcp__pm_intelligence__check_readiness, mcp__pm_intelligence__detect_scope_creep, mcp__pm_intelligence__explain_delay, mcp__pm_intelligence__record_decision, mcp__pm_intelligence__get_history_insights, AskUserQuestion, EnterPlanMode, TaskOutput
 ---
 
 # /issue - Issue Creation & Execution
@@ -227,7 +227,7 @@ Based on user choice:
 **This step runs whenever a new issue is being created:**
 
 - **"Create new" path** (Step 6) → always runs Step 7
-- **Merge path that chose "Create new consolidated issue"** → Step 8 invokes Step 7 before `project-add.sh`
+- **Merge path that chose "Create new consolidated issue"** → Step 8 invokes Step 7 before `pm add`
 - **Update existing path** → skips Step 7 (no new issue created)
 - **Merge path that updated an existing canonical** → skips Step 7 (no new issue created)
 
@@ -276,26 +276,26 @@ All three options (`Critical`, `High`, `Normal`) MUST be present. The recommende
 
 #### 5. Store Selection
 
-Store the user's choice as `<selected_priority>` — the exact lowercase value (`critical`, `high`, or `normal`) passed to `project-add.sh` in Step 8.
+Store the user's choice as `<selected_priority>` — the exact lowercase value (`critical`, `high`, or `normal`) passed to `pm add` in Step 8.
 
 ### Step 8: Issue Creation & Post-Creation
 
 #### For "Create new" path:
 
 1. **Create the issue** via `mcp__github__create_issue` (using the draft confirmed in Step 6)
-2. **Add to project:** `./tools/scripts/project-add.sh <num> <selected_priority>`
+2. **Add to project:** `pm add <num> <selected_priority>`
    - `<selected_priority>` comes from Step 7
 
 #### For Update existing path:
 
 1. The sub-playbook already applied changes in Step 6
-2. **Do NOT run `project-add.sh`** — the issue is already in the project with its own workflow state and priority. Running `project-add.sh` would reset both to Backlog/normal.
+2. **Do NOT run `pm add`** — the issue is already in the project with its own workflow state and priority. Running `pm add` would reset both to Backlog/normal.
 
 #### For Merge path:
 
 1. The sub-playbook already applied changes in Step 6
-2. **If the merge updated an existing canonical issue:** Do NOT run `project-add.sh` (same reason as Update — preserve existing state).
-3. **If the merge created a new consolidated issue:** Run Step 7 (Priority Assessment) for the new issue, then `./tools/scripts/project-add.sh <num> <selected_priority>`.
+2. **If the merge updated an existing canonical issue:** Do NOT run `pm add` (same reason as Update — preserve existing state).
+3. **If the merge created a new consolidated issue:** Run Step 7 (Priority Assessment) for the new issue, then `pm add <num> <selected_priority>`.
 
 #### All paths:
 
@@ -348,7 +348,7 @@ gh issue view $ARGUMENTS --json comments --jq '.comments[] | {author: .author.lo
 #### 1c. Get Project State
 
 ```bash
-./tools/scripts/project-status.sh $ARGUMENTS
+pm status $ARGUMENTS
 ```
 
 Extract the `workflow` field. **If the command fails** (non-zero exit, issue not in project, network error), set `workflow = null` — this will trigger MISMATCH(not_in_project) in Step 4, which offers to add the issue to the project.
@@ -803,7 +803,7 @@ If you're seeing this, you're in the correct worktree (exit 0).
    Plan mode restricts Bash tool usage, so this command will fail if called after EnterPlanMode:
 
    ```bash
-   ./tools/scripts/project-move.sh <num> Active
+   pm move <num> Active
    ```
 
 1.5. **Background environment setup** (before plan mode):
@@ -972,7 +972,7 @@ Interpret the result and always report to the user:
 - Still running: Report "Setup is still running in the background. You can start
   working. Check back with TaskOutput if needed before running tests."
 
-**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `project-move.sh Review`.
+**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `pm move` Review`.
 
 ### CONTINUE Mode
 
@@ -1087,7 +1087,7 @@ report that setup was not launched. If task_id exists, call TaskOutput with
 block: false using the task_id from step 3.5. Always report the result to the
 user: ready, failed (with output), or still running.
 
-**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `project-move.sh Review`.
+**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `pm move` Review`.
 
 ### REVIEW Mode
 
@@ -1107,7 +1107,7 @@ Print: `Run: /pm-review <issue_number>`
 **On "Make more changes":**
 
 1. Confirm: "Move issue back to Active?"
-2. If yes: `./tools/scripts/project-move.sh <num> Active`
+2. If yes: `pm move <num> Active`
 
 ### APPROVED Mode
 
@@ -1127,7 +1127,7 @@ Print: `gh pr merge <pr_num> --squash`
 **On "Mark as done":**
 
 1. Confirm: "Only run this AFTER merging the PR. Continue?"
-2. If yes: `./tools/scripts/project-move.sh <num> Done`
+2. If yes: `pm move <num> Done`
 
 ### REWORK Mode
 
@@ -1162,7 +1162,7 @@ options:
 
    If git state is not clean, warn the user and ask if they want to proceed anyway.
 
-3. **Move to Active:** `./tools/scripts/project-move.sh <num> Active`
+3. **Move to Active:** `pm move <num> Active`
 4. Display feedback summary (from step 1)
 5. Display guardrails
 6. After feedback is addressed, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5).
@@ -1199,7 +1199,7 @@ options:
 
 **On "Add to project":**
 
-1. Execute: `./tools/scripts/project-add.sh <num> normal`
+1. Execute: `pm add <num> normal`
 2. Re-run mode detection ONCE
 3. If still MISMATCH, display error and stop
 
@@ -1216,7 +1216,7 @@ options:
 ```
 
 **On "Move back to Active":**
-Execute: `./tools/scripts/project-move.sh <num> Active`
+Execute: `pm move <num> Active`
 
 #### multiple_prs
 
@@ -1245,7 +1245,7 @@ options:
 ```
 
 **On "Move to Done":**
-Execute: `./tools/scripts/project-move.sh <num> Done`
+Execute: `pm move <num> Done`
 
 ---
 
@@ -1253,8 +1253,8 @@ Execute: `./tools/scripts/project-move.sh <num> Done`
 
 **This skill can execute:**
 
-- `./tools/scripts/project-add.sh <num> <priority>` - Add issue to project
-- `./tools/scripts/project-move.sh <num> <state>` - Change workflow state
+- `pm add <num> <priority>` - Add issue to project
+- `pm move <num> <state>` - Change workflow state
 - `./tools/scripts/worktree-detect.sh <num>` - Detect worktree status
 - `./tools/scripts/worktree-setup.sh <num> <branch>` - Create worktree with port isolation
 - `./tools/scripts/tmux-session.sh start <num>` - Start issue in tmux window (portfolio mode)

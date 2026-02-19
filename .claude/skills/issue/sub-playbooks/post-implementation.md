@@ -93,9 +93,9 @@ If user overrides: proceed to Step 5 with acknowledgment.
 
 ### Step 5: Transition to Review
 
-`./tools/scripts/project-move.sh <num> Review`
+`pm move <num> Review`
 
-Verify with `./tools/scripts/project-status.sh <num>` that workflow is now "Review".
+Verify with `pm status <num>` that workflow is now "Review".
 
 ## Precedence Note
 
