@@ -4,4 +4,7 @@ node_modules/
 .codex-work/
 .claude/plans/
 .claude/memory/board-cache.json
+.claude/memory/decisions.jsonl
+.claude/memory/outcomes.jsonl
+.claude/memory/events.jsonl
 tools/mcp/*/build/

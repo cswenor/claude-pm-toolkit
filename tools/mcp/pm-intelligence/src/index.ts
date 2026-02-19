@@ -16,12 +16,17 @@
  *   - record_outcome: Log a work outcome to memory
  *   - get_memory_insights: Analytics on rework rate, review patterns, areas
  *   - get_event_stream: Query structured event stream for debugging/analytics
+ *   - get_sprint_analytics: Deep sprint analytics (cycle time, bottlenecks, flow)
+ *   - suggest_approach: Query past decisions/outcomes for similar work
+ *   - check_readiness: Pre-review validation from event stream
+ *   - get_history_insights: Git history mining (hotspots, coupling, risk)
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
  *   - pm://memory/decisions: Recent decisions
  *   - pm://memory/outcomes: Recent outcomes
  *   - pm://memory/insights: Memory analytics
+ *   - pm://analytics/sprint: Sprint analytics for current period
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -44,10 +49,16 @@ import {
   updateBoardCache,
   getInsights,
 } from "./memory.js";
+import {
+  getSprintAnalytics,
+  suggestApproach,
+  checkReadiness,
+} from "./analytics.js";
+import { getHistoryInsights } from "./history.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.5.0",
+  version: "0.6.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -399,6 +410,164 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "get_sprint_analytics",
+  {
+    title: "Sprint Analytics",
+    description:
+      "Deep sprint analytics: cycle time (avg/median/p90), time-in-state analysis, bottleneck detection, flow efficiency, rework patterns, session patterns, and velocity/rework trends comparing current vs previous period. Use this to understand team performance and identify improvement areas.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Sprint period in days (default 14)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const analytics = await getSprintAnalytics(days ?? 14);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(analytics, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "suggest_approach",
+  {
+    title: "Suggest Approach",
+    description:
+      "Query past decisions and outcomes to suggest approaches for new work in a specific area. Returns relevant past decisions, lessons learned from similar issues, warnings about common rework reasons, and related issue history. Use this when starting work on a new issue to learn from past experience.",
+    inputSchema: {
+      area: z
+        .enum(["frontend", "backend", "contracts", "infra"])
+        .describe("Area of the codebase"),
+      keywords: z
+        .array(z.string())
+        .describe("Keywords describing the work (e.g., ['wallet', 'connection', 'timeout'])"),
+      issueNumber: z
+        .number()
+        .int()
+        .optional()
+        .describe("Current issue number (for context)"),
+      issueTitle: z
+        .string()
+        .optional()
+        .describe("Current issue title (for context)"),
+    },
+  },
+  async ({ area, keywords, issueNumber, issueTitle }) => {
+    try {
+      const suggestion = await suggestApproach(area, keywords);
+      suggestion.issueNumber = issueNumber ?? 0;
+      suggestion.issueTitle = issueTitle ?? "";
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(suggestion, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "check_readiness",
+  {
+    title: "Check Issue Readiness",
+    description:
+      "Pre-review validation: checks the event stream for an issue to verify that proper workflow was followed — issue was moved to Active, has development sessions, rework was addressed, sufficient development time, and decisions documented. Returns a readiness score (0-100) and specific checks with blocking/warning/info severity. Use this before moving to Review.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to check"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const readiness = await checkReadiness(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(readiness, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_history_insights",
+  {
+    title: "Git History Insights",
+    description:
+      "Mine git history for actionable insights: file change hotspots (highest risk areas), coupling analysis (files that always change together), commit patterns (types, scopes, peak times), PR size patterns, and risk area identification. Use this to understand which parts of the codebase are most volatile and where extra care is needed.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("History period in days (default 30)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const insights = await getHistoryInsights(days ?? 30);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(insights, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -513,15 +682,51 @@ server.registerResource(
   }
 );
 
+server.registerResource(
+  "sprint-analytics",
+  "pm://analytics/sprint",
+  {
+    title: "Sprint Analytics",
+    description:
+      "Current sprint analytics: cycle time, bottlenecks, flow efficiency, rework analysis",
+    mimeType: "application/json",
+  },
+  async (uri) => {
+    try {
+      const analytics = await getSprintAnalytics(14);
+      return {
+        contents: [
+          { uri: uri.href, text: JSON.stringify(analytics, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            text: JSON.stringify({
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          },
+        ],
+      };
+    }
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
+
+const ALL_TOOLS = [
+  "get_issue_status", "get_board_summary", "move_issue", "get_velocity",
+  "record_decision", "record_outcome", "get_memory_insights", "get_event_stream",
+  "get_sprint_analytics", "suggest_approach", "check_readiness", "get_history_insights",
+];
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.5.0 running on stdio");
-  console.error(
-    `Tools: ${["get_issue_status", "get_board_summary", "move_issue", "get_velocity", "record_decision", "record_outcome", "get_memory_insights", "get_event_stream"].join(", ")}`
-  );
+  console.error("PM Intelligence MCP Server v0.6.0 running on stdio");
+  console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
 }
 
 process.on("SIGINT", async () => {

@@ -28,6 +28,10 @@
           {
             "type": "command",
             "command": "./tools/scripts/claude-secret-bash-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "./tools/scripts/pm-commit-guard.sh"
           }
         ]
       },
@@ -97,6 +101,10 @@
           {
             "type": "command",
             "command": "./tools/scripts/portfolio-notify.sh idle"
+          },
+          {
+            "type": "command",
+            "command": "./tools/scripts/pm-stop-guard.sh"
           }
         ]
       }

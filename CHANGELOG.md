@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-02-19
+
+### Added
+- MCP `get_sprint_analytics` tool: deep sprint analytics with cycle time (avg/median/p90), time-in-state, bottleneck detection, flow efficiency, rework analysis, session patterns, and velocity/rework trend comparison
+- MCP `suggest_approach` tool: queries past decisions and outcomes to suggest approaches for new work based on area and keywords, with warnings about common rework reasons
+- MCP `check_readiness` tool: pre-review validation checking event stream for proper workflow (Active transition, sessions, rework addressed, decisions documented) with 0-100 readiness score
+- MCP `get_history_insights` tool: git history mining for file change hotspots, coupling analysis (files that always change together), commit patterns, PR size patterns, and risk area identification
+- MCP `pm://analytics/sprint` resource: current sprint analytics as a resource
+- `pm-commit-guard.sh`: PreToolUse:Bash hook that validates conventional commit format, auto-fixes missing colons (e.g., `feat add` → `feat: add`) via `updatedInput`, and suggests type prefixes for untyped messages
+- `pm-stop-guard.sh`: Stop hook that detects incomplete work (uncommitted changes, unpushed commits, issue still Active, no PR) and injects reminders as additionalContext
+- `settings.json`: Added pm-commit-guard.sh to PreToolUse:Bash hooks, pm-stop-guard.sh to Stop hooks
+
 ## [0.5.0] - 2026-02-18
 
 ### Added

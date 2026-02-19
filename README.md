@@ -71,10 +71,17 @@ A native MCP server that gives Claude direct access to project state — no bash
 | | `record_decision` | Log architectural decisions to persistent memory |
 | | `record_outcome` | Log work outcomes (merged, rework, etc.) |
 | | `get_memory_insights` | Analytics: rework rate, review patterns, area distribution |
+| | `get_event_stream` | Query structured event stream with filters |
+| | `get_sprint_analytics` | Cycle time, bottlenecks, flow efficiency, trends |
+| | `suggest_approach` | Query past work to suggest approaches for new issues |
+| | `check_readiness` | Pre-review validation with readiness score (0-100) |
+| | `get_history_insights` | Git history mining: hotspots, coupling, risk areas |
 | **Resources** | `pm://board/overview` | Board state (cached, refreshed on tool use) |
 | | `pm://memory/decisions` | Recent architectural decisions |
 | | `pm://memory/outcomes` | Recent work outcomes |
 | | `pm://memory/insights` | Memory analytics and patterns |
+| | `pm://events/recent` | Last 50 events from the event stream |
+| | `pm://analytics/sprint` | Current sprint analytics |
 
 Activate after install: `cd tools/mcp/pm-intelligence && npm install && npm run build`
 
