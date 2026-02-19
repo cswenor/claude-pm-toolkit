@@ -101,6 +101,7 @@ REQUIRED_FILES=(
   ".claude/skills/issue/SKILL.md"
   ".claude/skills/pm-review/SKILL.md"
   ".claude/skills/weekly/SKILL.md"
+  ".claude/skills/start/SKILL.md"
   "docs/PM_PLAYBOOK.md"
   "docs/PM_PROJECT_CONFIG.md"
   ".claude-pm-toolkit.json"

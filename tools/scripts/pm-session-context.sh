@@ -183,6 +183,17 @@ if [[ -f "$METADATA_FILE" ]]; then
   [[ -n "$DISPLAY_NAME" ]] && CONTEXT_PARTS="Project: $DISPLAY_NAME ($OWNER)"
 fi
 
+# PM Intelligence recommendation
+if [[ -n "$ISSUE_NUM" ]]; then
+  INTEL_HINT="
+Tip: Run mcp__pm_intelligence__recover_context({ issueNumber: $ISSUE_NUM }) to reload full context for issue #$ISSUE_NUM."
+else
+  INTEL_HINT="
+Tip: Run /start for a session briefing with risk radar and recommended work, or mcp__pm_intelligence__optimize_session() to plan this session."
+fi
+CONTEXT_PARTS="${CONTEXT_PARTS:+$CONTEXT_PARTS
+}$INTEL_HINT"
+
 # Worktree context
 if [[ -n "$WORKTREE_INFO" ]]; then
   CONTEXT_PARTS="${CONTEXT_PARTS:+$CONTEXT_PARTS

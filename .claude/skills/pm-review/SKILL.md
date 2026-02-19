@@ -2,7 +2,7 @@
 name: pm-review
 description: PM Reviewer persona that analyzes issues/PRs and takes action. Use when reviewing, checking completion, or validating work.
 argument-hint: '[issue-or-pr-number]'
-allowed-tools: Read, Grep, Bash(./tools/scripts/*), Bash(gh issue view *), Bash(gh pr view *), Bash(gh api *), Bash(gh repo view *), Bash(git checkout *), Bash(git pull *), Bash(git show *), Bash(git diff *), Bash(git rev-parse *), mcp__github__get_issue, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_comments, mcp__github__get_pull_request_status, mcp__github__create_pull_request_review, mcp__github__merge_pull_request, mcp__github__add_issue_comment, AskUserQuestion
+allowed-tools: Read, Grep, Bash(./tools/scripts/*), Bash(gh issue view *), Bash(gh pr view *), Bash(gh api *), Bash(gh repo view *), Bash(git checkout *), Bash(git pull *), Bash(git show *), Bash(git diff *), Bash(git rev-parse *), mcp__github__get_issue, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_comments, mcp__github__get_pull_request_status, mcp__github__create_pull_request_review, mcp__github__merge_pull_request, mcp__github__add_issue_comment, mcp__pm_intelligence__review_pr, mcp__pm_intelligence__analyze_pr_impact, mcp__pm_intelligence__get_knowledge_risk, mcp__pm_intelligence__predict_rework, mcp__pm_intelligence__record_review_outcome, mcp__pm_intelligence__record_outcome, mcp__pm_intelligence__get_review_calibration, mcp__pm_intelligence__check_readiness, AskUserQuestion
 ---
 
 # /pm-review - PM Reviewer Persona
@@ -171,6 +171,26 @@ Input: $ARGUMENTS
    gh issue view <issue_number> --json comments --jq '.comments[].body'
    ```
 6. **Read existing feedback before forming your own opinion.** If someone already reviewed and found issues, verify those issues are addressed.
+
+### PM Intelligence Enrichment (both paths, parallel with above)
+
+Run these intelligence tools to enrich the review context:
+
+```
+mcp__pm_intelligence__review_pr({ prNumber: <pr_number> })
+mcp__pm_intelligence__analyze_pr_impact({ prNumber: <pr_number> })
+mcp__pm_intelligence__predict_rework({ issueNumber: <issue_number> })
+mcp__pm_intelligence__get_knowledge_risk()
+```
+
+- `review_pr`: Structured file classification, scope check, risk assessment, automated verdict
+- `analyze_pr_impact`: Blast radius — dependency impact, knowledge risk, coupling analysis
+- `predict_rework`: Historical rework probability for this type of issue
+- `get_knowledge_risk`: Bus factor and code ownership context
+
+**Use intelligence output to inform (not replace) your manual review.** The tools provide data; you provide judgment. If the automated verdict differs from your analysis, investigate why.
+
+**If any tool call fails**, continue without it — these are enrichment, not gates.
 
 ---
 
@@ -846,6 +866,28 @@ Execute these steps in order:
 1. Move issue to correct workflow state as needed
 2. Post comments explaining what was fixed
 3. Continue to code review
+
+### Record Review Intelligence (ALL actions)
+
+After executing any action above, record the outcome for learning:
+
+```
+mcp__pm_intelligence__record_review_outcome({
+  prNumber: <pr_number>,
+  verdict: "<APPROVED|CHANGES_NEEDED>",
+  findingsCount: <number>,
+  blockingCount: <number>
+})
+
+mcp__pm_intelligence__record_outcome({
+  issueNumber: <issue_number>,
+  result: "<merged|rework|abandoned>",
+  approachSummary: "<one-line summary>",
+  reviewRounds: <number>
+})
+```
+
+This feeds the review calibration system (`get_review_calibration`) so future reviews learn from past accuracy. Skip silently if either call fails.
 
 ---
 

@@ -31,13 +31,14 @@ cd claude-pm-toolkit
 
 ## What You Get
 
-### Three Skills
+### Four Skills
 
 | Skill | Purpose |
 |-------|---------|
-| **`/issue`** | Full lifecycle. Create via PM interview with duplicate detection. Execute with worktree isolation, plan mode, Codex collaboration, and post-implementation review. |
-| **`/pm-review`** | Adversarial reviewer. Scope verification, failure mode analysis, comment skepticism, deep code comparison, split completeness/robustness verdict. |
-| **`/weekly`** | AI narrative from weekly snapshots. Stakeholder-ready summaries, health scores, trend analysis. |
+| **`/start`** | **Session kickoff.** Risk radar, session optimizer, standup generator, anomaly detection — full situational awareness in one command. |
+| **`/issue`** | Full lifecycle. Create via PM interview with AI triage + auto-labeling. Execute with worktree isolation, plan mode with predictive intelligence, and scope creep detection. |
+| **`/pm-review`** | Adversarial reviewer. Enriched with automated PR analysis, blast radius modeling, knowledge risk, rework prediction, and review calibration learning. |
+| **`/weekly`** | AI narrative from weekly snapshots. Enhanced with risk radar, DORA metrics, Monte Carlo forecasts, anomaly detection, and delivery metrics. |
 
 ### 22 Scripts
 
@@ -126,6 +127,28 @@ Activate after install: `cd tools/mcp/pm-intelligence && npm install && npm run 
 
 Claude Code auto-discovers it from `.mcp.json`.
 
+### How Intelligence Tools Get Used
+
+Every tool is wired into the workflow — Claude calls them automatically at the right moments:
+
+| Moment | What Fires | Tools Used |
+|--------|-----------|------------|
+| **Session start** | `/start` skill or SessionStart hook | `optimize_session`, `get_risk_radar`, `detect_patterns`, `generate_standup`, `get_workflow_health`, `check_decision_decay` |
+| **Creating an issue** | `/issue` Create Mode Step 3 | `triage_issue`, `auto_label` |
+| **Loading an issue** | `/issue` Execute Mode Step 1 | `recover_context`, `get_issue_dependencies` |
+| **Planning work** | `/issue` START plan mode | `suggest_approach`, `predict_completion`, `predict_rework`, `get_history_insights`, `decompose_issue` |
+| **Resuming work** | `/issue` CONTINUE mode | `recover_context`, `get_session_history` |
+| **Before creating PR** | CLAUDE.md proactive rules | `check_readiness`, `detect_scope_creep` |
+| **Reviewing a PR** | `/pm-review` Step 1 | `review_pr`, `analyze_pr_impact`, `predict_rework`, `get_knowledge_risk` |
+| **After review** | `/pm-review` Step 7 | `record_review_outcome`, `record_outcome` |
+| **After merging** | CLAUDE.md proactive rules | `record_outcome` |
+| **Weekly reports** | `/weekly` Step 2.7 | `get_risk_radar`, `get_dora_metrics`, `detect_patterns`, `get_workflow_health`, `compare_estimates`, `generate_release_notes`, `forecast_backlog`, `simulate_sprint` |
+| **Cleaning backlog** | `/start` triage action | `bulk_triage`, `bulk_move` |
+| **Issue stuck** | CLAUDE.md proactive rules | `explain_delay` |
+| **Design decisions** | CLAUDE.md proactive rules | `record_decision` |
+| **Sprint planning** | On demand | `plan_sprint`, `simulate_sprint`, `get_team_capacity`, `visualize_dependencies` |
+| **What-if analysis** | On demand | `simulate_dependency_change` |
+
 ### Workflow Docs
 
 | Doc | Purpose |
@@ -186,10 +209,12 @@ Reads saved config, refreshes field IDs, overwrites toolkit files, preserves you
 ## Daily Workflow
 
 ```bash
-/issue                 # Create issue → PM interview → duplicate scan → structured issue
-/issue 42              # Load context → detect state → enter plan mode
-/pm-review 123         # Adversarial review with split verdict
-/weekly                # AI analysis of latest weekly snapshot
+/start                 # Session briefing → risk radar → recommended work → standup
+/start 30 frontend     # 30-minute session focused on frontend work
+/issue                 # Create issue → PM interview → AI triage → duplicate scan
+/issue 42              # Load context → intelligence recovery → detect state → plan mode
+/pm-review 123         # Adversarial review with blast radius analysis and rework prediction
+/weekly                # AI analysis with DORA metrics, risk dashboard, and forecasts
 ```
 
 ### Workflow States

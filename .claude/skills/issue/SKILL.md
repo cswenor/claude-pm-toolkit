@@ -2,7 +2,7 @@
 name: issue
 description: Create new issues (PM interview) or work on existing issues. Use without arguments to create, with issue number to execute.
 argument-hint: '[issue-number]'
-allowed-tools: Read, Glob, Bash(./tools/scripts/project-add.sh *), Bash(./tools/scripts/project-move.sh *), Bash(./tools/scripts/project-status.sh *), Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(./tools/scripts/codex-mcp-overrides.sh), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git diff *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), Bash(codex exec -s read-only *), Bash(codex exec -s workspace-write *), Bash(codex exec -c *), mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, AskUserQuestion, EnterPlanMode, TaskOutput
+allowed-tools: Read, Glob, Bash(./tools/scripts/project-add.sh *), Bash(./tools/scripts/project-move.sh *), Bash(./tools/scripts/project-status.sh *), Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(./tools/scripts/codex-mcp-overrides.sh), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git diff *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), Bash(codex exec -s read-only *), Bash(codex exec -s workspace-write *), Bash(codex exec -c *), mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__pm_intelligence__triage_issue, mcp__pm_intelligence__auto_label, mcp__pm_intelligence__decompose_issue, mcp__pm_intelligence__recover_context, mcp__pm_intelligence__get_session_history, mcp__pm_intelligence__predict_completion, mcp__pm_intelligence__predict_rework, mcp__pm_intelligence__suggest_approach, mcp__pm_intelligence__get_issue_dependencies, mcp__pm_intelligence__check_readiness, mcp__pm_intelligence__detect_scope_creep, mcp__pm_intelligence__explain_delay, mcp__pm_intelligence__record_decision, mcp__pm_intelligence__get_history_insights, AskUserQuestion, EnterPlanMode, TaskOutput
 ---
 
 # /issue - Issue Creation & Execution
@@ -161,14 +161,26 @@ Listen to user description. AI decides what to ask next.
 
 ### Step 3: Generate Decision Pack
 
-After gathering enough context, produce a structured summary:
+After gathering enough context, produce a structured summary.
 
-**Decision Pack:**
+**3a. AI Classification (parallel with manual analysis):**
+
+Call these PM intelligence tools to enrich your classification:
+
+```
+mcp__pm_intelligence__triage_issue({ issueNumber: <if updating existing>, title: "<proposed_title>", body: "<problem_summary>" })
+mcp__pm_intelligence__auto_label({ issueNumber: <if updating existing> })
+```
+
+Use the intelligence output to inform (not replace) your Decision Pack. If the tools suggest a different type or area than your analysis, note both and explain your choice.
+
+**3b. Decision Pack:**
 
 - **intent**: bug | feature | spike | epic
 - **area**: frontend | backend | contracts | infra
 - **problem_summary**: 2-4 sentences describing the issue
 - **proposed_title**: Issue title (format: `<type>: <description>`)
+- **intelligence**: (from triage_issue) estimated effort, rework probability, risk level
 - **fingerprint**:
   - **keywords**: 3-6 core terms for search
   - **alt_phrases**: 1-2 alternate phrasings
@@ -361,7 +373,22 @@ Search for issue URL in PR body:
 
 Deduplicate results by PR number.
 
-#### 1e. Check Codex Availability
+#### 1e. PM Intelligence Context (Parallel)
+
+Call these PM intelligence tools to enrich context gathering:
+
+```
+mcp__pm_intelligence__recover_context({ issueNumber: $ARGUMENTS })
+mcp__pm_intelligence__get_issue_dependencies({ issueNumber: $ARGUMENTS })
+```
+
+`recover_context` returns: resumption guide with detected mode, what happened in prior sessions, next steps, warnings, context files to load. Use this to inform your briefing packet and plan.
+
+`get_issue_dependencies` returns: blockers, dependents, execution order. Use this to detect blocked/blocking relationships in Step 2.
+
+**If either call fails**, continue without it — these are enrichment, not gates.
+
+#### 1f. Check Codex Availability
 
 ```bash
 codex --version 2>/dev/null
@@ -828,13 +855,41 @@ step runs on the NEXT /issue <num> invocation from within the worktree.
    If `codex_available` is false:
    Display: "Codex not available — skipping collaborative planning."
 
-5. In plan mode, create Plan A that includes:
+5. **Gather planning intelligence** (inside plan mode, before writing Plan A):
+
+   Call these in parallel to inform the plan:
+
+   ```
+   mcp__pm_intelligence__suggest_approach({ area: "<issue_area>", keywords: "<key terms>" })
+   mcp__pm_intelligence__predict_completion({ issueNumber: <num> })
+   mcp__pm_intelligence__predict_rework({ issueNumber: <num> })
+   mcp__pm_intelligence__get_history_insights()
+   ```
+
+   - `suggest_approach`: Past decisions and outcomes for this area — what worked, what didn't
+   - `predict_completion`: P50/P80/P95 delivery estimates to include in the plan
+   - `predict_rework`: Rework probability — if high, add extra review steps to the plan
+   - `get_history_insights`: Code hotspots and coupling — inform which files to touch carefully
+
+   **If the issue is large (epic or has >5 ACs):**
+
+   ```
+   mcp__pm_intelligence__decompose_issue({ issueNumber: <num> })
+   ```
+
+   Use the subtask breakdown to structure the implementation phases in Plan A.
+
+   **Use intelligence output to enrich the plan, not replace your judgment.** If past approaches failed in this area, call that out. If rework probability is >50%, add a "Risk Mitigation" section.
+
+6. In plan mode, create Plan A that includes:
    - Acceptance criteria as checkboxes
    - **AC Traceability Table** (see below) — maps each criterion to implementation files and tests
    - Non-goals as DO NOT constraints
    - Inline policy snippets from loaded docs
    - Development guardrails (including port isolation via shell exports)
-   - Implementation approach
+   - Implementation approach (informed by `suggest_approach` intelligence)
+   - **Delivery estimate** from `predict_completion` (P50/P80/P95)
+   - **Risk flags** from `predict_rework` (if probability >50%)
    - **Scope boundary check** (see below)
 
 6. **Collaborative Planning: Refinement (after Plan A is written):**

@@ -146,7 +146,7 @@ import { getRiskRadar } from "./risk-radar.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.13.0",
+  version: "0.14.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────

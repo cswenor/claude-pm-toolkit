@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.0] - 2026-02-19
+
+### Added
+- **`/start` Skill — Intelligent Session Kickoff:**
+  - New entry point that plans every session with full situational awareness
+  - Gathers 6 intelligence sources in parallel: `optimize_session`, `get_risk_radar`, `detect_patterns`, `generate_standup`, `get_workflow_health`, `check_decision_decay`
+  - Synthesizes into a briefing: recommended work plan, risk dashboard, early warnings, stale decisions, board health
+  - Offers actions: start top recommendation (hands off to `/issue`), triage backlog, deep dive on risks, or just the briefing
+  - Supports time constraints (`/start 30`) and area focus (`/start frontend`)
+
+### Changed
+- **Intelligence Integration Layer — Every Tool Now Wired Into the Workflow:**
+  - **CLAUDE.md sections** now include "PM Intelligence Tools" — a comprehensive mapping of all 49+ tools to their trigger points, telling Claude WHEN to proactively call each tool
+  - **`/issue` skill** enhanced with intelligence at key points:
+    - Create Mode Step 3: `triage_issue` + `auto_label` enrich the Decision Pack with AI classification
+    - Execute Mode Step 1: `recover_context` + `get_issue_dependencies` load full context and blocker info
+    - START plan mode: `suggest_approach`, `predict_completion`, `predict_rework`, `get_history_insights`, `decompose_issue` inform implementation planning
+  - **`/pm-review` skill** enhanced with intelligence:
+    - Step 1: `review_pr` + `analyze_pr_impact` + `predict_rework` + `get_knowledge_risk` enrich review context
+    - Step 7: `record_review_outcome` + `record_outcome` feed the review calibration learning system
+  - **`/weekly` skill** enhanced with intelligence:
+    - New Step 2.7: 10 intelligence tools gathered in parallel for analytical depth
+    - Risk Dashboard section from `get_risk_radar` with 6-category risk breakdown
+    - Delivery Metrics section from `get_dora_metrics` + `get_sprint_analytics`
+    - Forecasts section from `forecast_backlog` + `simulate_sprint` (Monte Carlo)
+  - **SessionStart hook** now recommends `recover_context` (when in worktree) or `/start` (otherwise)
+  - **Stop hook** now recommends `record_outcome` for session learning
+  - **Proactive usage rules** in CLAUDE.md: 8 moments when Claude should automatically call intelligence tools without user prompting
+
 ## [0.13.0] - 2026-02-19
 
 ### Added
