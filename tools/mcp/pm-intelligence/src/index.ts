@@ -15,6 +15,7 @@
  *   - record_decision: Log an architectural decision to memory
  *   - record_outcome: Log a work outcome to memory
  *   - get_memory_insights: Analytics on rework rate, review patterns, areas
+ *   - get_event_stream: Query structured event stream for debugging/analytics
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -36,6 +37,7 @@ import {
 import {
   getDecisions,
   getOutcomes,
+  getEvents,
   getBoardCache,
   recordDecision,
   recordOutcome,
@@ -349,6 +351,54 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "get_event_stream",
+  {
+    title: "Get Event Stream",
+    description:
+      "Query the structured event stream — session starts, state transitions, tool use, errors. Use this for debugging, analytics, and understanding what happened in previous sessions.",
+    inputSchema: {
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Max events to return (default 50, most recent)"),
+      issueNumber: z
+        .number()
+        .int()
+        .optional()
+        .describe("Filter by issue number"),
+      eventType: z
+        .string()
+        .optional()
+        .describe(
+          "Filter by event type (session_start, state_change, needs_input, error, etc.)"
+        ),
+    },
+  },
+  async ({ limit, issueNumber, eventType }) => {
+    try {
+      const events = await getEvents(limit ?? 50, { issueNumber, eventType });
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(events, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -444,6 +494,25 @@ server.registerResource(
   }
 );
 
+server.registerResource(
+  "event-stream",
+  "pm://events/recent",
+  {
+    title: "Recent Events",
+    description:
+      "Last 50 events from the structured event stream (sessions, state changes, tool use)",
+    mimeType: "application/json",
+  },
+  async (uri) => {
+    const events = await getEvents(50);
+    return {
+      contents: [
+        { uri: uri.href, text: JSON.stringify(events, null, 2) },
+      ],
+    };
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
 
 async function main() {
@@ -451,7 +520,7 @@ async function main() {
   await server.connect(transport);
   console.error("PM Intelligence MCP Server v0.5.0 running on stdio");
   console.error(
-    `Tools: ${["get_issue_status", "get_board_summary", "move_issue", "get_velocity", "record_decision", "record_outcome", "get_memory_insights"].join(", ")}`
+    `Tools: ${["get_issue_status", "get_board_summary", "move_issue", "get_velocity", "record_decision", "record_outcome", "get_memory_insights", "get_event_stream"].join(", ")}`
   );
 }
 

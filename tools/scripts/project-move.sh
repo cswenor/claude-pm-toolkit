@@ -229,6 +229,12 @@ gh project item-edit --project-id "$PM_PROJECT_ID" --id "$ITEM_ID" \
 
 echo "Issue #$ISSUE_NUM -> $STATE"
 
+# Log state transition event (best-effort, non-blocking)
+if [ -x "$SCRIPT_DIR/pm-event-log.sh" ]; then
+  "$SCRIPT_DIR/pm-event-log.sh" state_change \
+    --issue "$ISSUE_NUM" --to "$STATE" 2>/dev/null || true
+fi
+
 # Post-Done cleanup
 if [ "$STATE" = "Done" ]; then
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

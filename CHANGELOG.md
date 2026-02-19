@@ -25,6 +25,14 @@ All notable changes to this project will be documented in this file.
 - `install.sh`: MCP server copy with placeholder replacement in config, `.mcp.json` merge
 - `validate.sh`: Optional file checks for MCP server sources and `.mcp.json`
 - `templates/mcp.json`: MCP server registration template
+- `pm-event-log.sh`: Structured JSONL event logger for all PM hooks (session_start, state_change, needs_input, error, etc.)
+  - Auto-detects issue from env vars or worktree directory name
+  - Writes to `.claude/memory/events.jsonl` with null-field omission
+- `portfolio-notify.sh`: Event stream integration (logs all portfolio events non-blocking)
+- `pm-session-context.sh`: Event stream integration (logs session_start with source metadata)
+- `project-move.sh`: Event stream integration (logs state_change on workflow transitions)
+- MCP `get_event_stream` tool: Query structured event stream with filters (limit, issueNumber, eventType)
+- MCP `pm://events/recent` resource: Last 50 events from the event stream
 
 ## [0.4.0] - 2026-02-18
 

@@ -55,6 +55,13 @@ fi
 echo "$EVENT_TYPE" > "$STATE_DIR/status"
 date -u +"%Y-%m-%dT%H:%M:%SZ" > "$STATE_DIR/last-event"
 
+# --- Event stream logging (best-effort, non-blocking) ---
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -x "$SCRIPT_DIR/pm-event-log.sh" ]; then
+  "$SCRIPT_DIR/pm-event-log.sh" "$EVENT_TYPE" --issue "$ISSUE_NUM" 2>/dev/null &
+fi
+
 # --- Send alerts for attention-requiring events ---
 
 case "$EVENT_TYPE" in

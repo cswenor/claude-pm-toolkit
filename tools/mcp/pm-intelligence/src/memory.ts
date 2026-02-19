@@ -57,6 +57,18 @@ export interface BoardCache {
   ready: number;
 }
 
+export interface PMEvent {
+  timestamp: string;
+  event: string;
+  issue_number?: number;
+  session_id?: string;
+  tool?: string;
+  from_state?: string;
+  to_state?: string;
+  message?: string;
+  data?: Record<string, unknown>;
+}
+
 // ─── Read Operations ────────────────────────────────────
 
 /** Read JSONL file and return parsed lines */
@@ -106,6 +118,25 @@ export async function getOutcomes(
   }
 
   return outcomes.slice(-limit);
+}
+
+/** Get recent events from event stream, optionally filtered */
+export async function getEvents(
+  limit = 50,
+  filters?: { issueNumber?: number; eventType?: string }
+): Promise<PMEvent[]> {
+  const root = await getRepoRoot();
+  const path = `${root}/.claude/memory/events.jsonl`;
+  let events = await readJsonl<PMEvent>(path);
+
+  if (filters?.issueNumber !== undefined) {
+    events = events.filter((e) => e.issue_number === filters.issueNumber);
+  }
+  if (filters?.eventType) {
+    events = events.filter((e) => e.event === filters.eventType);
+  }
+
+  return events.slice(-limit);
 }
 
 /** Get cached board state */

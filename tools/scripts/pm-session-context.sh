@@ -208,7 +208,16 @@ if [[ -n "$OUTCOMES_CONTEXT" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Output JSON with additionalContext
+# 6. Log session start event (best-effort, non-blocking)
+# ---------------------------------------------------------------------------
+if [[ -x "$SCRIPT_DIR/pm-event-log.sh" ]]; then
+  "$SCRIPT_DIR/pm-event-log.sh" session_start \
+    ${ISSUE_NUM:+--issue "$ISSUE_NUM"} \
+    --data "{\"source\":\"$SOURCE\"}" 2>/dev/null &
+fi
+
+# ---------------------------------------------------------------------------
+# 7. Output JSON with additionalContext
 # ---------------------------------------------------------------------------
 if [[ -n "$CONTEXT_PARTS" ]]; then
   jq -n \
