@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-02-19
+
+### Added
+- **Dependency Graph Analysis:**
+  - MCP `analyze_dependency_graph` tool: builds a directed acyclic graph from issue relationships (blocked-by labels, cross-references, "Blocks #X"/"Blocked by #X" body/comment markers). Returns critical path (longest unresolved dependency chain), bottleneck issues (with transitive dependent counts and severity ratings), cycle detection, orphaned blocked issues (all blockers resolved but still marked blocked), and network metrics (max depth, density, connected components, largest component). Parses multiple relationship patterns: "## Blocks" sections, "**Blocker:** #X" inline markers, and structured "## Dependencies" sections.
+  - MCP `get_issue_dependencies` tool: full dependency analysis for a single issue — direct blockers with resolution status, direct blocks, transitive upstream chain, transitive downstream chain, unblocked status check, and execution order position. Use to evaluate if an issue is ready to work on or understand its blast radius.
+- **Team Capacity Modeling:**
+  - MCP `get_team_capacity` tool: multi-contributor throughput analysis from git/GitHub history. Builds individual contributor profiles (merge velocity, areas, active days, lines per PR, velocity trend), calculates team-wide metrics (parallelism factor, combined throughput, avg merge time), forecasts sprint capacity (pessimistic/expected/optimistic with risk factors and opportunities), maps area coverage with bus factor per area, and generates actionable recommendations. Identifies accelerating/decelerating contributors, inactive contributors, and review bottlenecks.
+- `validate.sh`: Added checks for graph.ts and capacity.ts
+
 ## [0.8.0] - 2026-02-19
 
 ### Added

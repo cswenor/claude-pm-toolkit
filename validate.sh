@@ -165,6 +165,8 @@ OPTIONAL_FILES=(
   "tools/mcp/pm-intelligence/src/review-learning.ts"
   "tools/mcp/pm-intelligence/src/simulate.ts"
   "tools/mcp/pm-intelligence/src/guardrails.ts"
+  "tools/mcp/pm-intelligence/src/graph.ts"
+  "tools/mcp/pm-intelligence/src/capacity.ts"
   "tools/scripts/pm-commit-guard.sh"
   "tools/scripts/pm-stop-guard.sh"
   "tools/scripts/pm-event-log.sh"

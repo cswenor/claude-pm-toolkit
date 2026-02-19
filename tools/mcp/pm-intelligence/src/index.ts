@@ -32,6 +32,9 @@
  *   - detect_scope_creep: Compare plan to actual changes
  *   - get_context_efficiency: AI context waste metrics per issue
  *   - get_workflow_health: Cross-issue health and bottleneck analysis
+ *   - analyze_dependency_graph: Full dependency graph with critical path
+ *   - get_issue_dependencies: Dependencies for a single issue
+ *   - get_team_capacity: Team throughput analysis and sprint forecast
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -88,10 +91,15 @@ import {
   getContextEfficiency,
   getWorkflowHealth,
 } from "./guardrails.js";
+import {
+  analyzeDependencyGraph,
+  getIssueDependencies,
+} from "./graph.js";
+import { getTeamCapacity } from "./capacity.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.8.0",
+  version: "0.9.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -1121,6 +1129,110 @@ server.registerTool(
   }
 );
 
+// ─── GRAPH & CAPACITY TOOLS ─────────────────────────────
+
+server.registerTool(
+  "analyze_dependency_graph",
+  {
+    title: "Dependency Graph Analysis",
+    description:
+      "Analyze the full issue dependency graph: build a DAG from blocked-by labels, cross-references, and body/comment markers. Returns critical path (longest unresolved dependency chain), bottleneck issues (blocking the most other work with transitive counts), cycle detection, orphaned blocked issues (all blockers resolved but still marked blocked), and network metrics (depth, density, connected components). Use this for sprint planning, prioritization, and identifying blocked chains.",
+  },
+  async () => {
+    try {
+      const result = await analyzeDependencyGraph();
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_issue_dependencies",
+  {
+    title: "Issue Dependencies",
+    description:
+      "Get the full dependency tree for a single issue: direct blockers (with resolution status), issues it blocks, full upstream chain (transitive dependencies), full downstream chain (transitive dependents), whether it's unblocked (all blockers resolved), and its execution order position. Use this when evaluating if an issue is ready to work on or understanding its impact on the project.",
+    inputSchema: {
+      issueNumber: z
+        .number()
+        .int()
+        .positive()
+        .describe("Issue number to analyze"),
+    },
+  },
+  async ({ issueNumber }) => {
+    try {
+      const result = await getIssueDependencies(issueNumber);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "get_team_capacity",
+  {
+    title: "Team Capacity Analysis",
+    description:
+      "Analyze team throughput capacity from git and GitHub history. Builds contributor profiles (velocity, areas, merge time, trend), calculates team-wide metrics (parallelism factor, combined throughput), forecasts sprint capacity (pessimistic/expected/optimistic), identifies area coverage gaps (bus factor), and provides recommendations. Use this for sprint planning, capacity allocation, and identifying bottlenecks in the development process.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Analysis period in days (default 60)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const result = await getTeamCapacity(days ?? 60);
+      return {
+        content: [
+          { type: "text" as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── RESOURCES ──────────────────────────────────────────
 
 server.registerResource(
@@ -1309,12 +1421,13 @@ const ALL_TOOLS = [
   "record_review_outcome", "get_review_calibration", "check_decision_decay",
   "simulate_sprint", "forecast_backlog",
   "detect_scope_creep", "get_context_efficiency", "get_workflow_health",
+  "analyze_dependency_graph", "get_issue_dependencies", "get_team_capacity",
 ];
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.8.0 running on stdio");
+  console.error("PM Intelligence MCP Server v0.9.0 running on stdio");
   console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
 }
 

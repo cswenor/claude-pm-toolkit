@@ -86,6 +86,9 @@ A native MCP server that gives Claude direct access to project state — no bash
 | **Guardrails** | `detect_scope_creep` | Compare plan to actual changes, flag drift |
 | | `get_context_efficiency` | AI context waste metrics per issue (0-100 score) |
 | | `get_workflow_health` | Cross-issue health, bottlenecks, stale detection |
+| **Graph** | `analyze_dependency_graph` | Critical path, bottleneck issues, cycle detection |
+| | `get_issue_dependencies` | Upstream/downstream chains, execution order, unblocked check |
+| **Capacity** | `get_team_capacity` | Contributor profiles, sprint forecast, area coverage |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |
