@@ -38,6 +38,9 @@
  *   - plan_sprint: AI-powered sprint planning combining all intelligence
  *   - visualize_dependencies: ASCII + Mermaid dependency graph visualization
  *   - get_project_dashboard: Full project health report synthesizing all intelligence
+ *   - suggest_next_issue: "What should I work on next?" recommendation engine
+ *   - generate_standup: Auto-generate daily standup from recent activity
+ *   - generate_retro: Data-driven sprint retrospective
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -102,10 +105,15 @@ import { getTeamCapacity } from "./capacity.js";
 import { planSprint } from "./planner.js";
 import { visualizeDependencies } from "./visualize.js";
 import { getProjectDashboard } from "./dashboard.js";
+import {
+  suggestNextIssue,
+  generateStandup,
+  generateRetro,
+} from "./operations.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
-  version: "0.11.0",
+  version: "0.12.0",
 });
 
 // ─── TOOLS ──────────────────────────────────────────────
@@ -1538,6 +1546,128 @@ server.registerResource(
   }
 );
 
+// ─── OPERATIONAL INTELLIGENCE ────────────────────────────
+
+server.registerTool(
+  "suggest_next_issue",
+  {
+    title: "Suggest Next Issue",
+    description:
+      "Recommends the best issue to work on next based on priority, dependencies, " +
+      "rework risk, estimated effort, and bottleneck impact. Scores and ranks all " +
+      "unblocked Ready/Backlog issues. Returns top recommendation with alternatives.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const suggestion = await suggestNextIssue();
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(suggestion, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "generate_standup",
+  {
+    title: "Generate Standup",
+    description:
+      "Auto-generates a daily standup report from project activity. Shows what was " +
+      "completed, what's in progress, what's blocked, and what's coming up next. " +
+      "Includes velocity metrics and flow efficiency.",
+    inputSchema: {
+      lookbackHours: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Hours to look back for activity (default: 24)"),
+    },
+  },
+  async ({ lookbackHours }) => {
+    try {
+      const standup = await generateStandup(lookbackHours ?? 24);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(standup, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  "generate_retro",
+  {
+    title: "Generate Retrospective",
+    description:
+      "Generates a data-driven sprint retrospective. Analyzes velocity trends, " +
+      "rework patterns, bottlenecks, cycle times, and dependency health to produce " +
+      "What Went Well / What Could Improve / Action Items. Includes patterns and " +
+      "metrics evidence for each observation.",
+    inputSchema: {
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Sprint length in days to analyze (default: 14)"),
+    },
+  },
+  async ({ days }) => {
+    try {
+      const retro = await generateRetro(days ?? 14);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(retro, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
 
 const ALL_TOOLS = [
@@ -1552,12 +1682,13 @@ const ALL_TOOLS = [
   "plan_sprint",
   "visualize_dependencies",
   "get_project_dashboard",
+  "suggest_next_issue", "generate_standup", "generate_retro",
 ];
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("PM Intelligence MCP Server v0.11.0 running on stdio");
+  console.error("PM Intelligence MCP Server v0.12.0 running on stdio");
   console.error(`Tools: ${ALL_TOOLS.join(", ")}`);
 }
 

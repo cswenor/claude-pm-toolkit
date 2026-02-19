@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2026-02-19
+
+### Added
+- **Operational Intelligence:**
+  - MCP `suggest_next_issue` tool: "What should I work on next?" recommendation engine. Scores all unblocked Ready/Backlog issues by priority weight (+30 critical, +20 high), dependency value (issues that unblock others rank higher), bottleneck bonus, rework risk, estimated completion time (quick wins score higher), and workflow readiness. Returns top recommendation with score breakdown and reasoning, up to 3 alternatives, and context (total candidates, active count, blocked count). Integrates predictions from `predict_completion` and `predict_rework` for each candidate.
+  - MCP `generate_standup` tool: auto-generates daily standup reports from project activity. Sections: Completed (issues that moved to Done in lookback window), In Progress (active issues with days-since-active and last event), Blocked (issues with unresolved dependency blockers), Upcoming (ready issues ranked by priority and unblocked status). Includes velocity metrics (7-day merge/close rates), WIP count, and workflow health score. Configurable lookback window (default 24 hours).
+  - MCP `generate_retro` tool: data-driven sprint retrospective. Analyzes velocity trends, rework patterns, bottlenecks, cycle times, flow efficiency, dependency health, and team capacity to produce structured What Went Well / What Could Improve / Action Items. Each observation backed by quantitative evidence. Identifies patterns: top rework reasons, bottleneck states, busy areas, peak activity hours. Action items prioritized by impact with area tags. Includes highlights and a natural-language summary.
+- `validate.sh`: Added check for operations.ts
+
 ## [0.11.0] - 2026-02-19
 
 ### Added
