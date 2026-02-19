@@ -97,6 +97,7 @@ A native MCP server that gives Claude direct access to project state — no bash
 | | `generate_retro` | Data-driven sprint retrospective with evidence |
 | **Explanatory** | `explain_delay` | "Why is this issue slow?" root cause analysis |
 | | `compare_estimates` | Prediction accuracy and calibration tracking |
+| **Anomaly** | `detect_patterns` | Early warning system for project anomalies |
 | **Learning** | `record_review_outcome` | Track review finding dispositions for calibration |
 | | `get_review_calibration` | Hit rate analysis, false positive patterns, trends |
 | | `check_decision_decay` | Detect stale decisions based on context drift |

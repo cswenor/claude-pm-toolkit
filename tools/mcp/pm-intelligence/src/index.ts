@@ -43,6 +43,7 @@
  *   - generate_retro: Data-driven sprint retrospective
  *   - explain_delay: "Why is this issue slow?" root cause analysis
  *   - compare_estimates: Prediction accuracy tracking and calibration
+ *   - detect_patterns: Cross-cutting anomaly detection and early warnings
  *
  * Resources:
  *   - pm://board/overview: Board summary (same as tool, but as resource)
@@ -116,6 +117,7 @@ import {
   explainDelay,
   compareEstimates,
 } from "./explain.js";
+import { detectPatterns } from "./anomaly.js";
 
 const server = new McpServer({
   name: "pm-intelligence",
@@ -1761,6 +1763,47 @@ server.registerTool(
   }
 );
 
+// ─── ANOMALY DETECTION ───────────────────────────────────
+
+server.registerTool(
+  "detect_patterns",
+  {
+    title: "Detect Patterns",
+    description:
+      "Cross-cutting anomaly detection that surfaces unusual patterns and early " +
+      "warning signals across the project. Checks velocity drops, backlog growth, " +
+      "rework trends, process violations (WIP limits, stale items), dependency " +
+      "cycles and bottlenecks, capacity risks (bus factor, decelerating contributors), " +
+      "and knowledge decay. Returns anomalies sorted by severity with evidence, " +
+      "trend direction, affected issues, and suggested actions. The 'things you " +
+      "should know about' early warning system.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const report = await detectPatterns();
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(report, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── MAIN ───────────────────────────────────────────────
 
 const ALL_TOOLS = [
@@ -1777,6 +1820,7 @@ const ALL_TOOLS = [
   "get_project_dashboard",
   "suggest_next_issue", "generate_standup", "generate_retro",
   "explain_delay", "compare_estimates",
+  "detect_patterns",
 ];
 
 async function main() {
