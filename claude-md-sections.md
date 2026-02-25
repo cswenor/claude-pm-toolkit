@@ -45,6 +45,30 @@
 
 ---
 
+## PM CLI
+
+The `pm` command is a local-first CLI for project management located at `./tools/scripts/pm`.
+
+**IMPORTANT:** Always prefix Bash commands with `export PATH="./tools/scripts:$PATH"` when using `pm`:
+
+```bash
+export PATH="./tools/scripts:$PATH" && pm board
+```
+
+Key commands:
+
+```bash
+pm board               # Kanban board in the terminal
+pm status [num]        # Issue detail or project overview
+pm move <num> <state>  # Move issue to workflow state
+pm add <num> [priority]  # Add issue to tracking
+pm sync                # Pull latest from GitHub
+pm dep <blocker> <blocked>  # Add dependency
+pm history [num]       # Event history
+```
+
+---
+
 ## PM Intelligence Tools
 
 The `pm-intelligence` MCP server provides AI-powered project intelligence. Claude should use these tools proactively at the right moments — not just when asked.

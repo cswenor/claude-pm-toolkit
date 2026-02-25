@@ -366,7 +366,7 @@ gh issue view $ARGUMENTS --json comments --jq '.comments[] | {author: .author.lo
 #### 1c. Get Project State
 
 ```bash
-pm status $ARGUMENTS
+export PATH="./tools/scripts:$PATH" && pm status $ARGUMENTS
 ```
 
 Extract the `workflow` field. **If the command fails** (non-zero exit, issue not in project, network error), set `workflow = null` — this will trigger MISMATCH(not_in_project) in Step 4, which offers to add the issue to the project.
@@ -1268,6 +1268,12 @@ Execute: `pm move <num> Done`
 ---
 
 ## Allowed Mutations
+
+**Shell PATH:** The `pm` CLI lives at `./tools/scripts/pm`. Always prefix Bash commands that use `pm` with:
+
+```bash
+export PATH="./tools/scripts:$PATH" && pm <command>
+```
 
 **This skill can execute:**
 
