@@ -501,9 +501,12 @@ while IFS= read -r src_file; do
   # In update mode: overwrite toolkit-managed files, skip user configs
   if $UPDATE_MODE; then
     if is_user_config "$rel"; then
-      log_skip "Preserved (user config): $rel"
-      COUNT_SKIPPED=$((COUNT_SKIPPED+1))
-      continue
+      if [[ -f "$dst_file" ]]; then
+        log_skip "Preserved (user config): $rel"
+        COUNT_SKIPPED=$((COUNT_SKIPPED+1))
+        continue
+      fi
+      # User config doesn't exist yet — copy the default
     fi
 
     # Overwrite with latest version
