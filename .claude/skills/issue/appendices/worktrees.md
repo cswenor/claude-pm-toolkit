@@ -46,7 +46,7 @@ export DB_PORT=8632
 
 ## Worktree Lifecycle
 
-**Creation:** Automatic when running `/issue <num>` in START mode from main repo.
+**Creation:** Automatic when running `/issue <num>` in START mode from main repo. The `--run-setup` flag is passed to `worktree-setup.sh`, which reads `setup_command` from `.claude-pm-toolkit.json` (defaulting to `make install`) and runs it inside the new worktree. This ensures dependencies like `node_modules` are installed before control returns to the agent.
 
 **Cleanup:** Manual. When done with an issue:
 

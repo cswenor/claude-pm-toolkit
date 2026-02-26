@@ -56,8 +56,10 @@ USAGE
   worktree-setup.sh <issue-number> --print-env
 
 OPTIONS
-  --print-env  Only print shell export statements (for eval)
-  --no-env     Skip symlinking .env* and .mcp.json files from main repo
+  --print-env   Only print shell export statements (for eval)
+  --no-env      Skip symlinking .env* and .mcp.json files from main repo
+  --run-setup   Run the configured setup command (from .claude-pm-toolkit.json)
+                after creating the worktree. Defaults to "make install" if not configured.
 
 ENVIRONMENT
   WORKTREE_PORT_OFFSET  Override the calculated port offset (optional)
@@ -83,6 +85,7 @@ ISSUE_NUM="${1:-}"
 BRANCH_NAME="${2:-}"
 PRINT_ENV_ONLY=false
 SKIP_ENV_SYMLINK=false
+RUN_SETUP=false
 
 # Check for flags
 for arg in "$@"; do
@@ -90,6 +93,7 @@ for arg in "$@"; do
     --help|-h) show_help; exit 0 ;;
     --print-env) PRINT_ENV_ONLY=true ;;
     --no-env) SKIP_ENV_SYMLINK=true ;;
+    --run-setup) RUN_SETUP=true ;;
   esac
 done
 
@@ -256,6 +260,21 @@ if [ "$SKIP_ENV_SYMLINK" = false ]; then
     done
     echo ""
   fi
+fi
+
+# Run setup command if requested
+if [ "$RUN_SETUP" = true ]; then
+  SETUP_CMD=$(jq -r '.setup_command // "make install"' "$WORKTREE_PATH/.claude-pm-toolkit.json" 2>/dev/null || echo "make install")
+  echo "Running setup: $SETUP_CMD"
+  (cd "$WORKTREE_PATH" && eval "$SETUP_CMD")
+  SETUP_EXIT=$?
+  if [ $SETUP_EXIT -ne 0 ]; then
+    echo "WARNING: Setup command failed (exit $SETUP_EXIT)" >&2
+    echo "Run manually: cd $WORKTREE_PATH && $SETUP_CMD" >&2
+  else
+    echo "Setup complete."
+  fi
+  echo ""
 fi
 
 # Display port mapping from config

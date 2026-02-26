@@ -260,7 +260,7 @@ cmd_start() {
   if [ ! -d "$worktree_path" ]; then
     if [ -n "$branch" ]; then
       echo "Creating worktree for issue #$issue_num..."
-      "$SCRIPT_DIR/worktree-setup.sh" "$issue_num" "$branch"
+      "$SCRIPT_DIR/worktree-setup.sh" "$issue_num" "$branch" --run-setup
     else
       # Check if worktree exists in git's list but directory is missing
       if git worktree list --porcelain | grep -q "worktree $worktree_path"; then

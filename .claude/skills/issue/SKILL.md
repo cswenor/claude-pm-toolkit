@@ -524,7 +524,8 @@ DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
 git checkout "$DEFAULT" && git pull
 
 # Create worktree - branch name from issue type
-./tools/scripts/worktree-setup.sh <issue_num> <type>/<short-desc>
+# --run-setup ensures dependencies are installed before control returns
+./tools/scripts/worktree-setup.sh <issue_num> <type>/<short-desc> --run-setup
 ```
 
 **After worktree creation, check for tmux:**
@@ -992,8 +993,10 @@ Proceed to implementation.
 **If task_id exists:** Call the TaskOutput tool with these exact parameters:
 
 - task_id: the value stored from step 1.5
-- block: false
-- timeout: 5000
+- block: true
+- timeout: 120000
+
+This blocks for up to 2 minutes. Since plan mode typically takes several minutes, setup should already be done by this point.
 
 Interpret the result and always report to the user:
 
@@ -1001,8 +1004,16 @@ Interpret the result and always report to the user:
 - Completed with non-zero exit code: Report "Background setup failed." Show the
   first 20 lines of output. Suggest the user run {{SETUP_COMMAND}} manually. Do NOT block
   implementation.
-- Still running: Report "Setup is still running in the background. You can start
+- Still running (timed out after 2 min): Report "Setup is still running. You can start
   working. Check back with TaskOutput if needed before running tests."
+
+**Health check:** After confirming setup status, verify dependencies are installed:
+
+```bash
+ls <worktree_path>/node_modules/.bin/ 2>/dev/null | head -5
+```
+
+If empty or missing, warn: "Dependencies may not be installed. Run `{{SETUP_COMMAND}}` manually."
 
 **Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `pm move` Review`.
 
@@ -1124,8 +1135,9 @@ This catches scope mixing early in the CONTINUE flow, before more work gets bund
 
 Same as START mode "After ExitPlanMode." If task_id is null, skip TaskOutput and
 report that setup was not launched. If task_id exists, call TaskOutput with
-block: false using the task_id from step 3.5. Always report the result to the
-user: ready, failed (with output), or still running.
+block: true, timeout: 120000 using the task_id from step 3.5. Always report the
+result to the user: ready, failed (with output), or still running. Then run the
+health check (ls node_modules/.bin/) and warn if dependencies are missing.
 
 **Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `pm move` Review`.
 
