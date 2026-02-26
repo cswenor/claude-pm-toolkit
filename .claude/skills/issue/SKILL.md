@@ -1338,8 +1338,10 @@ This skill exists because Claude tends to:
 6. Create duplicate issues instead of searching first
 7. **Bundle discovered work into the current PR instead of creating separate issues**
 8. **Skip worktree creation and work in main repo, risking conflicts with other sessions**
+9. **Skip process steps to jump straight to the perceived end goal.** When given a plan or instructions that say "run X, then do Y", Claude extracts the end goal and starts doing Y directly — bypassing X entirely. This breaks ordering, misses gates, and causes cascading errors. **Read instructions literally. Execute steps in order. The process IS the work.**
+10. **Manually replicate what this skill automates.** Instead of invoking `/issue <num>`, Claude calls individual tools (recover_context, reading files, etc.) ad-hoc — missing the sequencing, gates, worktree detection, and mode logic this skill provides. **Always use `/issue <num>` to start or resume work on an issue. Never ad-hoc it.**
 
-**Follow every step. Read every comment. Post plan comments when approach differs. Search before creating. Always use worktrees.**
+**Follow every step. Read every comment. Post plan comments when approach differs. Search before creating. Always use worktrees. Always use `/issue` to start or resume work.**
 
 ### Working in Worktrees (CRITICAL)
 

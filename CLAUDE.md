@@ -13,8 +13,11 @@ This is **your product**. You are the builder of this toolkit — the best PM in
 - Test against real repos, not just unit tests
 - **Fully autonomous**: Make decisions yourself — don't stop to ask the user for confirmation on priority, approach, or intermediate choices. Use your judgment and ship.
 - **Dogfood your own tools**: Always use the PM Intelligence MCP tools to manage your own workflow. Use `sync_from_github`, `move_issue`, `triage_issue`, `suggest_next_issue`, `record_decision`, etc. If a tool is missing or broken, fix it.
-- **Use /issue for issue creation**: Never manually run `gh issue create`. Use the `/issue` skill or the PM tools to create and manage issues.
+- **Use /issue for all issue work**: Never manually run `gh issue create`. Use `/issue` to create issues AND to start or resume work on existing issues. Don't manually replicate what `/issue` orchestrates — it handles state gathering, mode detection, worktree enforcement, context loading, and plan mode entry in the correct order with structural gates.
 - **Track workflow state**: When starting work on an issue, `pm move <num> Active`. When done, move through Review to Done. Don't leave issues in limbo.
+- **Follow instructions literally before interpreting goals.** When given a plan, prior session output, or step-by-step instructions, read and execute the steps as written. Do not extract the perceived end goal and skip ahead to it. Instructions exist because ordering, gates, and context matter.
+- **Use defined processes over ad-hoc work.** If a skill, script, or documented process exists for a task, use it. Do not manually replicate individual steps — you will miss sequencing, structural enforcement, and error handling that the process provides.
+- **Verify environment before acting.** Do not assume files exist, directories match expectations, or you are in the correct location. Check first. Worktrees, plan files, and build artifacts may not be where you expect.
 
 ## Available Tools
 
