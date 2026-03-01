@@ -4,6 +4,11 @@
 # Usage (command substitution in codex exec):
 #   codex exec $(./tools/scripts/codex-mcp-overrides.sh) -s read-only ...
 #
+# Stdout: -c flags only (consumed by codex exec)
+# Stderr: skip messages and summary (visible to Claude/user)
+#
+# Values use TOML inline table syntax (codex -c expects TOML, not JSON).
+#
 # Reads .mcp.json from the repository root and emits -c flags for each
 # MCP server whose required environment variables are available.
 #
@@ -12,8 +17,8 @@
 #   - .mcp.json doesn't exist or is invalid
 #   - No servers have their required auth configured
 
-# Fail silently — any output to stdout becomes codex flags
-# Diagnostics go to stderr only
+set -euo pipefail
+
 diag() { echo "codex-mcp-overrides: $*" >&2; }
 
 # Check codex is available
@@ -38,9 +43,6 @@ if [[ -z "$MCP_JSON" ]]; then
   exit 0
 fi
 
-# Parse .mcp.json and emit -c flags for servers with available auth
-# The .mcp.json format has mcpServers.<name>.{command, args, env}
-# We check if all env vars referenced in the server config are set
 if ! command -v jq &>/dev/null; then
   diag "jq not found, cannot parse .mcp.json"
   exit 0
@@ -52,51 +54,90 @@ server_names=$(jq -r '.mcpServers // {} | keys[]' "$MCP_JSON" 2>/dev/null) || {
   exit 0
 }
 
-while IFS= read -r server_name; do
-  [ -z "$server_name" ] && continue
-  # Extract env vars referenced by this server
-  env_vars=$(jq -r --arg name "$server_name" \
-    '.mcpServers[$name].env // {} | keys[]' "$MCP_JSON" 2>/dev/null) || continue
+server_count=0
 
-  # Check if all required env vars are set
+while IFS= read -r name; do
+  [[ -z "$name" ]] && continue
+
+  srv_json=$(jq --arg n "$name" '.mcpServers[$n]' "$MCP_JSON" 2>/dev/null) || continue
+
+  # Check env var requirements — extract ${VAR} references from env values
+  env_refs=$(echo "$srv_json" | jq -r \
+    '.env // {} | to_entries[] | .value |
+     capture("^\\$\\{(?<v>[A-Za-z_][A-Za-z0-9_]*)\\}$") // empty | .v' \
+    2>/dev/null) || true
+
   all_set=true
-  missing_var=""
-  while IFS= read -r var_name; do
-    [ -z "$var_name" ] && continue
-    # Get the value template — if it references an env var (${VAR} pattern), check it
-    val_template=$(jq -r --arg name "$server_name" --arg var "$var_name" \
-      '.mcpServers[$name].env[$var]' "$MCP_JSON" 2>/dev/null) || continue
-
-    # Extract referenced env var name from ${VAR} pattern
-    if [[ "$val_template" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]]; then
-      ref_var="${BASH_REMATCH[1]}"
-      if [[ -z "${!ref_var:-}" ]]; then
-        all_set=false
-        missing_var="$ref_var"
-        break
-      fi
+  missing=""
+  while IFS= read -r ref; do
+    [[ -z "$ref" ]] && continue
+    if [[ -z "${!ref:-}" ]]; then
+      all_set=false
+      missing="$ref"
+      break
     fi
-  done <<< "$env_vars"
+  done <<< "$env_refs"
 
   if ! $all_set; then
-    diag "skipping $server_name ($missing_var not set)"
+    diag "skipping $name ($missing not set)"
     continue
   fi
 
-  # Build the codex -c flag value: server_name=command args...
-  command_val=$(jq -r --arg name "$server_name" \
-    '.mcpServers[$name].command // empty' "$MCP_JSON" 2>/dev/null) || continue
-  [[ -z "$command_val" ]] && continue
+  # Build TOML inline table from server definition
+  toml_parts=()
 
-  args_val=$(jq -r --arg name "$server_name" \
-    '.mcpServers[$name].args // [] | join(" ")' "$MCP_JSON" 2>/dev/null) || args_val=""
+  # type field (http servers)
+  srv_type=$(echo "$srv_json" | jq -r '.type // empty' 2>/dev/null)
+  [[ -n "$srv_type" ]] && toml_parts+=("type=\"$srv_type\"")
 
-  # Emit the -c flag
-  if [[ -n "$args_val" ]]; then
-    echo "-c"
-    echo "${server_name}=${command_val} ${args_val}"
-  else
-    echo "-c"
-    echo "${server_name}=${command_val}"
+  # url field (http servers)
+  srv_url=$(echo "$srv_json" | jq -r '.url // empty' 2>/dev/null)
+  [[ -n "$srv_url" ]] && toml_parts+=("url=\"$srv_url\"")
+
+  # command field (stdio servers)
+  srv_cmd=$(echo "$srv_json" | jq -r '.command // empty' 2>/dev/null)
+  [[ -n "$srv_cmd" ]] && toml_parts+=("command=\"$srv_cmd\"")
+
+  # args array → TOML array of strings
+  args_toml=$(echo "$srv_json" | jq -r \
+    '.args // empty | map("\"" + . + "\"") | join(",")' 2>/dev/null)
+  [[ -n "$args_toml" ]] && toml_parts+=("args=[$args_toml]")
+
+  # env handling: separate into env_vars (passthrough) and env (mapped/resolved)
+  env_entries=$(echo "$srv_json" | jq -r \
+    '.env // {} | to_entries[] | "\(.key)\t\(.value)"' 2>/dev/null) || true
+  env_vars_list=()
+  env_map_parts=()
+  while IFS=$'\t' read -r ekey eval; do
+    [[ -z "$ekey" ]] && continue
+    if [[ "$eval" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]]; then
+      ref="${BASH_REMATCH[1]}"
+      if [[ "$ekey" == "$ref" ]]; then
+        # Same name: passthrough via env_vars
+        env_vars_list+=("\"$ekey\"")
+      else
+        # Different name: resolve and map
+        resolved="${!ref:-}"
+        env_map_parts+=("$ekey=\"$resolved\"")
+      fi
+    else
+      # Literal value
+      env_map_parts+=("$ekey=\"$eval\"")
+    fi
+  done <<< "$env_entries"
+
+  if [[ ${#env_vars_list[@]} -gt 0 ]]; then
+    toml_parts+=("env_vars=[$(IFS=,; echo "${env_vars_list[*]}")]")
   fi
+  if [[ ${#env_map_parts[@]} -gt 0 ]]; then
+    toml_parts+=("env={$(IFS=,; echo "${env_map_parts[*]}")}")
+  fi
+
+  # Skip if no meaningful config
+  [[ ${#toml_parts[@]} -eq 0 ]] && continue
+
+  printf '%s\n' '-c' "mcp_servers.${name}={$(IFS=,; echo "${toml_parts[*]}")}"
+  server_count=$((server_count + 1))
 done <<< "$server_names"
+
+diag "injecting $server_count MCP server(s)"

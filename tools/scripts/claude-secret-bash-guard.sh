@@ -510,6 +510,15 @@ except ValueError:
             # Skip flags
             [[ "$_arg" == -* ]] && continue
 
+            # Heredoc operator: <<DELIM or <<-DELIM is a redirection, not a
+            # file path. Skip this token but continue checking subsequent
+            # tokens — they may be real file operands (e.g. cat <<EOF file).
+            # Heredoc body lines are on separate lines and handled by the
+            # heredoc body skipping logic above (lines 314-321).
+            # This prevents false positives on $(cat <<'EOF' markdown body EOF)
+            # while still catching cat <<EOF ~/.ssh/id_rsa.
+            [[ "$_arg" == '<<'* ]] && continue
+
             # Deny paths with unresolvable shell metacharacters (fail-closed).
             # Level 1 (file-read commands): deny all metachar args.
             # Level 2 (compound keywords): deny if arg has expansion syntax

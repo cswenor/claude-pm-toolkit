@@ -149,11 +149,26 @@ Input: $ARGUMENTS
    ```bash
    gh issue view $ARGUMENTS --json comments --jq '.comments[].body'
    ```
-3. Search for linked PRs via `mcp__github__search_issues` with query:
+3. **Search for linked PRs** using all 6 strategies in parallel:
+
+   **Strategy 1-3: Closing keywords (High confidence)**
+   Use `mcp__github__search_issues` with queries:
+   - `repo:{{OWNER}}/{{REPO}} is:pr "Fixes #$ARGUMENTS"`
+   - `repo:{{OWNER}}/{{REPO}} is:pr "Closes #$ARGUMENTS"`
+   - `repo:{{OWNER}}/{{REPO}} is:pr "Resolves #$ARGUMENTS"`
+
+   **Strategy 4: Issue URL (High confidence)**
+   - `repo:{{OWNER}}/{{REPO}} is:pr "github.com/{{OWNER}}/{{REPO}}/issues/$ARGUMENTS"`
+
+   **Strategy 5: Timeline events (High confidence, no search index lag)**
+   ```bash
+   gh api repos/{{OWNER}}/{{REPO}}/issues/$ARGUMENTS/timeline --paginate --jq '.[] | select(.event == "cross-referenced") | select(.source.issue.pull_request) | {number: .source.issue.number, title: .source.issue.title, state: .source.issue.state}'
    ```
-   repo:{{OWNER}}/{{REPO}} is:pr "Fixes #$ARGUMENTS"
-   ```
-   (Also try "Closes #$ARGUMENTS" as fallback)
+
+   **Strategy 6: List open PRs + body scan (Medium confidence)**
+   Use `mcp__github__list_pull_requests` (state: "open", per_page: 25) and scan each body for `Fixes #$ARGUMENTS` etc.
+
+   Deduplicate all results by PR number.
 4. Check `items[].pull_request.merged_at` to determine PR state
 5. **Get PR review comments** for each linked PR via `mcp__github__get_pull_request_comments`
 

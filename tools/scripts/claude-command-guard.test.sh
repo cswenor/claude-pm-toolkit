@@ -297,6 +297,16 @@ assert_deny "case pattern with hyphen via pipe-split" \
 assert_deny "case pattern with multi-hyphen via pipe-split" \
     'SECRET="$(case x in a|foo-bar-baz) docker compose up ;; esac)"'
 
+# ---- gh CLI --body markdown regression tests ----
+
+# gh issue comment --body with markdown (ALLOW — no blocked patterns)
+assert_allow "gh issue comment --body with markdown" \
+    "gh issue comment 123 --body '## Heading with (parens) and *stars*'"
+
+# gh pr create --body with markdown (ALLOW — no blocked patterns)
+assert_allow "gh pr create --body with markdown" \
+    "gh pr create --title 'fix' --body '## Summary\n- item\n- item'"
+
 echo ""
 echo "==> Results: $((pass + fail)) tests, $pass passed, $fail failed"
 

@@ -967,6 +967,67 @@ assert_bash_guard_deny "post-esac ) restores splitting" \
     'echo $(case x in x) echo ok ;; esac) && cat ~/.ssh/id_rsa'
 
 # ============================================================
+# gh CLI --body markdown false-positive regression tests
+# ============================================================
+
+echo ""
+echo "--- gh CLI --body markdown heredoc tests ---"
+
+# gh issue comment --body with markdown headings and parens (ALLOW)
+assert_bash_guard_allow "gh issue comment --body with markdown" \
+    "gh issue comment 123 --body '## Heading with (parens) and *stars*'"
+
+# gh pr create --body with heredoc containing markdown (ALLOW)
+_gh_pr_heredoc=$(printf 'gh pr create --title "fix stuff" --body "$(cat <<'\''EOF'\''\n## Summary\n- item one\n- item two\nEOF\n)"')
+assert_bash_guard_allow "gh pr create --body heredoc with markdown" "$_gh_pr_heredoc"
+
+# gh issue create --body with markdown (ALLOW)
+assert_bash_guard_allow "gh issue create --body with markdown" \
+    "gh issue create --title 'Bug' --body '## Steps\n1. Do (this)\n2. See *error*'"
+
+# gh pr create --body heredoc on single line with parens (ALLOW)
+_gh_pr_single=$(printf 'gh pr create --body "$(cat <<'\''EOF'\''\n## Test plan\n- [ ] Check (all) items\nEOF\n)"')
+assert_bash_guard_allow "gh pr create --body heredoc single line with parens" "$_gh_pr_single"
+
+# gh issue comment multiline body with markdown (ALLOW)
+assert_bash_guard_allow "gh issue comment multiline markdown body" \
+    $'gh issue comment 42 --body \'## Changes\n- Added (new) feature\n- Fixed *bug*\''
+
+# cat sensitive path still denied (DENY - regression)
+assert_bash_guard_deny "cat sensitive path still denied after heredoc fix" \
+    'cat ~/.ssh/id_rsa'
+
+# cat heredoc with sensitive-looking body text (ALLOW)
+# The heredoc body contains text that looks like sensitive paths but is just text
+_cat_heredoc_sensitive=$(printf 'cat <<'\''EOF'\''\n~/.ssh/id_rsa is the default key\nEOF')
+assert_bash_guard_allow "cat heredoc with sensitive-looking body text" "$_cat_heredoc_sensitive"
+
+# cat sensitive file before heredoc still denied (DENY)
+# The sensitive path operand appears BEFORE the << so it is still checked
+assert_bash_guard_deny "cat sensitive file before heredoc" \
+    $'cat ~/.ssh/id_rsa <<EOF\nsome body\nEOF'
+
+# cat safe file before heredoc allowed (ALLOW)
+_cat_safe_heredoc=$(printf 'cat /tmp/safe-file.txt <<'\''EOF'\''\nsome body text\nEOF')
+assert_bash_guard_allow "cat safe file before heredoc" "$_cat_safe_heredoc"
+
+# Mixed: gh with heredoc body + separate sensitive cat denied (DENY)
+_mixed_heredoc=$(printf 'gh pr create --body "$(cat <<'\''EOF'\''\n## Summary\nEOF\n)" && cat ~/.ssh/id_rsa')
+assert_bash_guard_deny "gh heredoc body + sensitive cat after &&" "$_mixed_heredoc"
+
+# Post-heredoc file operand: cat <<EOF sensitive-file (DENY)
+# In bash, `cat <<EOF file` reads both heredoc stdin AND the file.
+# The heredoc operator token is skipped but file operands after it are still checked.
+assert_bash_guard_deny "cat post-heredoc sensitive file (<<EOF)" \
+    $'cat <<EOF ~/.ssh/id_rsa\nbody text\nEOF'
+
+assert_bash_guard_deny "cat post-heredoc sensitive file (<<'EOF')" \
+    $'cat <<'\''EOF'\'' ~/.ssh/id_rsa\nbody text\nEOF'
+
+assert_bash_guard_deny "cat post-heredoc sensitive file (<<-EOF)" \
+    $'cat <<-EOF ~/.ssh/id_rsa\n\tbody text\n\tEOF'
+
+# ============================================================
 # False positive regression tests (base64 three-stage filter)
 # ============================================================
 

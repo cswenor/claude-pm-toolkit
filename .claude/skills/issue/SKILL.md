@@ -72,6 +72,155 @@ Controlled by the `autonomous_mode` flag in `.claude-pm-toolkit.json`. When `tru
 jq '.autonomous_mode = true' .claude-pm-toolkit.json > /tmp/pm-cfg.json && mv /tmp/pm-cfg.json .claude-pm-toolkit.json
 ```
 
+## Swarm Architecture
+
+### Delegation Principle
+
+The orchestrator (main conversation) retains all process enforcement while delegating heavy work to spawned agents via the Agent tool. This prevents context exhaustion on complex issues.
+
+### Roles
+
+| Role                | Runs In                           | Does                                                                   | Does NOT                                                    |
+| ------------------- | --------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **Orchestrator**    | Main conversation                 | State transitions, user interaction, read deliverables, commit/PR      | Write code, explore codebase for implementation             |
+| **Planner Agent**   | Agent tool spawn (general-purpose)| Explore codebase, load docs, Codex collaborative planning, write plan  | Interact with user, transition states, commit               |
+| **Developer Agent** | Agent tool spawn (general-purpose)| Implement, run tests, Codex review loop                                | Interact with user, transition states, commit, create PR    |
+
+### Agent Authority Enforcement
+
+Agents are `general-purpose` (full tool access). Authority boundaries enforced via prompt constraints and post-return verification.
+
+**Prompt constraints (included in every agent spawn):**
+
+- DO NOT run `git commit`, `git push`, or `gh pr create`
+- DO NOT run `pm move` or any state transition
+- DO NOT create issues via MCP (orchestrator handles Discovered Work)
+- DO NOT interact with the user (no AskUserQuestion)
+
+**Post-return verification (orchestrator runs after every agent return):**
+
+1. `git log --oneline -1` — verify no new commits since before spawn
+2. `pm status <num>` — verify workflow state unchanged
+3. If violation detected: surface to user, discard agent work
+
+### Phase Gates (Fail-Closed)
+
+Every gate is **fail-closed**: missing or invalid evidence blocks progression. No fallbacks.
+
+| Gate           | Evidence Required                                                                                                     | Failure Action                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Plan Complete  | Plan file exists, contains `## Acceptance Criteria` with checkboxes, `## Non-goals`, scope section                   | Re-spawn Planner with corrective instructions            |
+| Plan Approved  | User explicit approval via AskUserQuestion                                                                            | Re-spawn Planner with user feedback + prior plan         |
+| Dev Complete   | Developer output includes: files changed list, test command exit code 0                                               | Re-spawn Developer Agent to complete work                |
+| Post-Dev Ready | `git diff --stat` shows changes                                                                                       | Block commit/PR until evidence is present                |
+
+### Discovered Work Handling (Stop-and-Return)
+
+Spawned agents MUST **stop immediately** when they discover out-of-scope work. They do NOT continue implementing.
+
+**Agent behavior on discovered work:**
+
+1. Stop current task
+2. Return to orchestrator with a structured payload:
+   - `discovered_work: true`
+   - Description of the discovered work
+   - Classification (blocker/prerequisite/related/follow-up)
+   - What was completed before discovery
+   - What remains to be done
+3. Do NOT continue implementation after discovery
+
+**Orchestrator behavior:**
+
+1. Receives agent return with discovered_work flag
+2. Runs the Discovered Work sub-playbook (duplicate scan, create issue, establish blocker)
+3. Only after the new issue exists → re-spawns agent to continue remaining work
+
+### Multi-Developer Spawning
+
+**Complexity rubric** (all must be true for multi-dev):
+
+- Plan has 2+ subtasks touching different packages
+- Subtasks are independent (no shared state or ordering dependency)
+- Dependency graph shows no conflicts
+
+**Process:**
+
+1. Orchestrator identifies independent subtasks in approved plan
+2. Presents team structure to user for confirmation (mandatory)
+3. Spawns N Developer Agents in parallel, each with subtask context
+4. After all complete: orchestrator runs integration verification
+5. If integration issues: spawns single Integration Agent to resolve
+
+### Agent Prompt Templates
+
+#### Common Context Block (included in ALL agent spawns)
+
+```
+You are a {role} agent working on Issue #{issue_num}: {title}
+
+## Issue Context
+{full_issue_body}
+
+## Acceptance Criteria
+{acceptance_criteria_as_checkboxes}
+
+## Non-goals (DO NOT implement these)
+{non_goals}
+
+## Policies
+- NO FALLBACKS: All operations must succeed or fail explicitly
+- NO TEST BYPASS: Fix test failures, never skip
+- SCOPE DISCIPLINE: If you discover work outside the acceptance criteria, STOP and return immediately with discovered_work details
+
+## Authority Constraints (ENFORCED)
+- DO NOT run `git commit`, `git push`, or `gh pr create`
+- DO NOT run `pm move` or any state transition script
+- DO NOT create issues via MCP tools
+- DO NOT use AskUserQuestion (you cannot interact with the user)
+- DO NOT run any destructive git operations (reset, clean, checkout .)
+```
+
+#### Planner-Specific Block
+
+```
+## Your Task: Create Implementation Plan
+
+1. Read all relevant source files to understand the current architecture
+2. Load documentation referenced by the issue (area labels, keywords)
+3. Write the plan file to the standard plan directory
+
+## Plan File Requirements
+- Title: `# Plan: {title} (#{issue_num})`
+- Must contain `## Acceptance Criteria` with checkboxes from the issue
+- Must contain `## Non-goals` listing all non-goals as DO NOT items
+- Must contain scope section
+- Must contain implementation approach with file paths and line references
+
+## Output
+Report: Plan file path (absolute), any discovered work details
+```
+
+#### Developer-Specific Block
+
+```
+## Your Task: Implement the Approved Plan
+
+1. Implement changes according to the plan
+2. Run tests — fix any failures
+3. Stage all implementation files: `git add <specific files>` (staging is allowed, committing is forbidden)
+
+## Discovered Work
+If you discover work outside the acceptance criteria:
+- STOP immediately
+- Return with `discovered_work: true` and details
+- Do NOT continue implementing
+
+## Output
+Report: Files changed (list), test results (command and exit code), any discovered work
+```
+
+---
+
 ## Hard Guardrails (Non-Negotiable)
 
 | Guardrail          | Rule                                                                               |
@@ -373,7 +522,14 @@ Extract the `workflow` field. **If the command fails** (non-zero exit, issue not
 
 #### 1d. PR Discovery
 
-Search for linked PRs using multiple strategies:
+Search for linked PRs using multiple strategies. **All 6 strategies run in parallel.** Deduplicate results by PR number.
+
+| #     | Strategy            | Mechanism                                     | Search Index? | Confidence |
+| ----- | ------------------- | --------------------------------------------- | ------------- | ---------- |
+| 1-3   | Closing keywords    | `mcp__github__search_issues`                  | Yes           | High       |
+| 4     | Issue URL in body   | `mcp__github__search_issues`                  | Yes           | High       |
+| **5** | **Timeline events** | `gh api` → cross-referenced events            | **No**        | **High**   |
+| **6** | **List open PRs**   | `mcp__github__list_pull_requests` → body scan | **No**        | **Medium** |
 
 **Strategy 1-3: Closing keywords (High confidence)**
 
@@ -389,7 +545,44 @@ Search for issue URL in PR body:
 
 - `repo:{{OWNER}}/{{REPO}} is:pr "github.com/{{OWNER}}/{{REPO}}/issues/$ARGUMENTS"`
 
-Deduplicate results by PR number.
+**Strategy 5: Timeline events (High confidence, no search index lag)**
+
+Uses the Issue Timeline Events API which returns real-time data with no search indexing delay.
+
+```bash
+gh api repos/{{OWNER}}/{{REPO}}/issues/$ARGUMENTS/timeline --paginate --jq '.[] | select(.event == "cross-referenced") | select(.source.issue.pull_request) | {number: .source.issue.number, title: .source.issue.title, state: .source.issue.state}'
+```
+
+If the `gh api` call fails (non-zero exit, auth error, rate limit), report the error explicitly — do NOT suppress stderr or silently skip. The error context is needed to diagnose discovery failures.
+
+Each result line is a JSON object with `number`, `title`, and `state`. Add all returned PR numbers to the candidate set.
+
+**Strategy 6: List open PRs + body scan (Medium confidence, no search index)**
+
+Use `mcp__github__list_pull_requests` with:
+
+- owner: "{{OWNER}}"
+- repo: "{{REPO}}"
+- state: "open"
+- sort: "created"
+- direction: "desc"
+- per_page: 25
+
+For each returned PR, check if body contains any of (case-insensitive):
+
+- `Fixes #$ARGUMENTS`
+- `Closes #$ARGUMENTS`
+- `Resolves #$ARGUMENTS`
+- `github.com/{{OWNER}}/{{REPO}}/issues/$ARGUMENTS`
+
+**Bonus branch-pattern check:** Also check the PR's head branch name for patterns:
+
+- `(^|/|-|_)$ARGUMENTS(-|_|$)` (e.g., `fix/wallet-345`, `feat/thing-345-blah`)
+- `{{prefix}}-$ARGUMENTS` (worktree branches)
+
+Add any matching PRs to the candidate set.
+
+**Deduplication:** Collect all PR numbers from all 6 strategies. Remove duplicates. For each unique PR number, use `mcp__github__get_pull_request` to get current state if not already fetched.
 
 #### 1e. PM Intelligence Context (Parallel)
 
