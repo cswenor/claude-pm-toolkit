@@ -9,6 +9,12 @@
 - [ ] On a feature branch, not main
 - [ ] For Tier 1 work: issue exists and is linked
 
+### During Implementation
+
+- [ ] If you identify work outside the current issue's acceptance criteria → STOP → run `/issue` to create a separate issue
+- [ ] Do NOT bundle unrelated changes into the current PR
+- [ ] Do NOT defer issue creation — create it NOW before continuing
+
 ### Before Creating PR
 
 - [ ] ALL acceptance criteria are met
@@ -222,6 +228,50 @@ Claude should call intelligence tools **automatically** at these moments — no 
 - Commenting out or modifying test infrastructure to make tests pass
 - Modifying the local database directly to skip the gate
 - Declaring "ready for review" when tests haven't passed
+
+### NO FALLBACKS
+
+**This codebase forbids fallback code.**
+
+Fallback code (try/catch with silent defaults, `||` operators for defaults, optional chaining that hides errors) makes debugging harder and masks deficiencies. All operations must either:
+
+1. **Succeed** - Return the expected result
+2. **Fail explicitly** - Throw a typed error with full context
+
+**FORBIDDEN patterns:**
+
+- Silent fallbacks: `const config = (await loadConfig()) ?? DEFAULT_CONFIG;`
+- Swallowing errors: `try { ... } catch { /* ignore */ }`
+- Default on failure: `items.find(x => x.id === id) || createDefault()`
+
+**Required patterns:**
+
+- Explicit error: `if (!config) throw new ConfigNotFoundError(path);`
+- Rethrow with context: `catch (error) { throw new OperationError('context', error); }`
+- Explicit not-found: `if (!item) throw new NotFoundError(id);`
+
+### DISCOVERED WORK GETS ITS OWN ISSUE
+
+**When Claude discovers work outside the current issue's acceptance criteria during implementation, it MUST stop and create a separate issue before continuing.**
+
+This applies in ALL contexts: plan mode, implementation, review — whenever out-of-scope work is identified.
+
+**FORBIDDEN patterns:**
+
+- Noting discovered work in comments/chat and continuing without creating an issue
+- Bundling out-of-scope changes into the current PR
+- Deferring issue creation "for later" or "after this PR"
+- Adding a TODO comment instead of creating an issue
+- Saying "I'll create an issue for this" without actually doing it
+
+**Required patterns:**
+
+1. **STOP** implementation immediately when out-of-scope work is identified
+2. **Create issue** via `/issue` skill or MCP tools — with explicit user confirmation before creation
+3. **Establish blocker relationship** if the discovered work blocks the current issue
+4. **Only resume** current work after the new issue exists
+
+**Why:** Bundling out-of-scope work into a PR causes scope mixing, blocks merges, creates review churn, and makes rollbacks impossible. The cost of creating an issue is minutes; the cost of scope mixing is days.
 
 ### PREFER GITHUB MCP TOOLS
 
