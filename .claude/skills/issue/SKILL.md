@@ -518,7 +518,9 @@ gh issue view $ARGUMENTS --json comments --jq '.comments[] | {author: .author.lo
 export PATH="./tools/scripts:$PATH" && pm status $ARGUMENTS
 ```
 
-Extract the `workflow` field. **If the command fails** (non-zero exit, issue not in project, network error), set `workflow = null` — this will trigger MISMATCH(not_in_project) in Step 4, which offers to add the issue to the project.
+Extract the `workflow` field. **If the command fails** (non-zero exit, issue not in project, MCP server not ready, network error), set `workflow = null`.
+
+**IMPORTANT:** `workflow = null` does NOT mean "skip worktree detection." It means the issue hasn't been added to the local PM project yet. Step 4 will still assign a mode, and Step 4.5 must still run for worktree enforcement. See Rule 1 in Step 4.
 
 #### 1d. PR Discovery
 
@@ -675,22 +677,31 @@ Apply rules in order (first match wins):
 
 | #   | Condition                                        | Mode                     |
 | --- | ------------------------------------------------ | ------------------------ |
-| 1   | workflow == null (not in project)                | MISMATCH(not_in_project) |
-| 2   | Multiple open PRs found                          | MISMATCH(multiple_prs)   |
-| 3   | issue.state == "closed" AND workflow == "Done"   | CLOSED                   |
-| 4   | PR merged AND (issue open OR workflow != "Done") | MISMATCH(stage_behind)   |
-| 5   | PR exists AND has CHANGES_REQUESTED review       | REWORK                   |
-| 6   | PR exists AND open AND APPROVED AND not draft    | APPROVED                 |
-| 7   | PR exists AND open AND (no review OR PENDING)    | REVIEW                   |
-| 8   | workflow == "Done" AND issue.state == "open"     | MISMATCH(stage_behind)   |
-| 9   | workflow == "Rework" AND no open PR              | MISMATCH(no_pr)          |
-| 10  | workflow == "Review" AND no open PR              | MISMATCH(no_pr)          |
-| 11  | workflow == "Active"                             | CONTINUE                 |
-| 12  | workflow in ["Ready", "Backlog"]                 | START                    |
+| 1   | workflow == null AND no open PR                  | START (auto-add)         |
+| 2   | workflow == null AND open PR exists              | REVIEW (auto-add)        |
+| 3   | Multiple open PRs found                          | MISMATCH(multiple_prs)   |
+| 4   | issue.state == "closed" AND workflow == "Done"   | CLOSED                   |
+| 5   | PR merged AND (issue open OR workflow != "Done") | MISMATCH(stage_behind)   |
+| 6   | PR exists AND has CHANGES_REQUESTED review       | REWORK                   |
+| 7   | PR exists AND open AND APPROVED AND not draft    | APPROVED                 |
+| 8   | PR exists AND open AND (no review OR PENDING)    | REVIEW                   |
+| 9   | workflow == "Done" AND issue.state == "open"     | MISMATCH(stage_behind)   |
+| 10  | workflow == "Rework" AND no open PR              | MISMATCH(no_pr)          |
+| 11  | workflow == "Review" AND no open PR              | MISMATCH(no_pr)          |
+| 12  | workflow == "Active"                             | CONTINUE                 |
+| 13  | workflow in ["Ready", "Backlog"]                 | START                    |
 
-### Step 4.5: Worktree Detection (START/CONTINUE only)
+**Rules 1-2 (auto-add):** When workflow is null, the issue isn't tracked in the local PM project yet. Instead of blocking on a MISMATCH prompt, automatically add the issue and proceed:
 
-**Only run this step for START or CONTINUE modes.** Other modes skip to Step 5.
+```bash
+pm add $ARGUMENTS normal
+```
+
+If `pm add` fails (MCP server not ready, database not initialized), log the error to stderr and continue — worktree creation and implementation are not blocked by PM tracking. The issue can be added later via `pm sync`.
+
+### Step 4.5: Worktree Detection (START/CONTINUE/auto-add modes)
+
+**Run this step for START, CONTINUE, and any auto-add mode (Rules 1-2).** Other modes skip to Step 5.
 
 **⚠️ MANDATORY: START mode from main repo MUST create worktree before any other work.**
 
@@ -1432,6 +1443,8 @@ Print: `gh issue reopen <num>`
 
 #### not_in_project
 
+> **Note:** This MISMATCH should rarely trigger now. Rules 1-2 in Step 4 auto-add the issue and proceed with START/REVIEW mode. This fallback only applies if `pm add` failed during auto-add AND the user manually re-routes to MISMATCH handling.
+
 ```
 question: "Issue #X is not in the project. Fix this?"
 header: "Fix"
@@ -1445,7 +1458,7 @@ options:
 **On "Add to project":**
 
 1. Execute: `pm add <num> normal`
-2. Re-run mode detection ONCE
+2. Re-run mode detection from Step 4 (including Step 4.5 worktree detection)
 3. If still MISMATCH, display error and stop
 
 #### no_pr
