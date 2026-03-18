@@ -759,7 +759,7 @@ if [[ -d "$MCP_DST/src" ]] && [[ -f "$MCP_DST/package.json" ]]; then
     log_warn "Run manually: cd $MCP_DST && npm run build"
   fi
 
-  # Merge MCP servers into .mcp.json (pm-intelligence, github, context7)
+  # Merge MCP servers into .mcp.json (pm-intelligence, github, context7, codex)
   MCP_JSON="$TARGET/.mcp.json"
   MCP_ENTRIES=$(cat <<'MCPEOF'
 {
@@ -778,6 +778,10 @@ if [[ -d "$MCP_DST/src" ]] && [[ -f "$MCP_DST/package.json" ]]; then
     "context7": {
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
+    },
+    "codex": {
+      "command": "codex",
+      "args": ["mcp-server"]
     }
   }
 }
@@ -790,13 +794,13 @@ MCPEOF
     # Deep merge: existing entries preserved, toolkit entries added/updated
     if jq -s '.[0] * .[1]' "$MCP_JSON" <(echo "$MCP_ENTRIES") > "$tmp_mcp" 2>/dev/null; then
       cp "$tmp_mcp" "$MCP_JSON"
-      log_ok "Merged pm-intelligence, github, context7 into existing .mcp.json"
+      log_ok "Merged pm-intelligence, github, context7, codex into existing .mcp.json"
     else
       log_warn "Failed to merge .mcp.json — add entries manually"
     fi
   else
     echo "$MCP_ENTRIES" | jq '.' > "$MCP_JSON"
-    log_ok "Created .mcp.json with pm-intelligence, github, context7 servers"
+    log_ok "Created .mcp.json with pm-intelligence, github, context7, codex servers"
   fi
 fi
 
