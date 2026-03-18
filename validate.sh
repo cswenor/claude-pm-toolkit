@@ -417,20 +417,23 @@ log_section "8. Gitignore"
 
 GITIGNORE="$TARGET/.gitignore"
 if [[ -f "$GITIGNORE" ]]; then
-  if grep -qx '\.claude' "$GITIGNORE"; then
+  if grep -qE '^\.claude/?$' "$GITIGNORE"; then
     if $FIX_MODE; then
       awk '
-        /^\.claude$/ {
-          print ".claude/settings.local.json"
-          print ".claude/plans/"
+        /^\.claude\/?$/ {
+          print ".claude/*"
+          print "!.claude/commands/"
+          print "!.claude/skills/"
+          print "!.claude/settings.json"
+          print "!.claude/memory/"
           next
         }
         { print }
       ' "$GITIGNORE" > "${GITIGNORE}.tmp" && mv "${GITIGNORE}.tmp" "$GITIGNORE"
       FIXED=$((FIXED+1))
-      pass ".gitignore — FIXED (blanket .claude → selective)"
+      pass ".gitignore — FIXED (blanket .claude → selective for worktree support)"
     else
-      fail ".claude is fully gitignored — .claude/settings.json and skills won't be tracked (use --fix)"
+      fail ".claude is fully gitignored — skills won't be available in worktrees (use --fix)"
     fi
   else
     pass ".claude not blanket-gitignored"

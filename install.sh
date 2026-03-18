@@ -573,7 +573,12 @@ GITIGNORE_FILE="$TARGET/.gitignore"
 if [[ ! -f "$GITIGNORE_FILE" ]]; then
   log_section "Creating .gitignore"
   cat > "$GITIGNORE_FILE" <<'GITIGNORE'
-# Claude Code
+# Claude Code — ignore local state, track shared config + skills
+.claude/*
+!.claude/commands/
+!.claude/skills/
+!.claude/settings.json
+!.claude/memory/
 .claude/settings.local.json
 .claude/plans/
 .codex-work/
@@ -584,18 +589,24 @@ GITIGNORE
   log_ok "Created .gitignore with Claude Code entries"
 fi
 
-if [[ -f "$GITIGNORE_FILE" ]] && grep -qx '\.claude' "$GITIGNORE_FILE"; then
+# Fix blanket .claude/ or .claude ignore → selective .claude/* with negations
+# This ensures .claude/skills/ and .claude/settings.json are trackable in git,
+# which is required for worktrees to have access to skills.
+if [[ -f "$GITIGNORE_FILE" ]] && grep -qE '^\.claude/?$' "$GITIGNORE_FILE"; then
   log_section "Updating .gitignore"
-  log_info ".claude directory is fully gitignored — switching to selective ignoring"
+  log_info "Blanket .claude ignore detected — switching to selective ignoring for worktree support"
   awk '
-    /^\.claude$/ {
-      print ".claude/settings.local.json"
-      print ".claude/plans/"
+    /^\.claude\/?$/ {
+      print ".claude/*"
+      print "!.claude/commands/"
+      print "!.claude/skills/"
+      print "!.claude/settings.json"
+      print "!.claude/memory/"
       next
     }
     { print }
   ' "$GITIGNORE_FILE" > "${GITIGNORE_FILE}.tmp" && mv "${GITIGNORE_FILE}.tmp" "$GITIGNORE_FILE"
-  log_ok "Updated .gitignore: .claude/settings.json and .claude/skills/ now trackable"
+  log_ok "Updated .gitignore: .claude/skills/ and .claude/settings.json now trackable"
 fi
 
 # Ensure essential ignore entries exist
