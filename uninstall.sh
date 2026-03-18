@@ -140,6 +140,7 @@ TOOLKIT_FILES=(
 TOOLKIT_DIRS_RECURSIVE=(
   ".claude/skills/issue"
   ".claude/skills/pm-review"
+  ".claude/skills/audit"
   ".claude/skills/weekly"
   ".claude/skills/start"
   ".pm"

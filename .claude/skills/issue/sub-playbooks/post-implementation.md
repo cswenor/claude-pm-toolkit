@@ -91,6 +91,46 @@ If /pm-review identifies **code/implementation issues** (missing AC, scope drift
 
 If user overrides: proceed to Step 5 with acknowledgment.
 
+### Step 4.5: Acceptance Criteria Checkbox Gate
+
+Before transitioning to Review, verify all acceptance criteria are checked off:
+
+1. **Fetch issue body:** `mcp__github__get_issue` with owner, repo, issue_number
+2. **Parse `## Acceptance Criteria` section:** Extract all `- [ ]` and `- [x]` items
+3. **Evaluate:**
+   - If no AC section found → warn "No Acceptance Criteria section found" but do not block
+   - If all items checked (`- [x]`) → proceed to Step 5
+   - If unchecked items exist → display and offer choices:
+
+```
+question: "X of Y acceptance criteria are unchecked. PRs should not reach Review with incomplete AC."
+header: "AC Gate"
+options:
+  - label: "Check off completed criteria (Recommended)"
+    description: "Update the issue body to mark completed items"
+  - label: "Override — proceed anyway"
+    description: "Move to Review with unchecked items (adds warning comment)"
+  - label: "Show unchecked items"
+    description: "Display the items that are still unchecked"
+```
+
+**On "Check off completed":**
+- For each unchecked item, verify it's actually done (check code, tests, PR diff)
+- Update issue body: replace `- [ ]` with `- [x]` for completed items via `mcp__github__update_issue`
+- Re-evaluate: if still unchecked items remain, re-prompt
+
+**On "Override":**
+- Add warning comment to the issue via `mcp__github__add_issue_comment`:
+  ```
+  ⚠️ Moving to Review with X unchecked acceptance criteria (overridden by developer).
+  Unchecked: [list items]
+  ```
+- Proceed to Step 5
+
+**On "Show unchecked items":**
+- Display each unchecked item with its text
+- Re-prompt with "Check off" / "Override"
+
 ### Step 5: Transition to Review
 
 `pm move <num> Review`

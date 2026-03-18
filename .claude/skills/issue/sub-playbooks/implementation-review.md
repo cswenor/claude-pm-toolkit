@@ -46,7 +46,7 @@ Codex has full filesystem access in `workspace-write` sandbox. It can run `git d
 
 ```
 mcp__codex__codex({
-  prompt: "You are an adversarial code reviewer for issue #<issue_num>. The branch is based on main. Review the implementation against the issue's acceptance criteria. Use git diff, git log, and file reads as needed. You CAN write and run test scripts to verify claims — prefer proving over guessing. Output your findings as JSON: {\"verdict\": \"APPROVED\"|\"CHANGES_NEEDED\", \"findings\": [{\"id\": \"F1\", \"category\": \"security\"|\"correctness\"|\"performance\"|\"style\", \"severity\": \"high\"|\"medium\"|\"low\", \"file\": \"path\", \"line\": N, \"description\": \"...\", \"suggestion\": \"...\"}], \"summary\": \"...\"}. Every finding MUST include file and line. End with APPROVED if no blocking findings, or CHANGES_NEEDED.",
+  prompt: "You are an adversarial code reviewer for issue #<issue_num>. The branch is based on main. Review the implementation against the issue's acceptance criteria. Use git diff, git log, and file reads as needed. You CAN write and run test scripts to verify claims — prefer proving over guessing. For each finding, assign a pattern_label slug (e.g., 'missing-null-check'). Search ALL changed files for the same pattern — report one finding per instance with its own file+line. Group findings by pattern_label in your output. Output your findings as JSON: {\"verdict\": \"APPROVED\"|\"CHANGES_NEEDED\", \"findings\": [{\"id\": \"F1\", \"category\": \"security\"|\"correctness\"|\"performance\"|\"style\", \"severity\": \"high\"|\"medium\"|\"low\", \"file\": \"path\", \"line\": N, \"description\": \"...\", \"suggestion\": \"...\", \"pattern_label\": \"slug\"}], \"summary\": \"...\"}. Every finding MUST include file and line. End with APPROVED if no blocking findings, or CHANGES_NEEDED.",
   sandbox: "workspace-write",
   cwd: "<repo_root>"
 })
@@ -61,10 +61,14 @@ mcp__codex__codex({
 - Codex has full codebase access — no pre-generated diff needed
 - Any files Codex creates during review are visible to Claude for evaluation
 
-### Step 2: Check for Failures
+### Step 2: Check for Failures (Evidence Gate Hardening)
 
 1. If MCP tool returns an error: Surface via AskUserQuestion with "Retry" / "Override" / "Show error".
 2. If response is empty or truncated: context exhaustion. Surface via AskUserQuestion with "Retry" / "Override".
+3. **JSON validation:** Attempt to parse the response as JSON with `verdict` and `findings` array. If parse fails (malformed/truncated JSON from context exhaustion), treat as incomplete evidence → fail-closed:
+   - AskUserQuestion with "Retry" / "Override" / "Show raw output"
+   - Do NOT attempt to extract partial findings from malformed JSON
+4. **Suspicious output:** If response is valid JSON but `findings` array is empty AND `verdict` is `"APPROVED"` AND the diff has >100 lines changed → warn "Review approved a large diff with zero findings — this may indicate context exhaustion." Offer: "Accept" / "Retry with fresh context" / "Override".
 
 ### Step 3: Parse Findings via JSON Schema
 
@@ -98,6 +102,7 @@ Codex is instructed (via the prompt in Step 1) to output findings as JSON. Claud
 - `findings[].file` + `findings[].line`: Evidence citation (REQUIRED for blocking/suggestion)
 - `findings[].description`: What's wrong
 - `findings[].suggestion`: How to fix it (optional)
+- `findings[].pattern_label`: Bug class slug (e.g., `missing-null-check`) for batch grouping
 
 **Blocking thresholds (applied by Claude after parsing):**
 
@@ -178,6 +183,44 @@ Display format:
 **This iteration:** 1 new finding (F3), 2 resolved (F1 fixed, F2 justified)
 ```
 
+### Step 3.5: Instance Verification (before findings become BLOCKING)
+
+Before acting on findings, Claude MUST verify each one:
+
+1. **Verify the cited code exists and is reachable:**
+   - Read `file` at `line` — does the code actually exist?
+   - Is the code path reachable from any caller? (quick grep for function/method name)
+
+2. **Verify the edge case isn't already handled:**
+   - Check if the concern is addressed elsewhere (upstream validation, middleware, type system)
+   - Check if a guard/assertion covers the case at a different layer
+
+3. **Verification outcomes:**
+   - **Verified**: Code exists, edge case is real, not handled elsewhere → keep severity
+   - **Already handled**: Edge case exists but is guarded elsewhere → downgrade to SUGGESTION with note
+   - **Unverified**: Cannot confirm code exists or edge case is reachable → auto-downgrade BLOCKING to SUGGESTION
+   - **Zero-instance theoretical**: Edge case is purely theoretical with no concrete instance → SUGGESTION
+
+**Update ledger after verification:** Add a `verified` field to each finding: `true` | `false` | `"already_handled"`. Unverified findings with `severity: "high"` are NOT counted toward blocking thresholds.
+
+### Step 3.6: Pattern Propagation (MANDATORY after each fix)
+
+Every finding gets a `pattern_label` slug (e.g., `missing-null-check`, `unsanitized-input`):
+
+1. When fixing a finding, extract the pattern (what class of bug is this?)
+2. Search ALL changed files for the same pattern: `git diff --name-only main...HEAD` → grep/read each for the pattern
+3. Fix ALL instances found — add each as a new finding with the same `pattern_label`
+4. If 3+ instances found in the same class/module → trigger autonomous refactor:
+   - Extract shared helper/validation function
+   - If refactor is out of scope → create Discovered Work issue
+
+**Pattern labels in Codex prompt (Step 1):** Instruct Codex to assign `pattern_label` slugs and search all changed files per pattern. Report **one finding per instance** (preserving the `file`+`line` evidence model), grouped by `pattern_label` for batch-fix.
+
+Add to the Codex prompt in Step 1:
+```
+For each finding, assign a pattern_label slug (e.g., 'missing-null-check'). Search ALL changed files for the same pattern — report one finding per instance with its own file+line. Group findings by pattern_label in your output.
+```
+
 ### Step 4: User Choice
 
 Use AskUserQuestion:
@@ -233,6 +276,18 @@ mcp__codex__codex-reply({
 - Uses `mcp__codex__codex-reply` with `threadId` to continue the conversation
 - Thread ID was captured from the initial `mcp__codex__codex` response
 - Repeat Steps 2-4 for each iteration
+
+### Step 5.5: Autonomous Refactor Trigger
+
+After all fixes in a Continue iteration, check the ledger for pattern clusters:
+
+1. Group findings by `pattern_label`
+2. If any `pattern_label` has 3+ instances in the same class/module:
+   - Extract a shared function/validation helper that addresses all instances
+   - Update the ledger to mark all related findings as `fixed` with refactor reference
+3. If the refactor is out of scope (touches files/areas outside the PR):
+   - Create a Discovered Work issue via the Discovered Work sub-playbook
+   - Fix only the in-scope instances
 
 ### Step 6: Termination
 

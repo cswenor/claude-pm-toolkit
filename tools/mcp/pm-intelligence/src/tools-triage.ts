@@ -146,10 +146,14 @@ export function register(server: McpServer) {
           .int()
           .positive()
           .describe("Issue number to get history for"),
+        viewMode: z
+          .enum(["default", "timeline"])
+          .optional()
+          .describe("View mode: 'default' for standard history, 'timeline' for chronological provenance timeline including state transitions, release/resume records, decisions, and review outcomes"),
       },
     },
-    wrapTool("get_session_history", async ({ issueNumber }) => {
-      const result = await getSessionHistory(issueNumber);
+    wrapTool("get_session_history", async ({ issueNumber, viewMode }) => {
+      const result = await getSessionHistory(issueNumber, viewMode ?? "default");
       return toolResponse(result);
     })
   );

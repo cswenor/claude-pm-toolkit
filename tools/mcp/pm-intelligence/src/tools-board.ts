@@ -7,6 +7,8 @@ import {
   addDependency,
   getDependencies,
   getCycleTimes,
+  releaseWork,
+  resumeWork,
   type WorkflowState,
 } from "./db.js";
 import { syncFromGitHub } from "./sync.js";
@@ -168,6 +170,52 @@ export function register(server: McpServer) {
     wrapTool("get_velocity", async () => {
       const metrics = await getVelocity();
       return toolResponse(metrics);
+    })
+  );
+
+  server.registerTool(
+    "release_work",
+    {
+      title: "Release Stuck Work",
+      description:
+        "Release work that is stuck or blocked. Captures recovery context (branch, plan, worktree, last commit) and moves issue to Ready. Use when work is blocked on external dependencies, switching context, or needs a different approach.",
+      inputSchema: {
+        issueNumber: z
+          .number()
+          .int()
+          .positive()
+          .describe("Issue number to release"),
+        reason: z
+          .string()
+          .min(1)
+          .describe(
+            "Why the work is being released (e.g., 'blocked on external API', 'switching to higher priority')"
+          ),
+      },
+    },
+    wrapTool("release_work", async ({ issueNumber, reason }) => {
+      const result = await releaseWork(issueNumber, reason);
+      return result.success ? toolResponse(result) : toolError(result.message);
+    })
+  );
+
+  server.registerTool(
+    "resume_work",
+    {
+      title: "Resume Released Work",
+      description:
+        "Retrieve recovery context for previously released work. Returns the branch, plan file path, worktree location, and last commit from when the work was released. Does NOT move the issue — use /issue to handle that.",
+      inputSchema: {
+        issueNumber: z
+          .number()
+          .int()
+          .positive()
+          .describe("Issue number to resume"),
+      },
+    },
+    wrapTool("resume_work", async ({ issueNumber }) => {
+      const result = await resumeWork(issueNumber);
+      return result.found ? toolResponse(result) : toolError(result.message);
     })
   );
 }

@@ -14,7 +14,7 @@
 
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile, execSync } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
 
@@ -957,4 +957,124 @@ export async function getLastSync(
   return db
     .prepare("SELECT last_sync, cursor FROM sync_state WHERE resource = ?")
     .get(resource) as { last_sync: string; cursor: string | null } | null;
+}
+
+// ─── Stuck-Work Release/Resume ──────────────────────────
+
+/** Release stuck work — captures recovery context and moves to Ready */
+export async function releaseWork(
+  issueNumber: number,
+  reason: string
+): Promise<{ success: boolean; message: string }> {
+  const db = await getDb();
+  const issue = await getIssue(issueNumber);
+  if (!issue) return { success: false, message: `Issue #${issueNumber} not found` };
+
+  // Capture recovery context
+  let branch = "";
+  let lastCommit = "";
+  try {
+    branch = execSync("git branch --show-current", { encoding: "utf8" }).trim();
+    lastCommit = execSync("git log --oneline -1 --format=%H", { encoding: "utf8" }).trim();
+  } catch {
+    /* not in git context */
+  }
+
+  // Find plan file
+  let planFile = "";
+  try {
+    planFile = execSync(
+      `./tools/scripts/find-plan.sh ${issueNumber} --latest 2>/dev/null`,
+      { encoding: "utf8" }
+    ).trim();
+  } catch {
+    /* no plan */
+  }
+
+  // Find worktree path
+  let worktreePath = "";
+  try {
+    const worktrees = execSync("git worktree list --porcelain", {
+      encoding: "utf8",
+    });
+    const lines = worktrees.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (
+        lines[i].startsWith("worktree ") &&
+        lines[i + 1]?.includes(`pm-${issueNumber}`)
+      ) {
+        worktreePath = lines[i].replace("worktree ", "");
+        break;
+      }
+    }
+  } catch {
+    /* not available */
+  }
+
+  const metadata = JSON.stringify({
+    reason,
+    recovery: {
+      branch,
+      planFile,
+      worktreePath,
+      lastCommit,
+    },
+  });
+
+  // Record release event
+  db.prepare(
+    `
+    INSERT INTO events (event_type, issue_number, from_value, to_value, metadata, actor)
+    VALUES ('release_work', ?, ?, 'Ready', ?, 'claude')
+  `
+  ).run(issueNumber, issue.workflow ?? "Active", metadata);
+
+  // Move to Ready
+  const moveResult = await moveIssueWorkflow(issueNumber, "Ready");
+
+  return {
+    success: moveResult.success,
+    message: moveResult.success
+      ? `Released #${issueNumber}: ${reason}. Recovery context saved.`
+      : `Failed to release: ${moveResult.message}`,
+  };
+}
+
+/** Resume previously released work — returns recovery context */
+export async function resumeWork(
+  issueNumber: number
+): Promise<{ found: boolean; recovery?: Record<string, string>; message: string }> {
+  const db = await getDb();
+
+  // Find most recent release event
+  const event = db
+    .prepare(
+      `
+    SELECT metadata FROM events
+    WHERE event_type = 'release_work' AND issue_number = ?
+    ORDER BY timestamp DESC LIMIT 1
+  `
+    )
+    .get(issueNumber) as { metadata: string } | undefined;
+
+  if (!event?.metadata) {
+    return {
+      found: false,
+      message: `No release record found for #${issueNumber}`,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(event.metadata);
+    return {
+      found: true,
+      recovery: parsed.recovery,
+      message: `Recovery context for #${issueNumber}: branch=${parsed.recovery?.branch}, plan=${parsed.recovery?.planFile}, reason=${parsed.reason}`,
+    };
+  } catch {
+    return {
+      found: false,
+      message: `Corrupted release record for #${issueNumber}`,
+    };
+  }
 }

@@ -10,6 +10,8 @@
  *   pm move <num> <state>  Move issue to workflow state
  *   pm add <num> [priority]  Add issue to tracking (initial sync + set priority)
  *   pm dep <blocker> <blocked>  Add dependency
+ *   pm release <num> <reason>  Release stuck work (captures recovery context)
+ *   pm resume <num>    Resume released work (shows recovery context)
  *   pm history [num]   Event history for an issue
  *   pm dashboard       Open local web dashboard (future)
  *   pm init            First-time setup
@@ -24,6 +26,8 @@ import {
   getDependencies,
   queryEvents,
   getCycleTimes,
+  releaseWork,
+  resumeWork,
   VALID_WORKFLOWS,
   VALID_PRIORITIES,
   type WorkflowState,
@@ -456,6 +460,50 @@ async function main(): Promise<void> {
       case "dependency":
         await cmdDep(args);
         break;
+      case "release": {
+        if (args.length < 2) {
+          console.error("Usage: pm release <issue-number> <reason>");
+          process.exit(1);
+        }
+        const releaseNum = parseInt(args[0], 10);
+        if (isNaN(releaseNum)) {
+          console.error(`Invalid issue number: ${args[0]}`);
+          process.exit(1);
+        }
+        const reason = args.slice(1).join(" ");
+        const releaseResult = await releaseWork(releaseNum, reason);
+        if (releaseResult.success) {
+          console.log(`${c.green}\u2713 ${releaseResult.message}${c.reset}`);
+        } else {
+          console.error(`${c.red}\u2717 ${releaseResult.message}${c.reset}`);
+          process.exit(1);
+        }
+        break;
+      }
+      case "resume": {
+        if (args.length < 1) {
+          console.error("Usage: pm resume <issue-number>");
+          process.exit(1);
+        }
+        const resumeNum = parseInt(args[0], 10);
+        if (isNaN(resumeNum)) {
+          console.error(`Invalid issue number: ${args[0]}`);
+          process.exit(1);
+        }
+        const resumeResult = await resumeWork(resumeNum);
+        if (resumeResult.found && resumeResult.recovery) {
+          const r = resumeResult.recovery;
+          console.log(`Recovery context for #${resumeNum}:`);
+          if (r.branch) console.log(`  Branch: ${r.branch}`);
+          if (r.planFile) console.log(`  Plan: ${r.planFile}`);
+          if (r.worktreePath) console.log(`  Worktree: ${r.worktreePath}`);
+          if (r.lastCommit) console.log(`  Last commit: ${r.lastCommit}`);
+        } else {
+          console.error(resumeResult.message);
+          process.exit(1);
+        }
+        break;
+      }
       case "history":
       case "events":
         await cmdHistory(args);
@@ -488,6 +536,8 @@ ${c.bold}Commands:${c.reset}
   ${c.cyan}pm move${c.reset} <num> <state>        Move issue (${VALID_WORKFLOWS.join(", ")})
   ${c.cyan}pm add${c.reset} <num> [priority]      Start tracking issue (${VALID_PRIORITIES.join(", ")})
   ${c.cyan}pm dep${c.reset} <blocker> <blocked>   Add dependency
+  ${c.cyan}pm release${c.reset} <num> <reason>   Release stuck work
+  ${c.cyan}pm resume${c.reset} <num>             Resume released work
   ${c.cyan}pm history${c.reset} [num]             Event history
   ${c.cyan}pm dashboard${c.reset}                 Open web dashboard (coming soon)
 

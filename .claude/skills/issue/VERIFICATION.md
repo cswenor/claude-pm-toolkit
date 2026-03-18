@@ -178,6 +178,76 @@
 - [ ] Suggestion handling is in Continue path (not before user choice) in both sub-playbooks
 - [ ] AC Traceability Table present in plan and used during /pm-review verification
 
+## HoV Backport Features (v0.16.0)
+
+### Mode-Conditional Doc Loading (1.1)
+
+- [ ] START/CONTINUE/REWORK modes load full P0 (CLAUDE.md + PM_PLAYBOOK.md)
+- [ ] REVIEW/APPROVED modes load only selected sections (## Workflow States, ## Commands, ## STOP CHECKS, ## PM CLI)
+- [ ] CLOSED/MISMATCH modes skip P0 entirely
+- [ ] No inline summaries — always reads from canonical source files
+
+### Instance Verification Gate (1.2)
+
+- [ ] Step 3.5 verifies each finding's cited code exists
+- [ ] Unverified BLOCKING findings auto-downgrade to SUGGESTION
+- [ ] Zero-instance theoretical findings → SUGGESTION
+- [ ] `verified` field added to ledger findings
+- [ ] Pattern labels assigned to each finding
+- [ ] Pattern propagation searches ALL changed files after each fix
+- [ ] 3+ instances in same class/module triggers autonomous refactor
+- [ ] Evidence gate hardening: malformed JSON → fail-closed
+- [ ] Suspicious empty APPROVED on large diff → warning
+
+### AC Checkbox Gating (1.3)
+
+- [ ] Step 4.5 in post-implementation checks all AC items
+- [ ] Unchecked items block Review transition (with override option)
+- [ ] Override path adds warning comment to issue
+- [ ] "Check off completed" verifies items before marking
+
+### Audit Skill (1.4)
+
+- [ ] `/audit <num>` parses issue number and finds linked PR
+- [ ] `/audit PR#<num>` parses PR number and finds linked issue
+- [ ] Codex-reviewed-only gate checks 4 evidence sources
+- [ ] LOCAL vs REMOTE mode detection based on branch alignment
+- [ ] 8 audit checks evaluated independently
+- [ ] Results posted to both PR (review comment) and issue (summary)
+- [ ] Review outcome recorded via `record_review_outcome`
+
+### Worktree REWORK Enforcement (1.5)
+
+- [ ] REWORK mode runs worktree detection (Step 4.5)
+- [ ] REVIEW mode does NOT run worktree detection
+- [ ] REWORK "Continue addressing feedback" verifies worktree before `gh pr checkout`
+
+### Evidence Gate Hardening (1.6)
+
+- [ ] Collaborative planning: Plan B < 200 bytes → suspicious
+- [ ] Collaborative planning: Missing completion markers → fail-closed
+- [ ] Implementation review: Malformed JSON response → fail-closed
+- [ ] Implementation review: Empty APPROVED on large diff → warning
+
+### Structured Agent Payloads (2.3)
+
+- [ ] Planner agent returns JSON with plan_file_path, collab_evidence, convergence_status, discovered_work
+- [ ] Developer agent returns JSON with files_changed, test_results, codex_review_result, discovered_work
+- [ ] Common Context Block includes Environment Context (branch, dirty, review_gate, codex_available)
+- [ ] Post-return verification parses JSON first, falls back to prose with warning
+
+### Release/Resume Tools (2.1)
+
+- [ ] `pm release <num> <reason>` captures recovery context and moves to Ready
+- [ ] `pm resume <num>` returns recovery context from most recent release
+- [ ] MCP tools `release_work` and `resume_work` registered and functional
+
+### Naming Convention (3.1)
+
+- [ ] Issue titles validated against `<type>(<area>): <description>` format before creation
+- [ ] Max 90 chars enforced
+- [ ] Auto-correction applied for minor deviations
+
 ## Regression Prevention
 
 **If any of these break, the skill has regressed:**

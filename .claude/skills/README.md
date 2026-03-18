@@ -10,6 +10,7 @@ This document indexes all Claude skills in the PM toolkit and defines source-of-
 | ------------ | ----------------------------------------------------------- | ------------------------------------ |
 | `/issue`     | Create new issues (PM interview) or work on existing issues | `/issue` or `/issue <number>`        |
 | `/pm-review` | PM Reviewer persona for analyzing issues/PRs                | `/pm-review`                         |
+| `/audit`     | Independent integrity audit of Codex review process         | `/audit <issue-num>` or `/audit PR#<num>` |
 | `/weekly`    | Generate AI narrative from weekly JSON snapshots            | `/weekly` or `/weekly --from <date>` |
 | `/start`     | Start session with AI-powered planning and risk briefing    | `/start` or `/start <minutes>`       |
 | `/simplify`  | Review changed code for reuse, quality, and efficiency      | `/simplify`                          |

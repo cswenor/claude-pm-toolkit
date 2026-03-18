@@ -53,15 +53,18 @@ mcp__codex__codex({
 
 The MCP tool returns the Codex response and a `threadId`. Store the `threadId` for potential follow-up.
 
-3. Check for failures:
+3. Check for failures (evidence gate hardening):
    - MCP tool returns an error
    - Plan B file (`.codex-work/plan-<issue_num>.md`) is missing or empty after Codex completes
+   - **Size check:** Plan B file < 200 bytes → suspicious (likely truncated/context-exhausted)
+   - **Completion markers:** Plan B must contain `## Acceptance Criteria` with checkboxes, `## Non-goals`, and a scope section — matching the existing Plan Complete gate (SKILL.md Phase Gates). Missing any required marker → treat as incomplete.
+   - **Malformed output:** If Codex output is not valid text/markdown (e.g., binary garbage, truncated mid-line) → treat as incomplete evidence → fail-closed
 
 On failure: AskUserQuestion with options:
 
 - "Retry" — re-run Codex Plan B
 - "Continue with Claude-only plan" — skip collaborative planning
-- "Show error" — display full error output
+- "Show Codex output" — display the raw output for diagnosis
 
 Do NOT auto-fall back on failure.
 

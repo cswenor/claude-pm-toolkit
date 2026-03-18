@@ -94,6 +94,7 @@ REQUIRED_FILES=(
   ".claude/settings.json"
   ".claude/skills/issue/SKILL.md"
   ".claude/skills/pm-review/SKILL.md"
+  ".claude/skills/audit/SKILL.md"
   ".claude/skills/weekly/SKILL.md"
   ".claude/skills/start/SKILL.md"
   "docs/PM_PLAYBOOK.md"
@@ -172,6 +173,29 @@ for f in "${OPTIONAL_FILES[@]}"; do
     warn "$f — missing (optional)"
   fi
 done
+
+# ---------------------------------------------------------------------------
+# 1b. Command Mapping Verification
+# ---------------------------------------------------------------------------
+log_section "1b. Command Mapping Verification"
+
+if [[ -f "$TARGET/.claude-pm-toolkit.json" ]]; then
+  # Check that configured commands resolve to executables
+  for cmd_key in test_command setup_command dev_command; do
+    cmd_val=$(jq -r ".$cmd_key // empty" "$TARGET/.claude-pm-toolkit.json" 2>/dev/null)
+    if [[ -n "$cmd_val" ]]; then
+      # Extract the first word (the actual command/binary)
+      cmd_bin=$(echo "$cmd_val" | awk '{print $1}')
+      if command -v "$cmd_bin" >/dev/null 2>&1 || [[ -x "$TARGET/$cmd_bin" ]]; then
+        pass "$cmd_key: '$cmd_val' — command resolves"
+      else
+        warn "$cmd_key: '$cmd_val' — command '$cmd_bin' not found in PATH or repo"
+      fi
+    fi
+  done
+else
+  warn ".claude-pm-toolkit.json not found — skipping command mapping check"
+fi
 
 # ---------------------------------------------------------------------------
 # 2. Script permissions

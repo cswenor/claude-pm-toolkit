@@ -7,7 +7,7 @@
  *     decisions, PR state, review feedback, event timeline
  */
 
-import { getIssue } from "./db.js";
+import { getIssue, type PMEvent } from "./db.js";
 import {
   getDecisions,
   getOutcomes,
@@ -55,6 +55,49 @@ interface SessionHistoryResult {
   summary: string;
 }
 
+// ─── AC + Review Gate Helpers ─────────────────────────────
+
+/** Parse acceptance criteria checkboxes from issue body */
+function parseACStatus(body: string | null): { acChecked: number; acTotal: number } {
+  if (!body) return { acChecked: 0, acTotal: 0 };
+
+  // Find ## Acceptance Criteria section (case-insensitive, stops at next heading or HR or end)
+  const acMatch = body.match(/## Acceptance Criteria\s*\n([\s\S]*?)(?=\n##|\n---|$)/i);
+  if (!acMatch) return { acChecked: 0, acTotal: 0 };
+
+  const section = acMatch[1];
+  const checked = (section.match(/- \[x\]/gi) || []).length;
+  const unchecked = (section.match(/- \[ \]/g) || []).length;
+
+  return { acChecked: checked, acTotal: checked + unchecked };
+}
+
+type ReviewGateStatus = "not_started" | "in_progress" | "passed" | "failed";
+
+/** Determine review gate status from events (newest-first order expected) */
+function getReviewGateStatus(events: PMEvent[]): ReviewGateStatus {
+  // Look for review-related events
+  const reviewEvents = events.filter(e =>
+    e.event_type === "review_outcome" ||
+    e.to_value?.includes("APPROVED") ||
+    e.to_value?.includes("BLOCKED") ||
+    e.to_value?.includes("CHANGES_NEEDED") ||
+    e.to_value?.includes("CHANGES_REQUESTED")
+  );
+
+  if (reviewEvents.length === 0) return "not_started";
+
+  const latest = reviewEvents[0]; // events are newest-first from getEvents()
+  if (latest.to_value?.includes("APPROVED")) return "passed";
+  if (
+    latest.to_value?.includes("BLOCKED") ||
+    latest.to_value?.includes("CHANGES_NEEDED") ||
+    latest.to_value?.includes("CHANGES_REQUESTED")
+  ) return "failed";
+
+  return "in_progress";
+}
+
 interface PRState {
   number: number;
   title: string;
@@ -80,6 +123,11 @@ interface ContextRecovery {
     labels: string[];
     assignees: string[];
   };
+  acceptanceCriteria: {
+    acChecked: number;
+    acTotal: number;
+  };
+  reviewGateStatus: ReviewGateStatus;
   previousPlans: Array<{
     path: string;
     lastModified: string;
@@ -120,7 +168,8 @@ interface ContextRecovery {
 // ─── get_session_history ─────────────────────────────────
 
 export async function getSessionHistory(
-  issueNumber: number
+  issueNumber: number,
+  viewMode: "default" | "timeline" = "default"
 ): Promise<SessionHistoryResult> {
   const [statusOrNull, events, decisions, outcomes] = await Promise.all([
     getIssue(issueNumber),
@@ -189,6 +238,86 @@ export async function getSessionHistory(
     `${decisions.length} decision${decisions.length !== 1 ? "s" : ""} recorded. ` +
     `${sessionGaps.length > 0 ? `${sessionGaps.length} gap${sessionGaps.length !== 1 ? "s" : ""} >1 day. ` : ""}` +
     `${outcomes.length > 0 ? `Latest outcome: ${outcomes[0].result}.` : "No outcomes recorded yet."}`;
+
+  // Timeline view: aggregate all event types into a single chronological view
+  if (viewMode === "timeline") {
+    const timelineEntries: SessionEvent[] = [];
+
+    // State transitions
+    for (const e of events) {
+      if (e.event_type === "workflow_change" && e.from_value && e.to_value) {
+        timelineEntries.push({
+          timestamp: e.timestamp,
+          event: "state_transition",
+          detail: `${e.from_value} → ${e.to_value}`,
+        });
+      } else if (e.event_type === "release_work") {
+        const meta = typeof e.metadata === "string" ? JSON.parse(e.metadata) : e.metadata;
+        timelineEntries.push({
+          timestamp: e.timestamp,
+          event: "release",
+          detail: `Released: ${meta?.reason || "unknown reason"}`,
+        });
+      } else if (e.event_type === "review_outcome") {
+        timelineEntries.push({
+          timestamp: e.timestamp,
+          event: "review",
+          detail: `Review: ${e.to_value || "recorded"}`,
+        });
+      }
+    }
+
+    // Decisions
+    for (const d of decisions) {
+      timelineEntries.push({
+        timestamp: d.timestamp,
+        event: "decision",
+        detail: d.decision,
+      });
+    }
+
+    // Outcomes
+    for (const o of outcomes) {
+      timelineEntries.push({
+        timestamp: o.timestamp,
+        event: "outcome",
+        detail: `${o.result}: ${o.approach_summary || ""}`,
+      });
+    }
+
+    // Sort chronologically
+    timelineEntries.sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    const timelineSummary =
+      `Provenance timeline for #${issueNumber}: ${timelineEntries.length} entries spanning ` +
+      `${sessionCount} session${sessionCount !== 1 ? "s" : ""}. ` +
+      `${workflowTransitions.length} state transitions, ${decisions.length} decisions, ${outcomes.length} outcomes.`;
+
+    return {
+      issueNumber,
+      title: status.title,
+      totalSessions: sessionCount,
+      totalEvents: events.length,
+      timeline: timelineEntries.slice(-100),
+      workflowTransitions,
+      decisions: decisions.map((d) => ({
+        timestamp: d.timestamp,
+        decision: d.decision,
+        rationale: d.rationale,
+      })),
+      outcomes: outcomes.map((o) => ({
+        timestamp: o.timestamp,
+        result: o.result,
+        summary: o.approach_summary,
+        lessons: o.lessons,
+      })),
+      sessionGaps,
+      summary: timelineSummary,
+    };
+  }
 
   return {
     issueNumber,
@@ -366,6 +495,12 @@ export async function recoverContext(
     }
   }
 
+  // Parse acceptance criteria from issue body
+  const acceptanceCriteria = parseACStatus(status.body);
+
+  // Determine review gate status from events
+  const reviewGateStatus = getReviewGateStatus(events);
+
   // Build resumption guide
   const nextSteps: string[] = [];
   const warnings: string[] = [];
@@ -422,6 +557,38 @@ export async function recoverContext(
     warnings.push(`High completion risk (${riskScore}/100)`);
   }
 
+  // AC-related warnings
+  if (acceptanceCriteria.acTotal > 0 && acceptanceCriteria.acChecked < acceptanceCriteria.acTotal) {
+    warnings.push(
+      `Unchecked acceptance criteria: ${acceptanceCriteria.acChecked}/${acceptanceCriteria.acTotal} complete`
+    );
+  }
+
+  // Review gate warnings
+  if (reviewGateStatus === "failed") {
+    warnings.push("Review gate failed — changes requested or blocked");
+  }
+
+  // Stale branch warning: if issue is Active but no events in 7+ days
+  if (status.workflow === "Active" && events.length > 0) {
+    const latestEvent = events[0]; // newest-first
+    const latestTime = new Date(latestEvent.timestamp).getTime();
+    const daysSinceLastEvent = (Date.now() - latestTime) / (1000 * 60 * 60 * 24);
+    if (daysSinceLastEvent > 7) {
+      warnings.push(
+        `Stale: no events for ${Math.round(daysSinceLastEvent)} days while Active`
+      );
+    }
+  }
+
+  // Missing plan warning for Active issues
+  if (
+    (status.workflow === "Active" || status.workflow === "Ready") &&
+    previousPlans.length === 0
+  ) {
+    warnings.push("No plan file found — consider creating a plan before implementation");
+  }
+
   // Context files based on area
   const area = status.labels.find((l) => l.startsWith("area:"))?.replace("area:", "") ?? null;
   if (area) {
@@ -445,9 +612,17 @@ export async function recoverContext(
         : (e.metadata as any)?.tool || ""),
   }));
 
+  const acSummary = acceptanceCriteria.acTotal > 0
+    ? `AC: ${acceptanceCriteria.acChecked}/${acceptanceCriteria.acTotal}. `
+    : "";
+  const reviewGateSummary = reviewGateStatus !== "not_started"
+    ? `Review gate: ${reviewGateStatus}. `
+    : "";
+
   const summary =
     `Issue #${issueNumber} (${status.title}) — Mode: ${mode}. ` +
     `${pr ? `PR #${pr.number} (${pr.state}${pr.reviewDecision ? `, ${pr.reviewDecision}` : ""}). ` : "No PR. "}` +
+    `${acSummary}${reviewGateSummary}` +
     `${decisions.length} decisions, ${previousPlans.length} plans on disk. ` +
     `${reviewFeedback.length > 0 ? `${reviewFeedback.length} review comments to address. ` : ""}` +
     `${warnings.length > 0 ? `Warnings: ${warnings.join("; ")}. ` : ""}` +
@@ -462,6 +637,8 @@ export async function recoverContext(
       labels: status.labels,
       assignees: status.assignees,
     },
+    acceptanceCriteria,
+    reviewGateStatus,
     previousPlans,
     pr,
     reviewFeedback,

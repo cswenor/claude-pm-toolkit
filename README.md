@@ -32,13 +32,14 @@ cd claude-pm-toolkit
 
 ## What You Get
 
-### Four Skills
+### Five Skills
 
 | Skill | Purpose |
 |-------|---------|
 | **`/start`** | **Session kickoff.** Risk radar, session optimizer, standup generator, anomaly detection — full situational awareness in one command. |
 | **`/issue`** | Full lifecycle. Create via PM interview with AI triage + auto-labeling. Execute with worktree isolation, plan mode with predictive intelligence, and scope creep detection. |
 | **`/pm-review`** | Adversarial reviewer. Enriched with automated PR analysis, blast radius modeling, knowledge risk, rework prediction, and review calibration learning. |
+| **`/audit`** | Independent integrity audit of Codex review process. 8-check verification (ledger integrity, finding honesty, pattern propagation, rebuttal quality, suggestion handling, iteration honesty, write-scope compliance, AC coverage). |
 | **`/weekly`** | AI narrative from weekly snapshots. Enhanced with risk radar, DORA metrics, Monte Carlo forecasts, anomaly detection, and delivery metrics. |
 
 ### MCP Server (pm-intelligence) — 49 Tools
@@ -291,6 +292,7 @@ PRs → diff, reviews,                    dependencies
 └── skills/
     ├── issue/SKILL.md                   # Full issue lifecycle skill
     ├── pm-review/SKILL.md               # Adversarial reviewer
+    ├── audit/SKILL.md                   # Review integrity audit
     └── weekly/SKILL.md                  # Weekly analysis
 docs/
 ├── PM_PLAYBOOK.md                       # Workflow definitions and rules

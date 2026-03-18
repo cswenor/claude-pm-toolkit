@@ -97,11 +97,7 @@ Agents are `general-purpose` (full tool access). Authority boundaries enforced v
 - DO NOT create issues via MCP (orchestrator handles Discovered Work)
 - DO NOT interact with the user (no AskUserQuestion)
 
-**Post-return verification (orchestrator runs after every agent return):**
-
-1. `git log --oneline -1` — verify no new commits since before spawn
-2. `pm status <num>` — verify workflow state unchanged
-3. If violation detected: surface to user, discard agent work
+**Post-return verification:** See "Post-Return Verification (Orchestrator)" section in Agent Prompt Templates below.
 
 ### Phase Gates (Fail-Closed)
 
@@ -178,6 +174,12 @@ You are a {role} agent working on Issue #{issue_num}: {title}
 - DO NOT create issues via MCP tools
 - DO NOT use AskUserQuestion (you cannot interact with the user)
 - DO NOT run any destructive git operations (reset, clean, checkout .)
+
+## Environment Context
+- Branch: {current_branch}
+- Dirty: {has_uncommitted_changes}
+- Review gate: {review_gate_status}
+- Codex available: {codex_available}
 ```
 
 #### Planner-Specific Block
@@ -196,8 +198,22 @@ You are a {role} agent working on Issue #{issue_num}: {title}
 - Must contain scope section
 - Must contain implementation approach with file paths and line references
 
-## Output
-Report: Plan file path (absolute), any discovered work details
+## Output (STRUCTURED JSON)
+Return a JSON object:
+{
+  "plan_file_path": "<absolute path to plan file>",
+  "collab_evidence": {
+    "plan_b_path": "<path to Codex Plan B, or null>",
+    "jsonl_path": "<path to collab JSONL, or null>",
+    "convergence": "converged" | "user_override" | "claude_only"
+  },
+  "convergence_status": "converged" | "not_converged" | "skipped",
+  "discovered_work": [
+    {"description": "...", "classification": "blocker|prerequisite|related|follow-up"}
+  ]
+}
+
+If you cannot return valid JSON, fall back to structured prose with clear labels for each field.
 ```
 
 #### Developer-Specific Block
@@ -215,9 +231,31 @@ If you discover work outside the acceptance criteria:
 - Return with `discovered_work: true` and details
 - Do NOT continue implementing
 
-## Output
-Report: Files changed (list), test results (command and exit code), any discovered work
+## Output (STRUCTURED JSON)
+Return a JSON object:
+{
+  "files_changed": ["path/to/file1.ts", "path/to/file2.ts"],
+  "test_results": {
+    "command": "<test command run>",
+    "exit_code": 0
+  },
+  "codex_review_result": "approved" | "changes_needed" | "skipped" | null,
+  "discovered_work": [
+    {"description": "...", "classification": "blocker|prerequisite|related|follow-up"}
+  ]
+}
+
+If you cannot return valid JSON, fall back to structured prose with clear labels for each field.
 ```
+
+#### Post-Return Verification (Orchestrator)
+
+After every agent return, the orchestrator runs:
+
+1. `git log --oneline -1` — verify no new commits since before spawn
+2. `pm status <num>` — verify workflow state unchanged
+3. If violation detected: surface to user, discard agent work
+4. **Parse return payload:** Attempt JSON parse first, fall back to prose extraction if parse fails. Log a warning if prose fallback was needed.
 
 ---
 
@@ -346,7 +384,13 @@ Use the intelligence output to inform (not replace) your Decision Pack. If the t
 - **intent**: bug | feature | spike | epic
 - **area**: frontend | backend | contracts | infra
 - **problem_summary**: 2-4 sentences describing the issue
-- **proposed_title**: Issue title (format: `<type>: <description>`)
+- **proposed_title**: Issue title — must follow naming convention:
+  - **Format:** `<type>(<area>): <description>` (standalone) or `<type>(<area>): <description> [e:<slug>]` (epic children)
+  - **Types** (lowercase): `feat | fix | refactor | docs | test | chore | spike | epic`
+  - **Area:** matches project's area taxonomy (e.g., `frontend | backend | infra`)
+  - **Epic slug:** kebab-case, 3-16 chars, immutable once set
+  - **Max length:** 90 chars
+  - **Examples:** `feat(backend): add retry logic for webhook delivery`, `fix(frontend): modal close button not responding`
 - **intelligence**: (from triage_issue) estimated effort, rework probability, risk level
 - **fingerprint**:
   - **keywords**: 3-6 core terms for search
@@ -449,7 +493,12 @@ Store the user's choice as `<selected_priority>` — the exact lowercase value (
 
 #### For "Create new" path:
 
-1. **Create the issue** via `mcp__github__create_issue` (using the draft confirmed in Step 6)
+1. **Validate title naming convention** before creation:
+   - Must match: `<type>(<area>): <description>` or `<type>(<area>): <description> [e:<slug>]`
+   - Valid types: `feat | fix | refactor | docs | test | chore | spike | epic`
+   - Max 90 chars
+   - If invalid, auto-correct to the closest valid format and note what was changed
+2. **Create the issue** via `mcp__github__create_issue` (using the draft confirmed in Step 6)
 2. **Add to project:** `pm add <num> <selected_priority>`
    - `<selected_priority>` comes from Step 7
 
@@ -699,9 +748,11 @@ pm add $ARGUMENTS normal
 
 If `pm add` fails (MCP server not ready, database not initialized), log the error to stderr and continue — worktree creation and implementation are not blocked by PM tracking. The issue can be added later via `pm sync`.
 
-### Step 4.5: Worktree Detection (START/CONTINUE/auto-add modes)
+### Step 4.5: Worktree Detection (START/CONTINUE/REWORK/auto-add modes)
 
-**Run this step for START, CONTINUE, and any auto-add mode (Rules 1-2).** Other modes skip to Step 5.
+**Run this step for START, CONTINUE, REWORK, and any auto-add mode (Rules 1-2).** Other modes skip to Step 5.
+
+**Note:** REVIEW mode does NOT run worktree detection — it only delegates to `/pm-review` or offers a move back to Active, so no code checkout occurs. REWORK mode performs `gh pr checkout` and edits files, so it needs worktree enforcement.
 
 **⚠️ MANDATORY: START mode from main repo MUST create worktree before any other work.**
 
@@ -891,17 +942,26 @@ Loading docs consumes context window. The skill router (~12K tokens) and issue c
 
 | Tier | Category | Skip Rule |
 |------|----------|-----------|
-| **P0** | Core project docs (CLAUDE.md, PM_PLAYBOOK.md) | Never skip |
+| **P0** | Core project docs (CLAUDE.md, PM_PLAYBOOK.md) | Mode-conditional (see below) |
 | **P1** | Area-specific docs (from area labels) | Only if issue is heavy AND has >3 area labels (load top 2) |
 | **P2** | Keyword-matched docs (from issue body scan) | Skip if issue is heavy |
 | **P3** | context7 library docs (external queries) | Skip if issue is medium or heavy |
 
 **When skipping a tier:** Note what was skipped in the briefing packet (Step 7) so the user knows. If implementation stalls due to missing context, load skipped docs at that point rather than upfront.
 
-#### P0: Always Load
+#### P0: Core Docs (Mode-Conditional)
 
-1. Read `CLAUDE.md`
-2. Read `docs/PM_PLAYBOOK.md`
+P0 loading varies by mode to save ~8.5K tokens on non-implementation invocations:
+
+| Mode | P0 Loading |
+|------|-----------|
+| **START / CONTINUE / REWORK** | Full P0: Read `CLAUDE.md` + `docs/PM_PLAYBOOK.md` |
+| **REVIEW / APPROVED** | Light P0: Read only `## Workflow States` and `## Commands` sections from `docs/PM_PLAYBOOK.md`; read only `## STOP CHECKS` and `## PM CLI` sections from `CLAUDE.md` |
+| **CLOSED / MISMATCH** | Skip P0 entirely |
+
+**Rationale:** REVIEW/APPROVED modes delegate to `/pm-review` or offer simple state transitions — they don't need full project docs. CLOSED/MISMATCH modes are informational only. START/CONTINUE/REWORK modes implement code and need full context.
+
+**Section reading:** Use `Read` with offset/limit to load only the needed sections from canonical docs. Do NOT embed inline summaries — always read from the source files to prevent drift.
 
 #### P1: Load Based on Area Labels
 
@@ -1399,7 +1459,11 @@ options:
 
 **On "Continue addressing feedback":**
 
-**⚠️ CRITICAL ORDER: Fetch context BEFORE mutating state.** If we move to Active first and the fetch fails, we've changed state without having the feedback to act on.
+**⚠️ CRITICAL ORDER: Verify worktree → Fetch context → Mutate state.** If we move to Active first and the fetch fails, we've changed state without having the feedback to act on.
+
+0. **Worktree verification (MANDATORY):**
+   If Step 4.5 was not already run for this mode, verify worktree now:
+   Run `./tools/scripts/worktree-detect.sh <issue_number>`. If exit 1 (no worktree), create one before proceeding. If exit 2/3 (wrong location), direct user to the correct worktree. This ensures REWORK edits happen in an isolated worktree, not the main repo.
 
 1. **Fetch review comments FIRST** via `mcp__github__get_pull_request_reviews`
    Also fetch PR discussion comments: `gh pr view <pr_num> --json comments --jq '.comments[].body'`

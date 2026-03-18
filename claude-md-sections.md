@@ -1,3 +1,4 @@
+<!-- section:stop-checks -->
 ## STOP CHECKS
 
 **These checklists prevent the most common policy violations. Check them at each stage.**
@@ -38,6 +39,9 @@
 
 ---
 
+<!-- /section:stop-checks -->
+
+<!-- section:context-recovery -->
 ## Context Recovery
 
 **If you've lost context about project management processes, read [`docs/PM_PLAYBOOK.md`](./docs/PM_PLAYBOOK.md).** It contains:
@@ -51,6 +55,9 @@
 
 ---
 
+<!-- /section:context-recovery -->
+
+<!-- section:pm-cli -->
 ## PM CLI
 
 The `pm` command is a local-first CLI for project management located at `./tools/scripts/pm`.
@@ -75,6 +82,9 @@ pm history [num]       # Event history
 
 ---
 
+<!-- /section:pm-cli -->
+
+<!-- section:pm-intelligence -->
 ## PM Intelligence Tools
 
 The `pm-intelligence` MCP server provides AI-powered project intelligence. Claude should use these tools proactively at the right moments — not just when asked.
@@ -179,6 +189,9 @@ Claude should call intelligence tools **automatically** at these moments — no 
 
 ---
 
+<!-- /section:pm-intelligence -->
+
+<!-- section:critical-policies -->
 ## Critical Policies
 
 ### READ BEFORE ACTING
@@ -302,6 +315,9 @@ This applies in ALL contexts: plan mode, implementation, review — whenever out
 
 ---
 
+<!-- /section:critical-policies -->
+
+<!-- section:workflow-rules -->
 ## Workflow Rules
 
 ### Use /issue for Issue Management
@@ -509,6 +525,9 @@ When acting as a reviewer, Claude Code MUST:
 
 ---
 
+<!-- /section:workflow-rules -->
+
+<!-- section:issue-documentation -->
 ## Issue Documentation Policy
 
 Document work proportionally to its risk and impact.
@@ -539,6 +558,9 @@ Do not add a "mistakes" section to every issue. Real issues deserve focused retr
 
 ---
 
+<!-- /section:issue-documentation -->
+
+<!-- section:conventions -->
 ## Conventions
 
 ### Commit Convention
@@ -554,3 +576,4 @@ Types: feat, fix, docs, refactor, test, chore
 **Work on branches, not main.** Never commit on `main` (even locally). A pre-push hook enforces this.
 
 **Branch naming:** `<type>/<short-desc>` (e.g., `fix/auth-bug`, `docs/pm-update`)
+<\!-- /section:conventions -->
