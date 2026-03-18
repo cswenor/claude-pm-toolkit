@@ -40,11 +40,45 @@ input=$(cat 2>/dev/null) || exit 0
 command=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0
 [[ -z "$command" ]] && exit 0
 
+# ---------- check for main-branch bypass ----------
+
+# Some repos (e.g., the toolkit itself) explicitly allow direct main commits.
+# Check .claude-pm-toolkit.json for "allow_main_commits": true
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+ALLOW_MAIN=$(jq -r '.allow_main_commits // false' "$REPO_ROOT/.claude-pm-toolkit.json" 2>/dev/null || echo "false")
+
+# ---------- detect git push to main ----------
+
+# Block direct pushes to main/master — must use PRs
+if [[ "$ALLOW_MAIN" != "true" ]] && printf '%s' "$command" | grep -qE '(^|&&|;|\|)\s*git\s+push\b'; then
+    # Check if pushing to main/master
+    if printf '%s' "$command" | grep -qE 'git\s+push\s+\S+\s+(main|master)\b'; then
+        deny "Cannot push directly to main/master. Create a PR instead. Use /issue to manage the full workflow."
+    fi
+    # Also block if on main and doing a bare push (git push / git push origin)
+    current_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+        if printf '%s' "$command" | grep -qE 'git\s+push\s*($|\s+origin\s*$|&&)'; then
+            deny "Cannot push to '$current_branch'. Work on a feature branch and create a PR."
+        fi
+    fi
+fi
+
 # ---------- detect git commit ----------
 
 # Only care about commands that contain `git commit`
 if ! printf '%s' "$command" | grep -qE '(^|&&|;|\|)\s*git\s+commit\b'; then
     exit 0
+fi
+
+# ---------- branch protection ----------
+
+# Block commits to main/master — work must happen on feature branches
+if [[ "$ALLOW_MAIN" != "true" ]]; then
+    current_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+        deny "Cannot commit to '$current_branch'. Work on a feature branch. Use /issue to create a worktree, or: git checkout -b <type>/<short-desc>"
+    fi
 fi
 
 # Extract the commit message from -m flag
