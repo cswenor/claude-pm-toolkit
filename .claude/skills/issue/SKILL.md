@@ -1073,31 +1073,29 @@ The config file maps keywords found in issue bodies/comments to documentation fi
 question: "How would you like to proceed with this issue?"
 header: "Start"
 options:
-  - label: "Move to Active and enter plan mode (Recommended)"
-    description: "Create worktree, move issue to Active, then iterate on implementation plan"
+  - label: "Move to Active and begin (Recommended)"
+    description: "Create worktree, move issue to Active, spawn planner agent"
   - label: "Just show context"
     description: "Display issue details without changing state"
 ```
 
-**On "Move to Active and enter plan mode":**
+**On "Move to Active and begin":**
 
 **Prerequisite:** You MUST already be in the correct worktree (Step 4.5 handles this).
 If Step 4.5 detected exit 1 (no worktree), worktree was created and you should have stopped.
 If you're seeing this, you're in the correct worktree (exit 0).
 
-1. **Move to Active BEFORE entering plan mode:**
+**Architecture: The orchestrator (this conversation) NEVER writes code or explores the codebase for implementation.** It only loads context, moves state, spawns agents, verifies evidence after agents return, and performs mutations (commit, PR, state transitions).
 
-   **⚠️ CRITICAL ORDER: This MUST happen before EnterPlanMode.**
+#### Step 1: Move to Active
 
-   Plan mode restricts Bash tool usage, so this command will fail if called after EnterPlanMode:
+```bash
+pm move <num> Active
+```
 
-   ```bash
-   pm move <num> Active
-   ```
+#### Step 2: Background environment setup
 
-1.5. **Background environment setup** (before plan mode):
-
-Kick off {{SETUP_COMMAND}} in the background so the environment bootstraps while you plan.
+Kick off {{SETUP_COMMAND}} in the background so the environment bootstraps during planning.
 
 Call the Bash tool with these exact parameters:
 
@@ -1105,178 +1103,91 @@ Call the Bash tool with these exact parameters:
 - run_in_background: true
 - description: "Background environment setup for issue #<num>"
 
-The Bash tool returns a result that includes a task_id. Store this task_id for
-checking after plan mode exits.
+Store the returned task_id. If the call fails or returns no task_id, set task_id to null,
+warn the user ("Background setup failed to launch, you may need to run `{{SETUP_COMMAND}}` manually"),
+and continue. Setup failure must never block planning.
 
-Behavior: The command starts in a separate process and returns control to you
-immediately (within seconds). You do not wait for {{SETUP_COMMAND}} to finish.
+#### Step 3: Spawn Planner Agent
 
-**If the Bash call fails or does not return a task_id:** Warn the user
-("Background setup failed to launch, you may need to run `{{SETUP_COMMAND}}` manually")
-and set task_id to null. Continue to step 2 regardless — setup
-failure must never block planning.
+Spawn an Agent with `subagent_type: "general-purpose"`.
 
-Rules:
+Build the agent prompt by assembling:
 
-- Proceed immediately to step 2 (EnterPlanMode) after storing the task_id (or null)
-- Do NOT call TaskOutput before EnterPlanMode
-- Do NOT block planning for any reason related to setup
-- The result is checked after plan mode exits (see "After ExitPlanMode" below)
+1. **Common Context Block** (from Agent Prompt Templates above) — fill in all template variables from the briefing
+2. **Planner-Specific Block** (from Agent Prompt Templates above)
+3. **Additional Planner Instructions:**
 
-Worktree prerequisite: This step only runs when you are already in the correct
-worktree (exit 0 from Step 4.5). If Step 4.5 created a worktree and stopped, this
-step runs on the NEXT /issue <num> invocation from within the worktree.
+```
+## Collaborative Planning (MANDATORY when Codex available)
 
-2. **Call EnterPlanMode tool** - Only after step 1.5 completes (task_id or null)
+If codex_available is true:
+- Run the full Sub-Playbook: Collaborative Planning (all phases)
+- This means: launch Codex Plan B BEFORE writing Plan A, then run refinement iterations
+- Save collaborative planning evidence (Plan B file, decision ledger JSONL)
 
-3. **Plan title convention:** Start the plan with `# Plan: <title> (#<issue_num>)` so plan files are discoverable by issue number via `./tools/scripts/find-plan.sh`.
+If codex_available is false:
+- Skip collaborative planning, write Plan A directly
 
-4. **Launch Codex Plan B (inside plan mode, BEFORE writing Plan A):**
+## Planning Intelligence
 
-   **⚠️ This MUST happen before Claude writes Plan A.** Ordering-based independence.
+Call these tools to inform the plan:
+- mcp__pm_intelligence__suggest_approach({ area: "<issue_area>", keywords: "<key terms>" })
+- mcp__pm_intelligence__predict_completion({ issueNumber: <num> })
+- mcp__pm_intelligence__predict_rework({ issueNumber: <num> })
+- mcp__pm_intelligence__get_history_insights()
 
-   Uses `mcp__codex__codex` MCP tool (works inside plan mode — no Bash needed).
+If the issue is large (epic or has >5 ACs):
+- mcp__pm_intelligence__decompose_issue({ issueNumber: <num> })
 
-   **THIS IS NON-NEGOTIABLE. You MUST run Collaborative Planning when codex is available.**
+## Plan Content Requirements
 
-   If `codex_available` is true:
-   Run Phase 1, Step 1 of Sub-Playbook: Collaborative Planning immediately. Do NOT ask for permission — launch Codex Plan B now. Then proceed to step 5.
-
-   If `codex_available` is false:
-   Display: "Codex not available — skipping collaborative planning."
-
-5. **Gather planning intelligence** (inside plan mode, before writing Plan A):
-
-   Call these in parallel to inform the plan:
-
-   ```
-   mcp__pm_intelligence__suggest_approach({ area: "<issue_area>", keywords: "<key terms>" })
-   mcp__pm_intelligence__predict_completion({ issueNumber: <num> })
-   mcp__pm_intelligence__predict_rework({ issueNumber: <num> })
-   mcp__pm_intelligence__get_history_insights()
-   ```
-
-   - `suggest_approach`: Past decisions and outcomes for this area — what worked, what didn't
-   - `predict_completion`: P50/P80/P95 delivery estimates to include in the plan
-   - `predict_rework`: Rework probability — if high, add extra review steps to the plan
-   - `get_history_insights`: Code hotspots and coupling — inform which files to touch carefully
-
-   **If the issue is large (epic or has >5 ACs):**
-
-   ```
-   mcp__pm_intelligence__decompose_issue({ issueNumber: <num> })
-   ```
-
-   Use the subtask breakdown to structure the implementation phases in Plan A.
-
-   **Use intelligence output to enrich the plan, not replace your judgment.** If past approaches failed in this area, call that out. If rework probability is >50%, add a "Risk Mitigation" section.
-
-6. In plan mode, create Plan A that includes:
-   - Acceptance criteria as checkboxes
-   - **AC Traceability Table** (see below) — maps each criterion to implementation files and tests
-   - Non-goals as DO NOT constraints
-   - Inline policy snippets from loaded docs
-   - Development guardrails (including port isolation via shell exports)
-   - Implementation approach (informed by `suggest_approach` intelligence)
-   - **Delivery estimate** from `predict_completion` (P50/P80/P95)
-   - **Risk flags** from `predict_rework` (if probability >50%)
-   - **Scope boundary check** (see below)
-
-7. **Collaborative Planning: Refinement (after Plan A is written):**
-
-   If collaborative planning was launched in step 4:
-
-   **⚠️ Refinement iterations use `mcp__codex__codex` MCP tool (works inside plan mode), NOT `codex exec` via Bash.**
-
-   Run Phases 2-3 of Sub-Playbook: Collaborative Planning
-   (Questions with recommendations, then Iterative Refinement until convergence)
-   Update the plan file with any revisions made during refinement.
-
-   For Phase 3 Codex calls, use:
-   ```
-   mcp__codex__codex({
-     prompt: "Review my updated plan for issue #<num> at <plan_a_path>. The decision ledger at /tmp/codex-plan-ledger-<num>.json shows what has already been proposed, accepted, and rejected. Do NOT re-propose rejected items. If you have NEW suggestions, propose them. If all your concerns are addressed, respond with CONVERGED.",
-     sandbox: "read-only",
-     cwd: "<repo_root>"
-   })
-   ```
-
-   If skipped in step 4: skip this step.
-
-8. Present the final plan to user for approval via ExitPlanMode
-
-   Only start implementing when user approves.
-
-#### Scope Boundary Check (in plan mode)
-
-Before finalizing the plan, explicitly verify:
-
-```markdown
-### Scope Check
-
-**This PR will ONLY contain:**
-
-- [ ] Changes directly addressing the acceptance criteria above
-- [ ] No infrastructure changes unless listed in acceptance criteria
-- [ ] No dependency upgrades unless listed in acceptance criteria
-- [ ] No refactoring beyond what's needed for the feature
-
-**If you discover work outside this scope during implementation:**
-→ STOP and run Sub-Playbook: Discovered Work
-→ Create separate issue, establish blocker if needed
-→ Do NOT bundle unrelated work into this PR
+The plan file MUST include:
+- Title: `# Plan: <title> (#{issue_num})`
+- `## Acceptance Criteria` with checkboxes
+- `## Non-goals` as DO NOT constraints
+- AC Traceability Table (map each AC to implementation files and tests)
+- Scope Boundary Check section
+- Implementation approach (informed by suggest_approach intelligence)
+- Delivery estimate from predict_completion (P50/P80/P95)
+- Risk flags from predict_rework (if probability >50%)
+- Inline policy snippets from loaded docs
+- Development guardrails (including port isolation via shell exports)
 ```
 
-Include this in the plan output so the user sees and acknowledges scope boundaries.
+The agent returns: `plan_file_path`, `collab_evidence`, `convergence_status`, `discovered_work`.
 
-#### AC Traceability Table (MANDATORY in all plans)
+#### Step 4: Plan Complete Gate (fail-closed)
 
-Every plan MUST include a traceability table mapping each acceptance criterion to its planned implementation and test. This makes review verification structural — the reviewer checks the table against the code, not the code against their memory of the AC.
+After the Planner Agent returns, the orchestrator verifies the plan from disk (agent output is compressed):
 
-```markdown
-### AC Traceability
+1. **Read the plan file** at the path returned by the agent
+2. **Check:** file exists, contains `## Acceptance Criteria` with checkboxes, `## Non-goals`, scope section
+3. **When `codex_available`:** verify collaborative planning evidence — Plan B file or JSONL with completed `agent_message` exists on disk
+4. **If gate fails:** re-spawn Planner Agent with corrective instructions specifying what is missing
 
-| # | Acceptance Criterion | Implementation File(s) | Test File(s) | Notes |
-|---|---------------------|----------------------|-------------|-------|
-| 1 | [criterion text] | `src/auth.ts` | `tests/auth.test.ts` | |
-| 2 | [criterion text] | `src/api/route.ts` | `tests/api.test.ts` | Needs new test |
-| 3 | [criterion text] | — | — | Spike: approach TBD |
-```
+#### Step 5: Present plan to user for approval
 
-**Rules:**
-- Every AC must have a row, even if implementation is "TBD" or "spike needed"
-- Empty Implementation/Test columns flag gaps early (before code is written)
-- During implementation, update the table as files are created
-- During review (/pm-review), the table is the verification checklist
+Use AskUserQuestion to present the plan and ask for approval.
 
-**Why this matters:** The #1 review failure mode is accepting a PR that "looks complete" but silently misses an AC. The traceability table makes gaps visible before implementation starts and provides the reviewer with a structural checklist rather than relying on their thoroughness.
+- If user approves: proceed to Step 6
+- If user rejects: re-spawn Planner Agent with user feedback + prior plan content as starting context
 
-#### After ExitPlanMode (START)
+#### Step 6: Check background setup result
 
-Before beginning implementation, check the background {{SETUP_COMMAND}} result.
+**If task_id is null** (Step 2 failed to launch): Skip TaskOutput. Report "Background setup was not launched. Run `{{SETUP_COMMAND}}` manually if needed."
 
-**If task_id is null** (step 1.5 failed to launch): Skip the TaskOutput call.
-Report "Background setup was not launched. Run `{{SETUP_COMMAND}}` manually if needed."
-Proceed to implementation.
+**If task_id exists:** Call TaskOutput with:
 
-**If task_id exists:** Call the TaskOutput tool with these exact parameters:
-
-- task_id: the value stored from step 1.5
+- task_id: the value stored from Step 2
 - block: true
 - timeout: 120000
 
-This blocks for up to 2 minutes. Since plan mode typically takes several minutes, setup should already be done by this point.
+Interpret the result:
+- Exit code 0: Report "Environment ready."
+- Non-zero exit code: Report "Background setup failed." Show first 20 lines. Suggest manual run. Do NOT block.
+- Still running: Report "Setup still running. Proceeding — check back before running tests."
 
-Interpret the result and always report to the user:
-
-- Completed with exit code 0: Report "Environment ready." Proceed to implementation.
-- Completed with non-zero exit code: Report "Background setup failed." Show the
-  first 20 lines of output. Suggest the user run {{SETUP_COMMAND}} manually. Do NOT block
-  implementation.
-- Still running (timed out after 2 min): Report "Setup is still running. You can start
-  working. Check back with TaskOutput if needed before running tests."
-
-**Health check:** After confirming setup status, verify dependencies are installed:
+**Health check:** Verify dependencies:
 
 ```bash
 ls <worktree_path>/node_modules/.bin/ 2>/dev/null | head -5
@@ -1284,131 +1195,310 @@ ls <worktree_path>/node_modules/.bin/ 2>/dev/null | head -5
 
 If empty or missing, warn: "Dependencies may not be installed. Run `{{SETUP_COMMAND}}` manually."
 
-**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `pm move` Review`.
+#### Step 7: Spawn Developer Agent
+
+Spawn an Agent with `subagent_type: "general-purpose"`.
+
+Build the agent prompt by assembling:
+
+1. **Common Context Block** (from Agent Prompt Templates above)
+2. **Developer-Specific Block** (from Agent Prompt Templates above)
+3. **Full approved plan content** (read from disk and included verbatim)
+4. **Additional Developer Instructions:**
+
+```
+## Codex Implementation Review (MANDATORY when Codex available)
+
+If codex_available is true:
+- After implementation is complete, run Sub-Playbook: Codex Implementation Review
+- Save review evidence to /tmp/codex-impl-events-<num>-iter*.jsonl
+- You MUST obtain VERDICT: APPROVED before returning
+
+If codex_available is false:
+- Skip Codex review
+
+## Test Execution
+
+Run the test command and fix any failures:
+{{TEST_COMMAND}}
+
+## Stage Files
+
+Stage all implementation files: `git add <specific files>` (staging is allowed, committing is FORBIDDEN)
+```
+
+The agent returns: `files_changed`, `test_results`, `codex_review_result`, `discovered_work`.
+
+#### Step 8: Post-Developer Verification (orchestrator)
+
+After the Developer Agent returns, the orchestrator runs these checks:
+
+**a. Unauthorized commit check:**
+```bash
+git log --oneline -1
+```
+Verify no new commits were created since before the agent spawn. If violation detected, surface to user and discard agent work.
+
+**b. Workflow state check:**
+```bash
+pm status <num>
+```
+Verify workflow state is still Active (unchanged by agent).
+
+**c. Discovered work check:**
+If the agent returned `discovered_work`, run **Sub-Playbook: Discovered Work** (duplicate scan, create issue, establish blocker). After the new issue exists, re-spawn Developer Agent to continue remaining work.
+
+**d. Dev Complete gate (fail-closed):**
+- Files changed list is non-empty
+- Test command exit code is 0
+- **When `codex_available`:** Codex VERDICT: APPROVED in review JSONL (mandatory)
+- **If Codex evidence missing when `codex_available`:** re-spawn Developer Agent with instructions to complete Codex review. MUST NOT offer override or skip.
+
+**e. Post-Dev Ready gate:**
+```bash
+git diff --stat
+```
+Verify changes exist. When `codex_available`, verify `/tmp/codex-impl-events-<num>-iter*.jsonl` contains VERDICT: APPROVED.
+
+#### Step 9: Post-Agent Orchestration
+
+**Execution boundary crossed — the orchestrator now has full Claude Code permissions for mutations.**
+
+Run **Sub-Playbook: Post-Implementation Sequence** steps 3-7:
+
+1. **Step 3: Commit** all changes (including Codex test files, ledgers)
+2. **Step 3.5: Post-commit Codex review** — fresh single-pass verification via `mcp__codex__codex` (when `codex_available`)
+3. **Step 4: Create or update PR** with `Fixes #<num>` in the body
+4. **Step 5: /pm-review --analysis-only** — run the PM review skill in analysis-only mode
+5. **Step 6: AC checkbox gate** — verify all acceptance criteria are checked
+6. **Step 7: pm move \<num\> Review**
 
 ### CONTINUE Mode
-
-**CONTINUE mode MUST enter plan mode** - this is when re-grounding is most needed.
 
 ```
 question: "Resume work on this issue?"
 header: "Continue"
 options:
-  - label: "Enter plan mode and continue (Recommended)"
-    description: "Re-ground in requirements and iterate on plan before continuing"
+  - label: "Resume and continue (Recommended)"
+    description: "Git sync, re-plan, then implement remaining work"
   - label: "Check linked PR status"
     description: "Just fetch and display current PR details"
 ```
 
-**On "Enter plan mode and continue":**
+**On "Resume and continue":**
 
-1. **Check worktree detection result from Step 4.5:**
-   - If exit 0 (already in correct worktree) → continue to step 2
-   - If exit 1 (no worktree exists) → unexpected for CONTINUE, but proceed in-place
-   - If exit 2, 3, or 4 → should have already stopped in Step 4.5
+**Architecture: Same swarm pattern as START mode.** The orchestrator NEVER writes code — it spawns agents and verifies evidence.
 
-2. **Git sync (MANDATORY):**
+#### Step 1: Worktree check
 
-   ```bash
-   # Check for clean state
-   git status --porcelain  # Must be empty, otherwise warn user
+Check worktree detection result from Step 4.5:
+- If exit 0 (already in correct worktree): continue to Step 2
+- If exit 1 (no worktree exists): unexpected for CONTINUE, but proceed in-place
+- If exit 2, 3, or 4: should have already stopped in Step 4.5
 
-   # Fetch latest
-   git fetch origin
+#### Step 2: Git sync (MANDATORY)
 
-   # If PR exists, check out the PR branch
-   gh pr checkout <pr_num>
+```bash
+# Check for clean state
+git status --porcelain  # Must be empty, otherwise warn user
 
-   # If no PR but branch exists locally, switch to it and rebase
-   git checkout <branch> && git rebase origin/main
-   ```
+# Fetch latest
+git fetch origin
 
-   If git state is not clean, warn the user and ask if they want to proceed anyway.
+# If PR exists, check out the PR branch
+gh pr checkout <pr_num>
 
-3. **Search for previous plans:**
+# If no PR but branch exists locally, switch to it and rebase
+git checkout <branch> && git rebase origin/main
+```
 
-   ```bash
-   ./tools/scripts/find-plan.sh <issue_num> --latest
-   ```
+If git state is not clean, warn the user and ask if they want to proceed anyway.
 
-   If a plan file is found, read it before entering plan mode to recover prior context. If not found (exit 1), proceed without — this is normal for new issues.
+#### Step 3: Search for previous plans
 
-3.5. **Background environment setup** (before plan mode):
+```bash
+./tools/scripts/find-plan.sh <issue_num> --latest
+```
 
-Same as START mode step 1.5. Call the Bash tool with:
+If a plan file is found, read it to recover prior context — it will be passed to the Planner Agent. If not found (exit 1), proceed without.
+
+#### Step 4: Background environment setup
+
+Same as START mode Step 2. Call the Bash tool with:
 
 - command: "{{SETUP_COMMAND}}"
 - run_in_background: true
 - description: "Background environment setup for issue #<num>"
 
-Store the returned task_id for checking after plan mode exits. If the call fails
-or returns no task_id, set task_id to null, warn the user, and continue.
+Store the returned task_id. If the call fails, set task_id to null, warn the user, and continue.
 
-4. **Call EnterPlanMode tool** - Re-enter plan mode to re-ground in requirements.
-   Only after step 3.5 completes (task_id or null).
+#### Step 5: Spawn Planner Agent
 
-5. **Launch Codex Plan B (inside plan mode, BEFORE writing Plan A):**
+Same as START mode Step 3, but with these additions to the prompt:
 
-   **⚠️ This MUST happen before Claude writes Plan A.** Ordering-based independence.
+```
+## Prior Context (CONTINUE mode)
 
-   Uses `mcp__codex__codex` MCP tool (works inside plan mode — no Bash needed).
+A previous plan exists for this issue. Use it as your starting point:
 
-   Same pattern as START mode step 4. If `codex_available` is true, AskUserQuestion to
-   launch Codex for independent Plan B or skip. Codex writes Plan B before Claude writes Plan A.
+{prior_plan_content_or_"No prior plan found"}
 
-6. In plan mode, write Plan A showing:
-   - Acceptance criteria with current status (done/remaining)
-   - Non-goals as DO NOT constraints
-   - Inline policy snippets
-   - Development guardrails (including port isolation via shell exports if in worktree)
-   - What work has been done (from PR if exists)
-   - What remains to be done
-   - **Scope drift check** (see below)
+## CONTINUE-Specific Requirements
 
-7. **Collaborative Planning: Refinement (after Plan A is written):**
-
-   Same as START mode step 7. If collaborative planning was launched in step 5,
-   use `mcp__codex__codex` MCP tool for refinement iterations (works inside plan mode).
-   Run Phases 2-3 of Sub-Playbook: Collaborative Planning. If skipped, skip this step.
-
-8. Present the final plan to user for approval via ExitPlanMode
-
-   Only continue implementing when user approves.
-
-#### Scope Drift Check (in plan mode for CONTINUE)
-
-Before continuing, check if scope has drifted:
-
-```markdown
-### Scope Drift Check
-
-**Review the work done so far. Does the PR contain:**
-
-- [ ] Only changes for this issue's acceptance criteria?
-- [ ] No unrelated infrastructure changes?
-- [ ] No bundled features that should be separate issues?
-
-**If scope has already drifted:**
-→ Consider splitting the PR before continuing
-→ Extract unrelated work into separate issues/PRs
-→ It's easier to split now than after more work is done
-
-**If you discover MORE work outside scope during implementation:**
-→ STOP and run Sub-Playbook: Discovered Work
-→ Do NOT continue bundling unrelated changes
+Your updated plan must show:
+- Acceptance criteria with current status (done/remaining)
+- What work has been done (from PR diff if exists)
+- What remains to be done
+- Scope drift check: has the PR drifted from the original acceptance criteria?
 ```
 
-This catches scope mixing early in the CONTINUE flow, before more work gets bundled.
+The agent returns: `plan_file_path`, `collab_evidence`, `convergence_status`, `discovered_work`.
 
-#### After ExitPlanMode (CONTINUE)
+#### Step 6: Plan Complete Gate
 
-Same as START mode "After ExitPlanMode." If task_id is null, skip TaskOutput and
-report that setup was not launched. If task_id exists, call TaskOutput with
-block: true, timeout: 120000 using the task_id from step 3.5. Always report the
-result to the user: ready, failed (with output), or still running. Then run the
-health check (ls node_modules/.bin/) and warn if dependencies are missing.
+Same as START mode Step 4. Read plan from disk, verify structure, verify Codex evidence when applicable. Re-spawn on failure.
 
-**Post-Implementation:** After implementation is complete, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5). Do NOT skip directly to `{{TEST_COMMAND}}` or `pm move` Review`.
+#### Step 7: Present plan to user for approval
+
+Same as START mode Step 5. Use AskUserQuestion. Re-spawn Planner with feedback on rejection.
+
+#### Step 8: Check background setup result
+
+Same as START mode Step 6. Check task_id, call TaskOutput, run health check.
+
+#### Step 9: Spawn Developer Agent
+
+Same as START mode Step 7. Include the full approved plan content from disk.
+
+#### Step 10: Post-Developer Verification
+
+Same as START mode Step 8. Run all gates: unauthorized commit check, workflow state check, discovered work check, Dev Complete gate, Post-Dev Ready gate.
+
+#### Step 11: Post-Agent Orchestration
+
+Same as START mode Step 9. Run **Sub-Playbook: Post-Implementation Sequence** steps 3-7:
+Commit → Post-commit Codex review → Create/update PR → /pm-review --analysis-only → AC checkbox gate → pm move \<num\> Review.
+
+### REWORK Mode
+
+```
+question: "Changes were requested on this PR. What would you like to do?"
+header: "Rework"
+options:
+  - label: "Address feedback (Recommended)"
+    description: "Fetch review feedback, sync git, spawn developer agent to fix"
+  - label: "Show full PR review thread"
+    description: "Fetch and display all review comments"
+```
+
+**On "Address feedback":**
+
+**Architecture: Same swarm pattern, but NO Planner Agent.** Review feedback replaces the plan. The orchestrator fetches feedback, spawns a Developer Agent with that feedback, and verifies results.
+
+#### Step 1: Fetch review comments FIRST (before any state change)
+
+```
+mcp__github__get_pull_request_reviews({ owner, repo, pull_number: <pr_num> })
+```
+
+Also fetch PR discussion comments:
+```bash
+gh pr view <pr_num> --json comments --jq '.comments[].body'
+```
+
+Store the full feedback for use in the Developer Agent prompt.
+
+#### Step 2: Worktree verification (MANDATORY)
+
+If Step 4.5 was not already run for this mode, verify worktree now:
+Run `./tools/scripts/worktree-detect.sh <issue_number>`. If exit 1 (no worktree), create one before proceeding. If exit 2/3 (wrong location), direct user to the correct worktree. REWORK edits must happen in an isolated worktree, not the main repo.
+
+#### Step 3: Git sync (MANDATORY)
+
+```bash
+# Check for clean state
+git status --porcelain  # Must be empty, otherwise warn user
+
+# Fetch latest
+git fetch origin
+
+# Check out the PR branch
+gh pr checkout <pr_num>
+```
+
+If git state is not clean, warn the user and ask if they want to proceed anyway.
+
+#### Step 4: Move to Active
+
+```bash
+pm move <num> Active
+```
+
+#### Step 5: Spawn Developer Agent (NO Planner — feedback is the plan)
+
+Spawn an Agent with `subagent_type: "general-purpose"`.
+
+Build the agent prompt by assembling:
+
+1. **Common Context Block** (from Agent Prompt Templates above)
+2. **Developer-Specific Block** (from Agent Prompt Templates above)
+3. **Review Feedback Block** (replaces the plan):
+
+```
+## Your Task: Address Review Feedback
+
+The following review comments were left on PR #<pr_num>. Address ALL of them:
+
+{review_comments_formatted}
+
+## PR Discussion Comments
+
+{pr_discussion_comments}
+
+## Existing Implementation Context
+
+The PR already has changes. Your job is to address the review feedback
+on the existing implementation, not rewrite from scratch.
+
+## Codex Implementation Review (MANDATORY when Codex available)
+
+If codex_available is true:
+- After addressing all feedback, run Sub-Playbook: Codex Implementation Review
+- Save review evidence to /tmp/codex-impl-events-<num>-iter*.jsonl
+- You MUST obtain VERDICT: APPROVED before returning
+
+## Test Execution
+
+Run the test command and fix any failures:
+{{TEST_COMMAND}}
+
+## Stage Files
+
+Stage all changed files: `git add <specific files>` (staging is allowed, committing is FORBIDDEN)
+```
+
+The agent returns: `files_changed`, `test_results`, `codex_review_result`, `discovered_work`.
+
+#### Step 6: Post-Developer Verification
+
+Same as START mode Step 8. Run all gates:
+
+**a.** `git log --oneline -1` — verify no unauthorized commits
+**b.** `pm status <num>` — verify workflow state is still Active
+**c.** Discovered work check — if found, run Sub-Playbook: Discovered Work, re-spawn
+**d.** Dev Complete gate: files changed + test exit 0 + Codex VERDICT: APPROVED (when `codex_available`)
+**e.** Post-Dev Ready gate: `git diff --stat` shows changes
+
+#### Step 7: Post-Agent Orchestration
+
+Run **Sub-Playbook: Post-Implementation Sequence** steps 3-7:
+
+1. **Step 3: Commit** all changes
+2. **Step 3.5: Post-commit Codex review** (when `codex_available`)
+3. **Step 4: Push to existing PR branch** (PR already exists for REWORK)
+4. **Step 5: /pm-review --analysis-only**
+5. **Step 6: AC checkbox gate**
+6. **Step 7: pm move \<num\> Review**
 
 ### REVIEW Mode
 
@@ -1449,49 +1539,6 @@ Print: `gh pr merge <pr_num> --squash`
 
 1. Confirm: "Only run this AFTER merging the PR. Continue?"
 2. If yes: `pm move <num> Done`
-
-### REWORK Mode
-
-```
-question: "Changes were requested on this PR. What would you like to do?"
-header: "Rework"
-options:
-  - label: "Continue addressing feedback (Recommended)"
-    description: "Move to Active, sync git, then display feedback and guardrails"
-  - label: "Show full PR review thread"
-    description: "Fetch and display all review comments"
-```
-
-**On "Continue addressing feedback":**
-
-**⚠️ CRITICAL ORDER: Verify worktree → Fetch context → Mutate state.** If we move to Active first and the fetch fails, we've changed state without having the feedback to act on.
-
-0. **Worktree verification (MANDATORY):**
-   If Step 4.5 was not already run for this mode, verify worktree now:
-   Run `./tools/scripts/worktree-detect.sh <issue_number>`. If exit 1 (no worktree), create one before proceeding. If exit 2/3 (wrong location), direct user to the correct worktree. This ensures REWORK edits happen in an isolated worktree, not the main repo.
-
-1. **Fetch review comments FIRST** via `mcp__github__get_pull_request_reviews`
-   Also fetch PR discussion comments: `gh pr view <pr_num> --json comments --jq '.comments[].body'`
-2. **Git sync (MANDATORY):**
-
-   ```bash
-   # Check for clean state
-   git status --porcelain  # Must be empty, otherwise warn user
-
-   # Fetch latest
-   git fetch origin
-
-   # Check out the PR branch
-   gh pr checkout <pr_num>
-   ```
-
-   If git state is not clean, warn the user and ask if they want to proceed anyway.
-
-3. **Move to Active:** `pm move <num> Active`
-4. Display feedback summary (from step 1)
-5. Display guardrails
-6. After feedback is addressed, follow **Sub-Playbook: Post-Implementation Sequence** (Steps 1-5).
-   This ensures Codex review, tests, and /pm-review all pass before returning to Review.
 
 ### CLOSED Mode
 
