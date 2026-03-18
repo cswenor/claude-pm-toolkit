@@ -17,6 +17,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { execFile, execSync } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
 
 const execFileAsync = promisify(execFile);
 
@@ -485,12 +486,92 @@ const VALID_TRANSITIONS: Record<WorkflowState, WorkflowState[]> = {
   Done: ["Active"], // Reopen
 };
 
+/** Pre-Review gate: check readiness before allowing transition to Review */
+async function checkReviewReadiness(
+  issueNumber: number,
+  db: Database.Database
+): Promise<{ pass: boolean; failures: string[]; warnings: string[] }> {
+  const failures: string[] = [];
+  const warnings: string[] = [];
+
+  // 1. Check working tree is clean
+  try {
+    const gitStatus = execSync("git status --porcelain", {
+      encoding: "utf8",
+      timeout: 5000,
+    }).trim();
+    if (gitStatus.length > 0) {
+      const changedCount = gitStatus.split("\n").length;
+      failures.push(
+        `Working tree is dirty (${changedCount} uncommitted change${changedCount > 1 ? "s" : ""}). Commit or stash before moving to Review.`
+      );
+    }
+  } catch {
+    warnings.push("Could not check git status (not in a git repo or git unavailable).");
+  }
+
+  // 2. Check for test evidence in recent events
+  const recentTestEvents = db
+    .prepare(`
+      SELECT metadata FROM events
+      WHERE issue_number = ? AND metadata LIKE '%test_result%'
+      ORDER BY timestamp DESC LIMIT 5
+    `)
+    .all(issueNumber) as Array<{ metadata: string }>;
+
+  if (recentTestEvents.length === 0) {
+    warnings.push(
+      "No test evidence found in recent events. Consider running tests before Review."
+    );
+  }
+
+  // 3. Check for Codex approval evidence if codex files exist
+  try {
+    const tmpFiles = readdirSync("/tmp").filter(
+      (f) => f.startsWith(`codex-impl-events-${issueNumber}-iter`) && f.endsWith(".jsonl")
+    );
+
+    if (tmpFiles.length > 0) {
+      // Codex was used — check the latest iteration for VERDICT: APPROVED
+      const sorted = tmpFiles.sort();
+      const latestFile = join("/tmp", sorted[sorted.length - 1]);
+      let approved = false;
+
+      try {
+        const content = readFileSync(latestFile, "utf8");
+        if (content.includes("VERDICT: APPROVED")) {
+          approved = true;
+        }
+      } catch {
+        // File unreadable — warn but don't fail
+      }
+
+      if (!approved) {
+        failures.push(
+          `Codex review not approved. Latest Codex iteration (${sorted[sorted.length - 1]}) does not contain "VERDICT: APPROVED".`
+        );
+      }
+    }
+    // If no codex files exist, codex was not used — skip this check silently
+  } catch {
+    // /tmp not readable or similar — skip codex check
+  }
+
+  return {
+    pass: failures.length === 0,
+    failures,
+    warnings,
+  };
+}
+
 /** Move an issue to a new workflow state */
 export async function moveIssueWorkflow(
   issueNumber: number,
   targetState: WorkflowState,
-  actor: string = "claude"
-): Promise<{ success: boolean; message: string; from: string; to: string }> {
+  actor: string = "claude",
+  options?: { force?: boolean }
+): Promise<{ success: boolean; message: string; from: string; to: string; warnings?: string[] }> {
+  const force = options?.force ?? false;
   const db = await getDb();
 
   const issue = db
@@ -529,6 +610,29 @@ export async function moveIssueWorkflow(
     }
   }
 
+  // Pre-Review gate: check readiness before allowing transition to Review
+  let reviewWarnings: string[] | undefined;
+  if (targetState === "Review" && !force) {
+    const readiness = await checkReviewReadiness(issueNumber, db);
+    if (!readiness.pass) {
+      return {
+        success: false,
+        message:
+          `Pre-Review checks failed for #${issueNumber}:\n` +
+          readiness.failures.map((f) => `  - ${f}`).join("\n") +
+          (readiness.warnings.length > 0
+            ? "\nWarnings:\n" + readiness.warnings.map((w) => `  - ${w}`).join("\n")
+            : "") +
+          "\n\nUse --force to skip these checks.",
+        from: currentState,
+        to: targetState,
+      };
+    }
+    if (readiness.warnings.length > 0) {
+      reviewWarnings = readiness.warnings;
+    }
+  }
+
   // Update workflow
   db.prepare("UPDATE issues SET workflow = ? WHERE number = ?").run(
     targetState,
@@ -556,12 +660,19 @@ export async function moveIssueWorkflow(
     `).run(issueNumber);
   }
 
-  return {
+  const result: { success: boolean; message: string; from: string; to: string; warnings?: string[] } = {
     success: true,
     message: `Issue #${issueNumber}: ${currentState} → ${targetState}`,
     from: currentState,
     to: targetState,
   };
+
+  if (reviewWarnings && reviewWarnings.length > 0) {
+    result.warnings = reviewWarnings;
+    result.message += "\nWarnings:\n" + reviewWarnings.map((w) => `  - ${w}`).join("\n");
+  }
+
+  return result;
 }
 
 // ─── Dependency Operations ───────────────────────────────
@@ -1035,8 +1146,8 @@ export async function releaseWork(
   `
   ).run(issueNumber, issue.workflow ?? "Active", metadata);
 
-  // Move to Ready
-  const moveResult = await moveIssueWorkflow(issueNumber, "Ready");
+  // Move to Ready (force — programmatic release bypasses review gates)
+  const moveResult = await moveIssueWorkflow(issueNumber, "Ready", "claude", { force: true });
 
   return {
     success: moveResult.success,

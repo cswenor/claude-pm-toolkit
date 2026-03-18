@@ -131,6 +131,8 @@ TOOLKIT_FILES=(
   # Docs
   "docs/PM_PLAYBOOK.md"
   "docs/PM_PROJECT_CONFIG.md"
+  "docs/REVIEW_GUIDE.md"
+  "docs/INSTRUCTION_ARCHITECTURE.md"
   "AGENTS.md"
   # Metadata
   ".claude-pm-toolkit.json"

@@ -97,6 +97,7 @@ REQUIRED_FILES=(
   ".claude/skills/audit/SKILL.md"
   ".claude/skills/weekly/SKILL.md"
   ".claude/skills/start/SKILL.md"
+  "AGENTS.md"
   "docs/PM_PLAYBOOK.md"
   "docs/PM_PROJECT_CONFIG.md"
   ".claude-pm-toolkit.json"
@@ -164,6 +165,8 @@ OPTIONAL_FILES=(
   ".github/workflows/pm-post-merge.yml"
   ".github/workflows/pm-pr-check.yml"
   ".mcp.json"
+  "docs/REVIEW_GUIDE.md"
+  "docs/INSTRUCTION_ARCHITECTURE.md"
 )
 
 for f in "${OPTIONAL_FILES[@]}"; do

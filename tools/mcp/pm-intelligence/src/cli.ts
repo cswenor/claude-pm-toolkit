@@ -280,11 +280,13 @@ async function cmdStatus(args: string[]): Promise<void> {
 }
 
 async function cmdMove(args: string[]): Promise<void> {
-  const num = parseInt(args[0]);
-  const state = args[1] as WorkflowState;
+  const force = args.includes("--force");
+  const positional = args.filter((a) => a !== "--force");
+  const num = parseInt(positional[0]);
+  const state = positional[1] as WorkflowState;
 
   if (isNaN(num) || !state) {
-    console.error("Usage: pm move <issue_number> <state>");
+    console.error("Usage: pm move <issue_number> <state> [--force]");
     console.error(`States: ${VALID_WORKFLOWS.join(", ")}`);
     process.exit(1);
   }
@@ -295,7 +297,16 @@ async function cmdMove(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const result = await moveIssueWorkflow(num, state);
+  const result = await moveIssueWorkflow(num, state, "claude", { force });
+  if (!result.success) {
+    console.error(`${c.red}${result.message}${c.reset}`);
+    process.exit(1);
+  }
+  if (result.warnings && result.warnings.length > 0) {
+    for (const w of result.warnings) {
+      console.log(`${c.yellow}Warning: ${w}${c.reset}`);
+    }
+  }
   console.log(`${c.green}${result.message}${c.reset}`);
 }
 
@@ -533,7 +544,7 @@ ${c.bold}Commands:${c.reset}
   ${c.cyan}pm sync${c.reset} [--force]            Pull latest from GitHub
   ${c.cyan}pm board${c.reset}                     Kanban board in the terminal
   ${c.cyan}pm status${c.reset} [issue_number]     Project overview or issue detail
-  ${c.cyan}pm move${c.reset} <num> <state>        Move issue (${VALID_WORKFLOWS.join(", ")})
+  ${c.cyan}pm move${c.reset} <num> <state> [--force]  Move issue (${VALID_WORKFLOWS.join(", ")})
   ${c.cyan}pm add${c.reset} <num> [priority]      Start tracking issue (${VALID_PRIORITIES.join(", ")})
   ${c.cyan}pm dep${c.reset} <blocker> <blocked>   Add dependency
   ${c.cyan}pm release${c.reset} <num> <reason>   Release stuck work

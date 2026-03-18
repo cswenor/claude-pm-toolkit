@@ -336,6 +336,16 @@ tools/
 | **Sentinel** | CLAUDE.md PM sections | Appended | Block replaced |
 | **Local State** | .pm/state.db | Created on sync | **Never touched** |
 
+### Documentation
+
+| Document | Purpose |
+|----------|---------|
+| **[AGENTS.md](AGENTS.md)** | Agent behavioral rules, ledger awareness, and autonomy boundaries |
+| **[docs/REVIEW_GUIDE.md](docs/REVIEW_GUIDE.md)** | PR review standards and adversarial review methodology |
+| **[docs/INSTRUCTION_ARCHITECTURE.md](docs/INSTRUCTION_ARCHITECTURE.md)** | Three-layer instruction model (CLAUDE.md, skills, docs) |
+| **[docs/PM_PLAYBOOK.md](docs/PM_PLAYBOOK.md)** | Workflow definitions, state transitions, and PM processes |
+| **[docs/PM_PROJECT_CONFIG.md](docs/PM_PROJECT_CONFIG.md)** | Per-project configuration (user-editable) |
+
 ---
 
 ## Customization

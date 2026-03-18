@@ -2,7 +2,7 @@
 name: issue
 description: Create new issues (PM interview) or work on existing issues. Use without arguments to create, with issue number to execute.
 argument-hint: '[issue-number]'
-allowed-tools: Read, Glob, Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git diff *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), mcp__codex__codex, mcp__codex__codex-reply, mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__pm_intelligence__get_issue_status, mcp__pm_intelligence__get_board_summary, mcp__pm_intelligence__move_issue, mcp__pm_intelligence__sync_from_github, mcp__pm_intelligence__add_dependency, mcp__pm_intelligence__triage_issue, mcp__pm_intelligence__auto_label, mcp__pm_intelligence__decompose_issue, mcp__pm_intelligence__recover_context, mcp__pm_intelligence__get_session_history, mcp__pm_intelligence__predict_completion, mcp__pm_intelligence__predict_rework, mcp__pm_intelligence__suggest_approach, mcp__pm_intelligence__get_issue_dependencies, mcp__pm_intelligence__check_readiness, mcp__pm_intelligence__detect_scope_creep, mcp__pm_intelligence__explain_delay, mcp__pm_intelligence__record_decision, mcp__pm_intelligence__get_history_insights, AskUserQuestion, EnterPlanMode, TaskOutput
+allowed-tools: Read, Glob, Bash(./tools/scripts/context-digest.sh *), Bash(./tools/scripts/worktree-detect.sh *), Bash(./tools/scripts/worktree-setup.sh *), Bash(./tools/scripts/tmux-session.sh *), Bash(./tools/scripts/find-plan.sh *), Bash(git status *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git rebase *), Bash(git diff *), Bash(git worktree *), Bash(gh issue view * --json comments *), Bash(gh repo view *), Bash(gh pr checkout *), Bash({{SETUP_COMMAND}}), Bash(codex --version *), mcp__codex__codex, mcp__codex__codex-reply, mcp__github__get_issue, mcp__github__create_issue, mcp__github__update_issue, mcp__github__add_issue_comment, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_reviews, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__pm_intelligence__get_issue_status, mcp__pm_intelligence__get_board_summary, mcp__pm_intelligence__move_issue, mcp__pm_intelligence__sync_from_github, mcp__pm_intelligence__add_dependency, mcp__pm_intelligence__triage_issue, mcp__pm_intelligence__auto_label, mcp__pm_intelligence__decompose_issue, mcp__pm_intelligence__recover_context, mcp__pm_intelligence__get_session_history, mcp__pm_intelligence__predict_completion, mcp__pm_intelligence__predict_rework, mcp__pm_intelligence__suggest_approach, mcp__pm_intelligence__get_issue_dependencies, mcp__pm_intelligence__check_readiness, mcp__pm_intelligence__detect_scope_creep, mcp__pm_intelligence__explain_delay, mcp__pm_intelligence__record_decision, mcp__pm_intelligence__get_history_insights, AskUserQuestion, EnterPlanMode, TaskOutput
 ---
 
 # /issue - Issue Creation & Execution
@@ -195,7 +195,30 @@ You are a {role} agent working on Issue #{issue_num}: {title}
 
 1. Read all relevant source files to understand the current architecture
 2. Load documentation referenced by the issue (area labels, keywords)
-3. Write the plan file to the standard plan directory
+3. Run Collaborative Planning (MANDATORY when codex available — see below)
+4. Write the plan file to the standard plan directory
+
+## Ledger Workflow (Plan Ledger)
+
+Initialize the plan ledger before starting collaborative planning:
+```bash
+./tools/scripts/codex-ledger.sh init {issue_num} plan
+```
+
+During iterative refinement, track proposals:
+```bash
+# Add a proposal from Codex
+./tools/scripts/codex-ledger.sh add {issue_num} plan '{"id":"P1","source":"codex","proposal":"...","section":"...","status":"open"}'
+
+# Accept or reject proposals
+./tools/scripts/codex-ledger.sh transition {issue_num} plan P1 accepted "Aligns with architecture"
+./tools/scripts/codex-ledger.sh transition {issue_num} plan P1 rejected "Out of scope"
+```
+
+Before returning, verify convergence:
+```bash
+./tools/scripts/codex-ledger.sh assert-zero-open {issue_num} plan
+```
 
 ## Plan File Requirements
 - Title: `# Plan: {title} (#{issue_num})`
@@ -229,7 +252,33 @@ If you cannot return valid JSON, fall back to structured prose with clear labels
 
 1. Implement changes according to the plan
 2. Run tests — fix any failures
-3. Stage all implementation files: `git add <specific files>` (staging is allowed, committing is forbidden)
+3. Run Codex Implementation Review (MANDATORY when codex available)
+4. Stage all implementation files: `git add <specific files>` (staging is allowed, committing is forbidden)
+
+## Ledger Workflow (Review Ledger)
+
+Initialize the review ledger before first Codex review:
+```bash
+./tools/scripts/codex-ledger.sh init {issue_num} review
+```
+
+After each Codex review iteration, add findings:
+```bash
+./tools/scripts/codex-ledger.sh add {issue_num} review '{"id":"F1","iteration":1,"severity":"BLOCKING","summary":"...","file":"src/foo.ts","line":42,"status":"open"}'
+```
+
+After fixing/justifying findings:
+```bash
+./tools/scripts/codex-ledger.sh transition {issue_num} review F1 fixed "Parameterized query in abc123"
+./tools/scripts/codex-ledger.sh transition {issue_num} review F2 justified "Validated at API boundary (middleware.ts:30)"
+```
+
+Before returning, verify convergence:
+```bash
+./tools/scripts/codex-ledger.sh assert-zero-open {issue_num} review
+```
+
+Codex reads the ledger file directly at the start of each fresh session (per AGENTS.md § Ledger Awareness).
 
 ## Discovered Work
 If you discover work outside the acceptance criteria:
