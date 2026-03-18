@@ -4,6 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LEDGER="$SCRIPT_DIR/codex-ledger.sh"
 
+# Isolate test ledgers in a temp directory so tests never collide with
+# real archived ledgers in docs/ledgers/.
+TEST_LEDGER_ROOT="$(mktemp -d)"
+export CODEX_LEDGER_ROOT="$TEST_LEDGER_ROOT"
+REPO_ROOT="$TEST_LEDGER_ROOT"
+
 pass=0
 fail=0
 
@@ -72,7 +78,8 @@ assert_json_eq() {
 }
 
 cleanup() {
-  rm -f /tmp/plan-ledger-9*.json /tmp/review-ledger-9*.json
+  # Remove the isolated temp directory — tests never touch real docs/ledgers/
+  rm -rf "$TEST_LEDGER_ROOT"
 }
 trap cleanup EXIT
 
@@ -87,16 +94,16 @@ assert_ok "init creates plan ledger" \
   "$LEDGER" init "$N" plan
 
 assert_json_eq "init: correct issue_number" \
-  '.issue_number' "$N" "/tmp/plan-ledger-${N}.json"
+  '.issue_number' "$N" "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "init: correct ledger_type" \
-  '.ledger_type' 'plan' "/tmp/plan-ledger-${N}.json"
+  '.ledger_type' 'plan' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "init: entries is empty array" \
-  '.entries | length' '0' "/tmp/plan-ledger-${N}.json"
+  '.entries | length' '0' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "init: has created_at" \
-  '.created_at | length > 0' 'true' "/tmp/plan-ledger-${N}.json"
+  '.created_at | length > 0' 'true' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 # init refuses to overwrite existing ledger without --force
 "$LEDGER" add "$N" plan '{"iteration":1,"type":"proposal","summary":"Before overwrite"}' >/dev/null 2>&1
@@ -108,7 +115,7 @@ assert_ok "init --force overwrites existing ledger" \
   "$LEDGER" init "$N" plan --force
 
 assert_json_eq "init --force: entries reset to empty" \
-  '.entries | length' '0' "/tmp/plan-ledger-${N}.json"
+  '.entries | length' '0' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 # init also refuses overwrite when all entries resolved
 "$LEDGER" add "$N" plan '{"iteration":1,"type":"proposal","summary":"Will resolve"}' >/dev/null 2>&1
@@ -121,7 +128,7 @@ assert_ok "init --force overwrites resolved ledger" \
   "$LEDGER" init "$N" plan --force
 
 assert_json_eq "init --force (resolved): entries reset to empty" \
-  '.entries | length' '0' "/tmp/plan-ledger-${N}.json"
+  '.entries | length' '0' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 # init review ledger
 N=$((TEST_NUM + 2))
@@ -129,7 +136,38 @@ assert_ok "init creates review ledger" \
   "$LEDGER" init "$N" review
 
 assert_json_eq "init review: correct type" \
-  '.ledger_type' 'review' "/tmp/review-ledger-${N}.json"
+  '.ledger_type' 'review' "$REPO_ROOT/docs/ledgers/review/${N}.json"
+
+# init anchors repo-relative ledger paths to the repo root, not the caller cwd
+N=$((TEST_NUM + 3))
+TMP_WORKDIR="$(mktemp -d)"
+mkdir -p "$TMP_WORKDIR/subdir"
+(
+  cd "$TMP_WORKDIR/subdir"
+  "$LEDGER" init "$N" review >/dev/null
+)
+
+if [[ -f "$REPO_ROOT/docs/ledgers/review/${N}.json" && ! -f "$TMP_WORKDIR/subdir/docs/ledgers/review/${N}.json" ]]; then
+  pass=$((pass + 1))
+else
+  echo "FAIL: init should write ledgers under the repo root regardless of caller cwd"
+  echo "  expected repo path: $REPO_ROOT/docs/ledgers/review/${N}.json"
+  echo "  repo path exists:   $(test -f "$REPO_ROOT/docs/ledgers/review/${N}.json" && echo yes || echo no)"
+  echo "  caller-cwd path exists: $(test -f "$TMP_WORKDIR/subdir/docs/ledgers/review/${N}.json" && echo yes || echo no)"
+  fail=$((fail + 1))
+fi
+
+rm -rf "$TMP_WORKDIR"
+
+# Relative CODEX_LEDGER_ROOT must be rejected to prevent cwd-dependent writes
+N_REL=$((TEST_NUM + 4))
+echo "Test: relative CODEX_LEDGER_ROOT is rejected"
+if CODEX_LEDGER_ROOT="relative-path" "$LEDGER" init "$N_REL" review >/dev/null 2>&1; then
+  echo "FAIL: relative CODEX_LEDGER_ROOT should be rejected"
+  fail=$((fail + 1))
+else
+  pass=$((pass + 1))
+fi
 
 # init rejects invalid type
 assert_fail "init rejects invalid type" \
@@ -145,19 +183,19 @@ assert_ok "add appends plan entry" \
   "$LEDGER" add "$N" plan '{"iteration":1,"type":"proposal","summary":"Use atomic writes"}'
 
 assert_json_eq "add: entry count is 1" \
-  '.entries | length' '1' "/tmp/plan-ledger-${N}.json"
+  '.entries | length' '1' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "add: auto-assigned ID is P1" \
-  '.entries[0].id' 'P1' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].id' 'P1' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "add: status is open" \
-  '.entries[0].status' 'open' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].status' 'open' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "add: evidence normalized to null" \
-  '.entries[0].evidence' 'null' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].evidence' 'null' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "add: history is empty array" \
-  '.entries[0].history | length' '0' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].history | length' '0' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 # Duplicate ID rejection
 assert_fail "add rejects duplicate ID" \
@@ -168,7 +206,7 @@ assert_ok "add auto-assigns P2 for second entry" \
   "$LEDGER" add "$N" plan '{"iteration":1,"type":"proposal","summary":"Second proposal"}'
 
 assert_json_eq "add: second entry ID is P2" \
-  '.entries[1].id' 'P2' "/tmp/plan-ledger-${N}.json"
+  '.entries[1].id' 'P2' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 # Non-open status on add
 assert_fail "add rejects non-open status" \
@@ -202,7 +240,7 @@ assert_ok "add appends review entry" \
   "$LEDGER" add "$N" review '{"iteration":1,"severity":"BLOCKING","summary":"Missing validation","file":"src/handler.ts","line":45}'
 
 assert_json_eq "add review: ID is F1" \
-  '.entries[0].id' 'F1' "/tmp/review-ledger-${N}.json"
+  '.entries[0].id' 'F1' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 # Review: missing severity
 assert_fail "add rejects review without severity" \
@@ -222,7 +260,7 @@ assert_fail "add rejects review without line" \
 
 # Evidence field normalized to null when omitted
 assert_json_eq "add: evidence field exists and is null" \
-  '.entries[0].evidence' 'null' "/tmp/review-ledger-${N}.json"
+  '.entries[0].evidence' 'null' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 # ============================================================
 # transition tests
@@ -235,25 +273,25 @@ assert_ok "transition: open → accepted" \
   "$LEDGER" transition "$N" plan P1 accepted "Good idea, incorporated"
 
 assert_json_eq "transition: status updated" \
-  '.entries[0].status' 'accepted' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].status' 'accepted' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "transition: evidence stored" \
-  '.entries[0].evidence' 'Good idea, incorporated' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].evidence' 'Good idea, incorporated' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "transition: history has 1 entry" \
-  '.entries[0].history | length' '1' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].history | length' '1' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "transition: history[0].from = open" \
-  '.entries[0].history[0].from' 'open' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].history[0].from' 'open' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "transition: history[0].to = accepted" \
-  '.entries[0].history[0].to' 'accepted' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].history[0].to' 'accepted' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "transition: history[0] has evidence" \
-  '.entries[0].history[0].evidence' 'Good idea, incorporated' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].history[0].evidence' 'Good idea, incorporated' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 assert_json_eq "transition: history[0] has timestamp" \
-  '.entries[0].history[0].timestamp | length > 0' 'true' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].history[0].timestamp | length > 0' 'true' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 # Terminal → any: rejected
 assert_fail "transition rejects terminal → open" \
@@ -325,16 +363,16 @@ N=$((TEST_NUM + 30))
 "$LEDGER" transition "$N" review F2 justified "Already handled" >/dev/null
 
 assert_json_eq "multi-transition: F1 has 1 history entry" \
-  '.entries[0].history | length' '1' "/tmp/review-ledger-${N}.json"
+  '.entries[0].history | length' '1' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 assert_json_eq "multi-transition: F2 has 1 history entry" \
-  '.entries[1].history | length' '1' "/tmp/review-ledger-${N}.json"
+  '.entries[1].history | length' '1' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 assert_json_eq "multi-transition: F1 history from=open" \
-  '.entries[0].history[0].from' 'open' "/tmp/review-ledger-${N}.json"
+  '.entries[0].history[0].from' 'open' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 assert_json_eq "multi-transition: F2 history to=justified" \
-  '.entries[1].history[0].to' 'justified' "/tmp/review-ledger-${N}.json"
+  '.entries[1].history[0].to' 'justified' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 # ============================================================
 # Cross-iteration ID allocation
@@ -353,16 +391,16 @@ N=$((TEST_NUM + 40))
 "$LEDGER" add "$N" review '{"iteration":2,"severity":"SUGGESTION","summary":"Iter 2 new suggestion","file":"d.ts","line":4}' >/dev/null
 
 assert_json_eq "cross-iter: third entry is F3" \
-  '.entries[2].id' 'F3' "/tmp/review-ledger-${N}.json"
+  '.entries[2].id' 'F3' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 assert_json_eq "cross-iter: fourth entry is F4" \
-  '.entries[3].id' 'F4' "/tmp/review-ledger-${N}.json"
+  '.entries[3].id' 'F4' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 assert_json_eq "cross-iter: F3 is iteration 2" \
-  '.entries[2].iteration' '2' "/tmp/review-ledger-${N}.json"
+  '.entries[2].iteration' '2' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 assert_json_eq "cross-iter: total entries = 4" \
-  '.entries | length' '4' "/tmp/review-ledger-${N}.json"
+  '.entries | length' '4' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 # ============================================================
 # summary tests
@@ -450,7 +488,7 @@ N=$((TEST_NUM + 70))
 "$LEDGER" add "$N" plan '{"iteration":1,"type":"proposal","summary":"Context test"}' >/dev/null
 
 assert_output_contains "prompt-context plan: mentions ledger path" \
-  "/tmp/plan-ledger-${N}.json" \
+  "$REPO_ROOT/docs/ledgers/plan/${N}.json" \
   "$LEDGER" prompt-context "$N" plan
 
 assert_output_contains "prompt-context plan: mentions open count" \
@@ -496,14 +534,14 @@ assert_ok "add with explicit ID" \
   "$LEDGER" add "$N" plan '{"id":"P42","iteration":1,"type":"proposal","summary":"Explicit ID"}'
 
 assert_json_eq "explicit ID preserved" \
-  '.entries[0].id' 'P42' "/tmp/plan-ledger-${N}.json"
+  '.entries[0].id' 'P42' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 # Auto-assignment after explicit ID
 assert_ok "add auto-assigns after explicit ID" \
   "$LEDGER" add "$N" plan '{"iteration":1,"type":"proposal","summary":"After P42"}'
 
 assert_json_eq "auto-assign after P42 = P43" \
-  '.entries[1].id' 'P43' "/tmp/plan-ledger-${N}.json"
+  '.entries[1].id' 'P43' "$REPO_ROOT/docs/ledgers/plan/${N}.json"
 
 # Malformed explicit ID validation
 N=$((TEST_NUM + 82))
@@ -538,7 +576,7 @@ assert_ok "auto-assign after F10 = F11" \
   "$LEDGER" add "$N" review '{"iteration":1,"severity":"SUGGESTION","summary":"After F10","file":"b.ts","line":2}'
 
 assert_json_eq "auto-assign after F10 is F11" \
-  '.entries[1].id' 'F11' "/tmp/review-ledger-${N}.json"
+  '.entries[1].id' 'F11' "$REPO_ROOT/docs/ledgers/review/${N}.json"
 
 # ============================================================
 # Results
