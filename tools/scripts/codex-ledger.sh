@@ -3,8 +3,9 @@ set -euo pipefail
 
 # codex-ledger.sh — Deterministic convergence ledger for Codex review loops
 #
-# Manages plan and review ledgers as JSON files in /tmp/.
+# Manages plan and review ledgers as JSON files in docs/ledgers/.
 # Claude owns all writes; Codex reads via -s read-only.
+# Ledgers are committed alongside the code they reviewed.
 #
 # Usage:
 #   codex-ledger.sh init <issue_num> <type> [--force]
@@ -16,11 +17,20 @@ set -euo pipefail
 
 # --- Helpers ---
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${CODEX_LEDGER_ROOT:-}" ]]; then
+  # Reject relative paths to prevent caller-cwd-dependent writes
+  [[ "$CODEX_LEDGER_ROOT" == /* ]] || { echo "ERROR: CODEX_LEDGER_ROOT must be an absolute path (got: $CODEX_LEDGER_ROOT)" >&2; exit 1; }
+  REPO_ROOT="$CODEX_LEDGER_ROOT"
+else
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
+
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 ledger_path() {
   local issue_num="$1" type="$2"
-  echo "/tmp/${type}-ledger-${issue_num}.json"
+  echo "${REPO_ROOT}/docs/ledgers/${type}/${issue_num}.json"
 }
 
 # Atomic write: write to temp file then mv (prevents partial writes)
@@ -47,6 +57,9 @@ cmd_init() {
 
   local path
   path=$(ledger_path "$issue_num" "$type")
+
+  # Ensure parent directory exists (repo-relative paths need mkdir)
+  mkdir -p "$(dirname "$path")"
 
   # Safety: refuse to overwrite an existing ledger unless --force
   if [[ -f "$path" && "$force" != "--force" ]]; then
