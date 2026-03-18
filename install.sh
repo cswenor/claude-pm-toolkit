@@ -759,22 +759,44 @@ if [[ -d "$MCP_DST/src" ]] && [[ -f "$MCP_DST/package.json" ]]; then
     log_warn "Run manually: cd $MCP_DST && npm run build"
   fi
 
-  # Merge pm-intelligence into .mcp.json
+  # Merge MCP servers into .mcp.json (pm-intelligence, github, context7)
   MCP_JSON="$TARGET/.mcp.json"
-  MCP_ENTRY='{"mcpServers":{"pm-intelligence":{"command":"node","args":["./tools/mcp/pm-intelligence/build/index.js"]}}}'
+  MCP_ENTRIES=$(cat <<'MCPEOF'
+{
+  "mcpServers": {
+    "pm-intelligence": {
+      "command": "node",
+      "args": ["./tools/mcp/pm-intelligence/build/index.js"]
+    },
+    "github": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server:latest"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}
+MCPEOF
+)
 
   if [[ -f "$MCP_JSON" ]]; then
     tmp_mcp=$(mktemp)
     TEMP_FILES+=("$tmp_mcp")
-    if jq -s '.[0] * .[1]' "$MCP_JSON" <(echo "$MCP_ENTRY") > "$tmp_mcp" 2>/dev/null; then
+    # Deep merge: existing entries preserved, toolkit entries added/updated
+    if jq -s '.[0] * .[1]' "$MCP_JSON" <(echo "$MCP_ENTRIES") > "$tmp_mcp" 2>/dev/null; then
       cp "$tmp_mcp" "$MCP_JSON"
-      log_ok "Merged pm-intelligence into existing .mcp.json"
+      log_ok "Merged pm-intelligence, github, context7 into existing .mcp.json"
     else
-      log_warn "Failed to merge .mcp.json — add pm-intelligence entry manually"
+      log_warn "Failed to merge .mcp.json — add entries manually"
     fi
   else
-    echo "$MCP_ENTRY" | jq '.' > "$MCP_JSON"
-    log_ok "Created .mcp.json with pm-intelligence server"
+    echo "$MCP_ENTRIES" | jq '.' > "$MCP_JSON"
+    log_ok "Created .mcp.json with pm-intelligence, github, context7 servers"
   fi
 fi
 
