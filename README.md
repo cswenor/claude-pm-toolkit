@@ -42,7 +42,7 @@ cd claude-pm-toolkit
 | **`/audit`** | Independent integrity audit of Codex review process. 8-check verification (ledger integrity, finding honesty, pattern propagation, rebuttal quality, suggestion handling, iteration honesty, write-scope compliance, AC coverage). |
 | **`/weekly`** | AI narrative from weekly snapshots. Enhanced with risk radar, DORA metrics, Monte Carlo forecasts, anomaly detection, and delivery metrics. |
 
-### MCP Server (pm-intelligence) — 49 Tools
+### MCP Server (pm-intelligence) — 54 Tools
 
 A native MCP server that gives Claude direct access to project intelligence. All workflow state lives in a local SQLite database (`.pm/state.db`) that syncs from GitHub.
 

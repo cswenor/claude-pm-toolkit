@@ -991,19 +991,25 @@ export async function releaseWork(
     /* no plan */
   }
 
-  // Find worktree path
+  // Find worktree path by parsing porcelain blocks
+  // Format: "worktree <path>\nHEAD <sha>\nbranch <ref>\n\n"
   let worktreePath = "";
   try {
     const worktrees = execSync("git worktree list --porcelain", {
       encoding: "utf8",
     });
-    const lines = worktrees.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      if (
-        lines[i].startsWith("worktree ") &&
-        lines[i + 1]?.includes(`pm-${issueNumber}`)
-      ) {
-        worktreePath = lines[i].replace("worktree ", "");
+    const blocks = worktrees.split("\n\n");
+    for (const block of blocks) {
+      const lines = block.split("\n");
+      const wtLine = lines.find((l) => l.startsWith("worktree "));
+      const branchLine = lines.find((l) => l.startsWith("branch "));
+      if (wtLine && branchLine && branchLine.includes(`pm-${issueNumber}`)) {
+        worktreePath = wtLine.replace("worktree ", "");
+        break;
+      }
+      // Also match by worktree directory name
+      if (wtLine && wtLine.includes(`pm-${issueNumber}`)) {
+        worktreePath = wtLine.replace("worktree ", "");
         break;
       }
     }

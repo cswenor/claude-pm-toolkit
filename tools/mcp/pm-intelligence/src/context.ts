@@ -196,7 +196,7 @@ export async function getSessionHistory(
 
   // Extract workflow transitions
   const workflowTransitions = events
-    .filter((e) => e.event_type === "workflow_transition" && e.from_value && e.to_value)
+    .filter((e) => e.event_type === "workflow_change" && e.from_value && e.to_value)
     .map((e) => ({
       from: e.from_value!,
       to: e.to_value!,
