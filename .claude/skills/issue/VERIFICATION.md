@@ -161,22 +161,36 @@
 
 ## Post-Implementation Sequence
 
-- [ ] Sequence enforced: commit → parallel gates (Codex + tests) → PR → /pm-review → Review
-- [ ] Codex review and tests run concurrently (parallel quality gates)
-- [ ] Both gates must pass on the same commit before proceeding
+- [ ] Sequence enforced: tests → Codex review → commit → post-commit Codex → PR → /pm-review → AC gate → Review
+- [ ] Tests run BEFORE Codex review (Codex only reviews mechanically-correct code)
+- [ ] Commit happens AFTER Codex approval (clean history, no fixup commits)
+- [ ] Codex review is MANDATORY when codex_available (no skip option, no AskUserQuestion)
+- [ ] Dev Complete gate requires Codex VERDICT: APPROVED in JSONL when codex available
+- [ ] Post-Dev Ready gate requires codex-impl-events JSONL with APPROVED when codex available
+- [ ] Post-commit Codex review (Step 3.5) produces fresh evidence against committed code
+- [ ] Claude MUST NOT self-certify, recommend override, or skip Codex review
 - [ ] Tests run before PR creation (aligned with CLAUDE.md "Before Creating PR")
 - [ ] No step can be skipped (each validates the previous)
-- [ ] /pm-review runs as self-check after PR creation (PR or issue number)
+- [ ] /pm-review runs as self-check after PR creation (analysis only)
 - [ ] Only after /pm-review passes (or user override) does Claude move to Review
 - [ ] START mode "After ExitPlanMode" references Post-Implementation Sequence
 - [ ] CONTINUE mode "After ExitPlanMode" references Post-Implementation Sequence
 - [ ] REWORK mode references Post-Implementation Sequence
-- [ ] Code changes from one gate trigger re-run of the other gate
-- [ ] Appendix H guardrails contain full explicit checklist (not indirect reference)
+- [ ] Code changes from /pm-review trigger full loop: tests → Codex → commit → post-commit
 - [ ] Execution model documented (skill guidance vs Claude Code capabilities)
-- [ ] Post-Implementation Sequence includes Precedence Note re: /pm-review gate
+- [ ] Post-Implementation Sequence includes Precedence Note re: quality gates
 - [ ] Suggestion handling is in Continue path (not before user choice) in both sub-playbooks
 - [ ] AC Traceability Table present in plan and used during /pm-review verification
+
+## Codex Review Enforcement (NON-NEGOTIABLE)
+
+- [ ] Collaborative planning is mandatory when codex_available (no AskUserQuestion skip option)
+- [ ] Phase Gate: Plan Complete requires collab evidence when codex_available
+- [ ] Phase Gate: Dev Complete requires Codex VERDICT: APPROVED when codex_available
+- [ ] Phase Gate: Post-Dev Ready requires JSONL evidence when codex_available
+- [ ] Post-implementation Step 2 blocks commit without Codex approval
+- [ ] Post-implementation Step 3.5 runs fresh post-commit verification
+- [ ] Claude never recommends --skip-codex-gate or any bypass
 
 ## HoV Backport Features (v0.16.0)
 

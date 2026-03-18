@@ -105,10 +105,16 @@ Every gate is **fail-closed**: missing or invalid evidence blocks progression. N
 
 | Gate           | Evidence Required                                                                                                     | Failure Action                                           |
 | -------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Plan Complete  | Plan file exists, contains `## Acceptance Criteria` with checkboxes, `## Non-goals`, scope section                   | Re-spawn Planner with corrective instructions            |
+| Plan Complete  | Plan file exists, contains `## Acceptance Criteria` with checkboxes, `## Non-goals`, scope section. When `codex_available`: collaborative planning evidence (Plan B file or JSONL with completed `agent_message`) | Re-spawn Planner with corrective instructions            |
 | Plan Approved  | User explicit approval via AskUserQuestion                                                                            | Re-spawn Planner with user feedback + prior plan         |
-| Dev Complete   | Developer output includes: files changed list, test command exit code 0                                               | Re-spawn Developer Agent to complete work                |
-| Post-Dev Ready | `git diff --stat` shows changes                                                                                       | Block commit/PR until evidence is present                |
+| Dev Complete   | Developer output includes: files changed list, test command exit code 0. **When `codex_available`: Codex VERDICT: APPROVED in review JSONL (mandatory)** | Re-spawn Developer Agent to complete Codex review; MUST NOT recommend override |
+| Post-Dev Ready | `git diff --stat` shows changes. **When `codex_available`: `/tmp/codex-impl-events-<num>-iter*.jsonl` contains VERDICT: APPROVED** | Block commit/PR until evidence is present (codex gate enforced when codex available) |
+
+**Codex gates are non-negotiable when `codex_available = true`.** Claude MUST NOT:
+- Skip Codex review and self-certify code quality
+- Recommend `--skip-codex-gate` or any override flag
+- Commit/PR without Codex evidence when Codex is available
+- Treat "Codex review is slow" as justification for skipping
 
 ### Discovered Work Handling (Stop-and-Return)
 
@@ -1131,11 +1137,10 @@ step runs on the NEXT /issue <num> invocation from within the worktree.
 
    Uses `mcp__codex__codex` MCP tool (works inside plan mode — no Bash needed).
 
-   If `codex_available` is true:
+   **THIS IS NON-NEGOTIABLE. You MUST run Collaborative Planning when codex is available.**
 
-   AskUserQuestion: "Ready to plan. Launch Codex for independent Plan B?"
-   - "Yes — launch Codex (Recommended)" — Run Phase 1, Step 1 of Sub-Playbook: Collaborative Planning. Then proceed to step 5.
-   - "Skip — Claude-only plan" — Proceed to step 5, skip step 7.
+   If `codex_available` is true:
+   Run Phase 1, Step 1 of Sub-Playbook: Collaborative Planning immediately. Do NOT ask for permission — launch Codex Plan B now. Then proceed to step 5.
 
    If `codex_available` is false:
    Display: "Codex not available — skipping collaborative planning."
