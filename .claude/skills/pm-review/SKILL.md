@@ -2,7 +2,7 @@
 name: pm-review
 description: PM Reviewer persona that analyzes issues/PRs and takes action. Use when reviewing, checking completion, or validating work.
 argument-hint: '[--analysis-only] <issue-or-pr-number>'
-allowed-tools: Read, Grep, Bash(./tools/scripts/*), Bash(gh issue view *), Bash(gh pr view *), Bash(gh api *), Bash(gh repo view *), Bash(git checkout *), Bash(git pull *), Bash(git show *), Bash(git diff *), Bash(git rev-parse *), Bash(git worktree *), Bash(git fetch *), Bash(cd * && ./tools/scripts/worktree-cleanup.sh *), mcp__github__get_issue, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_comments, mcp__github__get_pull_request_status, mcp__github__create_pull_request_review, mcp__github__merge_pull_request, mcp__github__add_issue_comment, mcp__pm_intelligence__review_pr, mcp__pm_intelligence__analyze_pr_impact, mcp__pm_intelligence__get_knowledge_risk, mcp__pm_intelligence__predict_rework, mcp__pm_intelligence__record_review_outcome, mcp__pm_intelligence__record_outcome, mcp__pm_intelligence__get_review_calibration, mcp__pm_intelligence__check_readiness, mcp__pm_intelligence__move_issue, AskUserQuestion
+allowed-tools: Read, Grep, Bash(./tools/scripts/*), Bash(gh issue view *), Bash(gh pr view *), Bash(gh api *), Bash(gh repo view *), Bash(git checkout *), Bash(git pull *), Bash(git fetch *), Bash(git show *), Bash(git diff *), Bash(git rev-parse *), mcp__github__get_issue, mcp__github__search_issues, mcp__github__get_pull_request, mcp__github__get_pull_request_files, mcp__github__get_pull_request_comments, mcp__github__get_pull_request_status, mcp__github__create_pull_request_review, mcp__github__merge_pull_request, mcp__github__add_issue_comment, mcp__pm_intelligence__review_pr, mcp__pm_intelligence__analyze_pr_impact, mcp__pm_intelligence__get_knowledge_risk, mcp__pm_intelligence__predict_rework, mcp__pm_intelligence__record_review_outcome, mcp__pm_intelligence__record_outcome, mcp__pm_intelligence__get_review_calibration, mcp__pm_intelligence__check_readiness, mcp__pm_intelligence__move_issue, AskUserQuestion
 ---
 
 ## Argument Parsing
@@ -822,67 +822,19 @@ Execute these steps in order:
 
    **Why worktree-safe:** In a worktree, `git checkout main` fails because main is checked out in the main repo. Worktrees can only fetch; the cleanup step (Step 8) handles switching back to the main repo if needed.
 
-8. **Worktree cleanup (optional, only when in worktree):**
+8. **Worktree cleanup notice:**
 
-   **Safety gates (all must pass before offering cleanup):**
-   1. Merge succeeded in step 2 (PR state is "merged")
-   2. Current session is IN a worktree (not main repo)
-   3. That worktree is for the merged issue
+   **Worktree cleanup is handled automatically by the `pm-post-merge-hook.sh` PostToolUse hook.** When the merge command in step 2 completes, the hook detects the merge, moves the issue to Done, and cleans up the worktree (if running from main repo) or prints deferred cleanup instructions (if running from within the worktree).
 
-   **Why these gates matter:**
-   - Only offer cleanup for worktrees we're currently using (not from main repo)
-   - This prevents accidentally cleaning up worktrees that other sessions may be using
-   - Per non-goal: "don't clean up worktrees from other sessions"
+   **Do NOT attempt to clean up the worktree from within the skill.** You cannot delete a directory you're standing in. The hook handles this correctly.
 
-   **Detection:**
-
-   ```bash
-   ./tools/scripts/worktree-cleanup.sh <issue_number> --check
-   ```
-
-   **Exit codes:**
-   - Exit 0 with "no_worktree" → No worktree exists for this issue, skip silently
-   - Exit 0 with "stale_metadata:path" → Worktree metadata exists but directory missing, will be pruned on cleanup
-   - Exit 0 with "can_cleanup:path" → In main repo, worktree exists elsewhere (skip - could be other session)
-   - Exit 1 with "in_target_worktree:path" → **IN the worktree for this issue - offer cleanup**
-   - Exit 2 with "has_uncommitted:path" → Worktree has uncommitted changes
-
-   **Only offer cleanup on exit 1 (in_target_worktree):**
-
-   Use AskUserQuestion:
-   - `CLEANUP_WORKTREE` - "Clean up this worktree (Recommended)" - "Switch to main repo, remove worktree directory, prune git metadata"
-   - `KEEP_WORKTREE` - "Keep worktree" - "Leave worktree in place for reference"
-   - `SHOW_CLEANUP_CMD` - "Show cleanup command" - "Display manual cleanup instructions"
-
-   **On CLEANUP_WORKTREE:**
-   Since we're inside the worktree, execute cleanup from main repo:
-
-   ```bash
-   # Get the main repo path (parent of worktree)
-   MAIN_REPO=$(git rev-parse --git-common-dir | xargs dirname)
-
-   # Execute cleanup from main repo
-   cd "$MAIN_REPO" && ./tools/scripts/worktree-cleanup.sh <issue_number>
-   ```
-
-   After successful cleanup, print:
+   If the hook didn't run (e.g., toolkit not built), display:
 
    ```
-   Worktree cleaned up. You are now in: $MAIN_REPO
-   ```
-
-   **On SHOW_CLEANUP_CMD:**
-
-   ```
-   To clean up the worktree manually:
+   To clean up the worktree manually, run from the main repo:
      cd <main_repo_path>
-     git worktree remove <worktree_path>
-     git worktree prune
+     ./tools/scripts/worktree-cleanup.sh <issue_number>
    ```
-
-   **Skip silently when:**
-   - Not in a worktree (exit 0 with no_worktree or can_cleanup)
-   - In a worktree for a different issue
 
 ### APPROVE_ONLY
 

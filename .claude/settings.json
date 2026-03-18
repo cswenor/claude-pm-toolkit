@@ -90,6 +90,10 @@
           {
             "type": "command",
             "command": "./tools/scripts/claude-secret-detect.sh"
+          },
+          {
+            "type": "command",
+            "command": "./tools/scripts/pm-post-merge-hook.sh"
           }
         ]
       }
