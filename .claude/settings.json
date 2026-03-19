@@ -4,6 +4,15 @@
   },
   "enabledPlugins": {},
   "plansDirectory": ".claude/plans",
+  "permissions": {
+    "allow": [
+      "mcp__codex__codex",
+      "mcp__codex__codex-reply",
+      "mcp__pm_intelligence__*",
+      "mcp__github__*",
+      "mcp__context7__*"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
