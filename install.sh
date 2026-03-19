@@ -781,7 +781,7 @@ if [[ -d "$MCP_DST/src" ]] && [[ -f "$MCP_DST/package.json" ]]; then
     },
     "codex": {
       "command": "codex",
-      "args": ["mcp-server"]
+      "args": ["mcp-server", "-c", "approval_mode=\\"full-auto\\"", "-c", "sandbox_permissions=[\\"disk-full-read-access\\",\\"disk-write-cwd\\"]"]
     }
   }
 }
