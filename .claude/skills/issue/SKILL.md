@@ -1207,12 +1207,68 @@ The agent returns: `plan_file_path`, `collab_evidence`, `convergence_status`, `d
 
 #### Step 4: Plan Complete Gate (fail-closed)
 
-After the Planner Agent returns, the orchestrator verifies the plan from disk (agent output is compressed):
+After the Planner Agent returns, the orchestrator independently verifies evidence from disk. Do NOT trust the agent's self-reported `convergence` field — verify on disk.
 
-1. **Read the plan file** at the path returned by the agent
-2. **Check:** file exists, contains `## Acceptance Criteria` with checkboxes, `## Non-goals`, scope section
-3. **When `codex_available`:** verify collaborative planning evidence — Plan B file or JSONL with completed `agent_message` exists on disk
-4. **If gate fails:** re-spawn Planner Agent with corrective instructions specifying what is missing
+**4a. Unauthorized mutation check:**
+```bash
+git log --oneline -1   # Must match pre-spawn hash
+pm status <num>        # Must still be Active
+```
+
+**4b. Discovered work check:** If the Planner returned `discovered_work`, run Sub-Playbook: Discovered Work, then re-spawn Planner to continue.
+
+**4c. Collaborative planning evidence verification (when `codex_available = true`):**
+
+This is a structural gate — it cannot be skipped or overridden. Check for evidence on disk:
+
+```bash
+# Check for Plan B file (must exist AND be non-empty)
+ls -la .codex-work/plan-<issue_num>-*.md 2>/dev/null
+
+# Check for JSONL events (must exist AND be non-empty)
+ls -la /tmp/codex-collab-events-<issue_num>.jsonl 2>/dev/null
+```
+
+Evaluate using four-branch decision tree:
+
+**Branch A — Plan B file exists and is non-empty:** Gate passes. Proceed to plan validation.
+
+**Branch B — No Plan B, but JSONL has completed `agent_message`:** Gate passes with warning. Log: "Codex completed but did not write Plan B file. Proceeding with JSONL evidence."
+
+**Branch C — No Plan B, JSONL exists but no completed `agent_message`:** Incomplete Codex session (context exhaustion). Do NOT proceed. Do NOT silently skip. AskUserQuestion:
+- "Retry Codex" — re-spawn Planner with corrective instructions to retry collaborative planning
+- "Show Codex output" — display partial JSONL, then re-prompt with Retry/Abort
+- "Abort" — stop planning, return control to user. Do NOT proceed with Claude-only plan.
+
+**Branch D — Neither Plan B nor JSONL exists:** No evidence of collaborative planning at all. Do NOT proceed. Re-spawn Planner with corrective instructions:
+
+```
+## Re-Spawn Context: Missing Collaborative Planning Evidence
+
+You were spawned as a Planner Agent but returned without running
+Collaborative Planning. This is a MANDATORY step when Codex is available.
+
+The orchestrator verified: no Plan B file at .codex-work/plan-<issue_num>-*.md
+and no JSONL events at /tmp/codex-collab-events-<issue_num>.jsonl.
+
+You MUST run the full Collaborative Planning sub-playbook before writing
+your final plan. This is structurally enforced — there is no way to skip it.
+
+1. Launch Codex Plan B (Phase 1)
+2. Write Plan A independently
+3. Complete Phases 2-3
+4. Write the final plan file
+
+All other instructions from the original spawn apply.
+```
+
+**If `codex_available = false`:** Skip this check entirely.
+
+**4d. Validate plan structure (Plan Complete gate):**
+1. **Read the plan file** at the path returned by the agent (use Read tool, not agent summary)
+2. If Read fails (file not found, path missing): fail-closed — re-spawn Planner
+3. **Check:** contains `## Acceptance Criteria` with checkboxes, `## Non-goals`, scope section
+4. **If any missing:** re-spawn Planner with corrective instructions listing what's missing
 
 #### Step 5: Present plan to user for approval
 
