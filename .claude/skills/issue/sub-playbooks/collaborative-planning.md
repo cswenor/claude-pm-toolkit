@@ -45,7 +45,7 @@ mkdir -p .codex-work
 
 ```
 mcp__codex__codex({
-  prompt: "Write an implementation plan for issue #<issue_num>. Read the issue at https://github.com/<owner>/<repo>/issues/<issue_num> or via gh CLI. Analyze the codebase, then save your plan to .codex-work/plan-<issue_num>.md",
+  prompt: "Write an implementation plan for issue #<issue_num>. Explore the codebase — read source files, understand the architecture, check existing tests and patterns. You have full filesystem access. Save your plan to .codex-work/plan-<issue_num>.md",
   sandbox: "workspace-write",
   cwd: "<repo_root>"
 })

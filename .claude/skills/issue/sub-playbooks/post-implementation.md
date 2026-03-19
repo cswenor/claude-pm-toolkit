@@ -74,18 +74,20 @@ done
 
 If `codex_available` is true:
 
-Run a fresh Codex review against **committed** code. This is a single verification pass (not an iterative loop) that produces evidence for the Review transition gate.
+Run a fresh Codex review against **committed** code. This is a single verification pass (not an iterative loop) that produces evidence for the Review transition gate. Codex has full codebase access — do NOT pre-generate diffs.
 
 ```
 mcp__codex__codex({
-  prompt: "Review the implementation for issue #<issue_num>. Run git diff main to see committed changes. Verify the implementation against acceptance criteria. Output your verdict as JSON: {\"verdict\": \"APPROVED\"|\"CHANGES_NEEDED\", \"findings\": [...], \"summary\": \"...\"}",
+  prompt: "Review the implementation for issue #<issue_num>. Run git diff main to see committed changes. Run git status for any uncommitted changes. If untracked files exist that are part of the implementation, read their contents directly. A review context file is at .codex-work/review-context-<issue_num>.md — read it first if it exists.\n\n<IMPL_REVIEW_PROMPT>",
   sandbox: "workspace-write",
   cwd: "<repo_root>"
 })
 ```
 
-- If APPROVED → proceed to Step 4
-- If CHANGES_NEEDED with findings → address findings, amend commit, re-run Step 3.5
+Uses the same canonical `IMPL_REVIEW_PROMPT` block from Sub-Playbook: Codex Implementation Review. Codex independently explores the codebase, writes failing tests as evidence, and reports findings with pattern labels.
+
+- If `VERDICT: APPROVED` → proceed to Step 4
+- If `VERDICT: BLOCKED` → address findings, amend commit, re-run Step 3.5
 - Evidence: JSONL events at `/tmp/codex-impl-events-<issue_num>-iterPC.jsonl`
 
 If `codex_available` is false: skip to Step 4.
