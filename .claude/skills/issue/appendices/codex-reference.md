@@ -47,13 +47,16 @@ echo "This is Claude (Anthropic). <respond to Codex — answer questions or expl
 
 **Critical syntax rule:** `-o`, `-s`, `--json`, and other `exec`-level flags MUST appear before any subcommand (`resume`). Placing them after the subcommand causes "unexpected argument" errors.
 
-## Sandbox Mode Reference
+## Sandbox Mode and Approval Policy Reference
 
-| Phase                      | Sandbox              | Session                  | Rationale                                     |
-| -------------------------- | -------------------- | ------------------------ | --------------------------------------------- |
-| Plan B writing (Phase 1)   | `-s workspace-write` | Fresh                    | Codex must create plan file in `.codex-work/` |
-| Iterative review (Phase 3) | `-s read-only`       | Fresh each round         | Codex reads plan file only                    |
-| Implementation review      | `-s workspace-write` | Resume-based             | Codex can write tests/scripts to prove findings |
+**Every `mcp__codex__codex` call MUST include `approval-policy: "never"`** to prevent interactive approval prompts from being forwarded to the user. The server-level `-c` flags in `.mcp.json` do NOT propagate to spawned agent sessions — the per-call parameter is the only reliable mechanism.
+
+| Phase                      | Sandbox              | Approval Policy | Session                  | Rationale                                     |
+| -------------------------- | -------------------- | --------------- | ------------------------ | --------------------------------------------- |
+| Plan B writing (Phase 1)   | `workspace-write`    | `never`         | Fresh                    | Codex must create plan file in `.codex-work/` |
+| Iterative review (Phase 3) | `read-only`          | `never`         | Fresh each round         | Codex reads plan file only                    |
+| Implementation review      | `workspace-write`    | `never`         | Fresh per iteration      | Codex can write tests/scripts to prove findings |
+| Post-commit review         | `workspace-write`    | `never`         | Fresh                    | Single-pass verification against committed code |
 
 **Why `exec` instead of `review` for implementation review:**
 1. **Full codebase access:** Codex can read any file, run `git diff`, `git log`, check tests — not limited to a pre-generated patch

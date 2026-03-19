@@ -47,6 +47,7 @@ mkdir -p .codex-work
 mcp__codex__codex({
   prompt: "Write an implementation plan for issue #<issue_num>. Explore the codebase — read source files, understand the architecture, check existing tests and patterns. You have full filesystem access. Save your plan to .codex-work/plan-<issue_num>.md",
   sandbox: "workspace-write",
+  approval-policy: "never",
   cwd: "<repo_root>"
 })
 ```
@@ -139,6 +140,7 @@ The Plan Ledger is a JSON file at `/tmp/codex-plan-ledger-<issue_num>.json` that
 mcp__codex__codex({
   prompt: "Review my updated plan for issue #<issue_num> at <plan_a_path>. The decision ledger at /tmp/codex-plan-ledger-<issue_num>.json shows what has already been proposed, accepted, and rejected. Do NOT re-propose rejected items. If you have NEW suggestions, propose them. If all your concerns are addressed, respond with CONVERGED. Otherwise list your specific change proposals.",
   sandbox: "read-only",
+  approval-policy: "never",
   cwd: "<repo_root>"
 })
 ```

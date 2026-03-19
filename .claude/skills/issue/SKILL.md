@@ -56,16 +56,23 @@ These principles govern the collaborative AI workflow. They are derived from rea
 
 ## Autonomous Mode
 
-Controlled by the `autonomous_mode` flag in `.claude-pm-toolkit.json`. When `true`, the skill operates without interactive confirmation:
+Controlled by the `autonomous_mode` flag in `.claude-pm-toolkit.json`. When `true`, the skill auto-confirms gates but **never skips them**.
 
-- **Skip AskUserQuestion calls** — make the recommended choice automatically and state what you chose
-- **Skip confirmation gates** — preview mutations briefly in output, then execute
-- **Auto-assign priority** — use the priority assessment logic but pick the result yourself
+**CRITICAL: Autonomous mode = auto-confirm, NOT skip.** Every gate must still be presented visibly in output before proceeding. The user must see each gate pass even if they don't have to act on it.
+
+- **Present every AskUserQuestion gate** — display the options, state which you're auto-selecting and why, then proceed without waiting
+- **Present every confirmation gate** — show the preview/mutation briefly, state "Auto-confirming: <choice>", then execute
+- **Auto-assign priority** — run the full priority assessment, display the factor table and recommendation, state "Auto-selecting: <priority>", then proceed
 - **Auto-decide duplicates** — if no strong match found (>80% overlap), create new; otherwise update existing
 - **Still enforce**: duplicate scans (3 searches), scope discipline, worktree creation, evidence citations
-- **Still show**: brief previews of what you're about to create/mutate (one-liner, not full confirmation flow)
+- **Still show**: brief previews of what you're about to create/mutate (one-liner before each mutation)
 
-**Detection:** At skill start, read `.claude-pm-toolkit.json` and check `autonomous_mode`. If `true`, set `autonomous_mode = true` and auto-choose the recommended option for all `AskUserQuestion` calls. If `false` or missing, operate interactively as normal.
+**What autonomous mode does NOT do:**
+- Does NOT skip gates — every gate is shown, then auto-confirmed
+- Does NOT collapse multiple gates into silence
+- Does NOT remove the user's ability to see what's happening
+
+**Detection:** At skill start, read `.claude-pm-toolkit.json` and check `autonomous_mode`. If `true`, set `autonomous_mode = true` and auto-choose the recommended option for all `AskUserQuestion` calls — but always display the gate and your choice before proceeding. If `false` or missing, operate interactively as normal.
 
 **To enable:** Set `"autonomous_mode": true` in `.claude-pm-toolkit.json` or run:
 ```bash
@@ -324,9 +331,9 @@ After every agent return, the orchestrator runs:
 | Questions          | 1-2 at a time, max ~5 total (only if needed)                                       |
 | Candidates shown   | Top 3 max                                                                          |
 | Duplicate scan     | MUST run at least 3 searches before any creation                                   |
-| Preview            | MUST show before create/update/close (in autonomous mode: brief one-liner)         |
-| Confirmation       | MUST get user confirmation before mutation (in autonomous mode: auto-confirm with recommended choice) |
-| No auto-close      | NEVER close issues without confirmation (even in autonomous mode)                  |
+| Preview            | MUST show before create/update/close — always, including autonomous mode (brief one-liner is OK) |
+| Confirmation       | MUST present confirmation gate before mutation — autonomous mode auto-confirms but still displays the gate |
+| No auto-close      | NEVER close issues without confirmation — even in autonomous mode, this gate is interactive (no auto-confirm) |
 | Merge limit        | NEVER close more than 3 issues in one merge without additional confirmation        |
 | Merge default      | Default canonical = existing issue, not new                                        |
 | Cite evidence      | When showing candidates, MUST cite one concrete overlap                            |
@@ -1748,7 +1755,7 @@ export PATH="./tools/scripts:$PATH" && pm <command>
 - `mcp__github__add_issue_comment` - Post comments
 - Git operations: status, checkout, pull, fetch, rebase, worktree
 - `codex --version` - Check Codex CLI availability
-- `mcp__codex__codex({ prompt, sandbox, cwd })` - Launch Codex session (collaborative planning Phase 1, implementation review)
+- `mcp__codex__codex({ prompt, sandbox, approval-policy: "never", cwd })` - Launch Codex session (approval-policy MUST be "never" — server-level flags don't propagate)
 - `mcp__codex__codex-reply({ threadId, prompt })` - Continue Codex conversation (implementation review dialogue)
 - `/pm-review <pr-or-issue-number>` - Self-review before Review transition (ANALYSIS_ONLY action)
 

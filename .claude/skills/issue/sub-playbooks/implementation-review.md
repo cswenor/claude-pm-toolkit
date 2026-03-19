@@ -59,7 +59,26 @@ LINES_CHANGED=$(git diff --shortstat main...HEAD | grep -oE '[0-9]+ insertion|[0
 
 ## Flow
 
-### Step 0: Pre-seed Review Context File
+### Step 0a: Initialize Review Ledger (MANDATORY)
+
+**Create the review ledger before the first Codex call.** The ledger's existence is checked by the `pm-codex-gate.sh` hook — if it doesn't exist, `pm move <num> Review` is structurally blocked. Initialize even if you expect zero findings:
+
+```bash
+cat > /tmp/codex-review-ledger-<issue_num>.json <<'LEDGER'
+{
+  "issue": "<issue_num>",
+  "iteration": 0,
+  "findings": []
+}
+LEDGER
+```
+
+**This is the structural evidence that Codex review was attempted.** The hook checks:
+1. Ledger exists → review was run
+2. Zero `open` findings → review passed
+3. Missing ledger → review was skipped → **transition blocked**
+
+### Step 0b: Pre-seed Review Context File
 
 Generate a review context file that gives Codex a head start on navigating the implementation:
 
@@ -98,6 +117,7 @@ Codex has full filesystem access in `workspace-write` sandbox. It independently 
 mcp__codex__codex({
   prompt: "Review the implementation for issue #<issue_num>. Run git diff main to see all tracked changes relative to main. Run git status to check for untracked files — if any are part of the implementation, read their contents directly. A review context file is available at .codex-work/review-context-<issue_num>.md — read it first to orient your review if it exists.\n\n<IMPL_REVIEW_PROMPT>",
   sandbox: "workspace-write",
+  approval-policy: "never",
   cwd: "<repo_root>"
 })
 ```
@@ -223,6 +243,7 @@ After fixes, start a **fresh Codex session** (not a thread continuation — each
 mcp__codex__codex({
   prompt: "Review the implementation for issue #<issue_num>. The review ledger at /tmp/codex-review-ledger-<issue_num>.json shows what was found and fixed in prior iterations — read it first. Run git diff main to see current changes. A review context file is at .codex-work/review-context-<issue_num>.md if it exists.\n\nThis is iteration <N>. Changes since last review: [summary with file:line references].\n\n<IMPL_REVIEW_PROMPT>",
   sandbox: "workspace-write",
+  approval-policy: "never",
   cwd: "<repo_root>"
 })
 ```

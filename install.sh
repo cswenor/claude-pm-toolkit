@@ -350,13 +350,29 @@ merge_settings_json() {
 
   local merged
   merged=$(jq -s '
+    # Deep-merge hook matchers: for matching matchers, merge individual hooks by command.
+    # For new matchers, add them entirely.
     def merge_hook_matchers(existing_list; incoming_list):
-      existing_list + (incoming_list | map(
-        . as $inc |
-        if (existing_list | any(.matcher == $inc.matcher)) then
-          empty
+      [existing_list[] |
+        . as $existing |
+        (incoming_list | map(select(.matcher == $existing.matcher))) as $matches |
+        if ($matches | length) > 0 then
+          # Matcher exists in both — merge individual hooks by command string
+          $existing | .hooks = ($existing.hooks + (
+            $matches[0].hooks | map(
+              . as $h |
+              if ($existing.hooks | any(.command == $h.command)) then empty
+              else $h
+              end
+            )
+          ))
         else
-          $inc
+          $existing
+        end
+      ] + (incoming_list | map(
+        . as $inc |
+        if (existing_list | any(.matcher == $inc.matcher)) then empty
+        else $inc
         end
       ));
 
@@ -365,7 +381,8 @@ merge_settings_json() {
     .hooks.PreToolUse   = (merge_hook_matchers(($dst.hooks.PreToolUse   // []);  ($src.hooks.PreToolUse   // []))) |
     .hooks.PostToolUse  = (merge_hook_matchers(($dst.hooks.PostToolUse  // []);  ($src.hooks.PostToolUse  // []))) |
     .hooks.Notification = (merge_hook_matchers(($dst.hooks.Notification // []);  ($src.hooks.Notification // []))) |
-    .hooks.Stop         = (merge_hook_matchers(($dst.hooks.Stop         // []);  ($src.hooks.Stop         // [])))
+    .hooks.Stop         = (merge_hook_matchers(($dst.hooks.Stop         // []);  ($src.hooks.Stop         // []))) |
+    .hooks.SessionStart = (merge_hook_matchers(($dst.hooks.SessionStart // []);  ($src.hooks.SessionStart // [])))
   ' "$dst_file" "$tmp_src")
 
   echo "$merged" > "$dst_file"

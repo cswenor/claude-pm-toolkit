@@ -44,11 +44,12 @@ If `codex_available` is true:
 If `codex_available` is false:
 Display: "Codex not available — skipping implementation review."
 
-**⚠️ NON-NEGOTIABLE:** Claude MUST NOT:
+**⚠️ STRUCTURALLY ENFORCED:** The `pm-codex-gate.sh` hook blocks `pm move <num> Review` unless the review ledger exists at `/tmp/codex-review-ledger-<num>.json` with zero open findings. Skipping this step will cause Step 7 to fail. Claude MUST NOT:
 - Skip Codex review and self-certify code quality
 - Recommend any override or bypass of the Codex review gate
 - Proceed to Step 3 without Codex VERDICT: APPROVED (when codex available)
 - Treat "Codex is slow" or "changes are trivial" as justification for skipping
+- For genuinely trivial changes (≤1 file, ≤20 lines): `touch /tmp/codex-review-override-<num>` to bypass
 
 ### Step 3: Commit
 
@@ -80,6 +81,7 @@ Run a fresh Codex review against **committed** code. This is a single verificati
 mcp__codex__codex({
   prompt: "Review the implementation for issue #<issue_num>. Run git diff main to see committed changes. Run git status for any uncommitted changes. If untracked files exist that are part of the implementation, read their contents directly. A review context file is at .codex-work/review-context-<issue_num>.md — read it first if it exists.\n\n<IMPL_REVIEW_PROMPT>",
   sandbox: "workspace-write",
+  approval-policy: "never",
   cwd: "<repo_root>"
 })
 ```
