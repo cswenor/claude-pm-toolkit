@@ -78,7 +78,7 @@ export function register(server: McpServer) {
       description:
         "Comprehensive risk assessment synthesizing ALL intelligence signals: " +
         "delivery velocity, quality (rework rate, DORA CFR), knowledge (bus factor, " +
-        "critical files), process (stale items, WIP violations), dependencies " +
+        "critical files), process (stale items), dependencies " +
         "(cycles, bottlenecks, orphaned), and capacity (deceleration). Returns " +
         "overall risk score (0-100), prioritized risk list with trend arrows, " +
         "health indicators per category, and actionable mitigations. " +

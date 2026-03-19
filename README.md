@@ -24,7 +24,7 @@ cd claude-pm-toolkit
 | Feature PR includes surprise Docker upgrade | Scope discipline creates separate issue + blocker |
 | "LGTM" review misses unhandled edge cases | Adversarial review with mandatory failure mode analysis |
 | Context lost between sessions — starts over | `/issue 42` loads full state: issue, comments, PR, plan |
-| Workflow state drifts and nobody notices | Local DB enforces transitions with WIP limits |
+| Workflow state drifts and nobody notices | Local DB enforces transitions with validation |
 | One issue at a time, serial development | Worktrees + tmux = parallel Claude sessions |
 | No memory of past decisions or rework reasons | SQLite event stream tracks everything across sessions |
 
@@ -50,7 +50,7 @@ A native MCP server that gives Claude direct access to project intelligence. All
 |----------|------|-------------|
 | **Core** | `get_issue_status` | Workflow state, priority, labels from local DB |
 | | `get_board_summary` | Full board with health score (0-100) and stale items |
-| | `move_issue` | Transition issue with WIP limit enforcement |
+| | `move_issue` | Transition issue with workflow validation |
 | | `get_velocity` | Merge/close/open rates (7d and 30d windows) |
 | | `sync_from_github` | Pull latest issues/PRs into local DB |
 | | `add_dependency` | Create dependency edges with cycle detection |
@@ -110,7 +110,7 @@ Terminal commands for managing workflow state without Claude:
 ```bash
 pm board                 # Color-coded kanban board
 pm status 42             # Issue details and workflow state
-pm move 42 Active        # Transition with WIP limit enforcement
+pm move 42 Active        # Transition with workflow validation
 pm sync                  # Pull latest from GitHub
 pm add 42 high           # Create issue in local DB with priority
 pm dep 42 --blocks 57    # Add dependency edge
@@ -227,7 +227,6 @@ Reads saved config, overwrites toolkit files, preserves your customizations.
 | **Rework** | Address feedback | → Review |
 | **Done** | Nothing | Archive after 30 days |
 
-**WIP limit:** Claude may have only 1 issue in Active at a time. Enforced at the database level.
 
 ### Parallel Development
 

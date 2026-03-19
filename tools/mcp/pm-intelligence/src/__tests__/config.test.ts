@@ -3,7 +3,6 @@ import {
   WORKFLOW_STATES,
   PRIORITY_LEVELS,
   ISSUE_TYPES,
-  WIP_LIMIT,
   SYNC_STALE_MS,
   BOTTLENECK_THRESHOLDS,
   STALE_THRESHOLDS,
@@ -38,10 +37,6 @@ describe("ISSUE_TYPES", () => {
 });
 
 describe("operational constants", () => {
-  it("WIP_LIMIT is 1", () => {
-    expect(WIP_LIMIT).toBe(1);
-  });
-
   it("SYNC_STALE_MS is 1 hour", () => {
     expect(SYNC_STALE_MS).toBe(60 * 60 * 1000);
   });

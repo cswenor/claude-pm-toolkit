@@ -686,24 +686,6 @@ export async function moveIssueWorkflow(
     );
   }
 
-  // WIP limit check: only 1 Active issue at a time
-  if (targetState === "Active") {
-    const activeCount = db
-      .prepare("SELECT COUNT(*) as count FROM issues WHERE workflow = 'Active' AND state = 'open' AND number != ?")
-      .get(issueNumber) as { count: number };
-
-    if (activeCount.count >= 1) {
-      const activeIssue = db
-        .prepare("SELECT number, title FROM issues WHERE workflow = 'Active' AND state = 'open' AND number != ? LIMIT 1")
-        .get(issueNumber) as { number: number; title: string };
-
-      throw new Error(
-        `WIP limit reached: #${activeIssue.number} "${activeIssue.title}" is already Active. ` +
-          `Move it to Review or Done first.`
-      );
-    }
-  }
-
   // Pre-Review gate: check readiness before allowing transition to Review
   let reviewWarnings: string[] | undefined;
   if (targetState === "Review" && !force) {

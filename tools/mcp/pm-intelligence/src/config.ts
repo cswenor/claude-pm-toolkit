@@ -113,9 +113,6 @@ export type IssueType = (typeof ISSUE_TYPES)[number];
 // ─── Operational Defaults ────────────────────────────────
 // Centralized constants previously hardcoded across db.ts, sync.ts, analytics.ts
 
-/** Max concurrent Active issues (WIP limit enforced by moveIssueWorkflow) */
-export const WIP_LIMIT = 1;
-
 /** Sync is considered stale after this many milliseconds (1 hour) */
 export const SYNC_STALE_MS = 60 * 60 * 1000;
 

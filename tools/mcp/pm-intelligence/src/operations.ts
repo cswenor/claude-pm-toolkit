@@ -83,7 +83,7 @@ interface StandupReport {
   }>;
   metrics: {
     velocity: { merged7d: number; closed7d: number };
-    wip: number;
+    activeCount: number;
     flowEfficiency: number | null;
   };
   summary: string;
@@ -125,7 +125,7 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
       getWorkflowHealth().catch(() => null),
     ]);
 
-  // Collect from board — active items tell us WIP
+  // Collect from board — check how many items are active
   const activeCount = board.activeIssues.length;
 
   // Primary source: local DB is the source of truth for candidates
@@ -204,7 +204,7 @@ export async function suggestNextIssue(): Promise<NextIssueSuggestion> {
       reasoning += "Warnings: " + recommended.warnings.join("; ") + ". ";
     }
     if (activeCount > 0) {
-      reasoning += `Note: ${activeCount} issue(s) already active — check WIP limits.`;
+      reasoning += `Note: ${activeCount} issue(s) already active.`;
     }
   } else {
     reasoning = "No unblocked candidates available. " +
@@ -471,7 +471,7 @@ export async function generateStandup(
         merged7d: velocity.last7Days.merged,
         closed7d: velocity.last7Days.closed,
       },
-      wip: inProgress.length,
+      activeCount: inProgress.length,
       flowEfficiency: health ? health.summary.healthScore : null,
     },
     summary: parts.length > 0 ? parts.join(". ") + "." : "No activity in the last " + lookbackHours + " hours.",

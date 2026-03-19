@@ -149,7 +149,7 @@ export async function getRiskRadar(): Promise<RiskRadarResult> {
         affectedIssues: [],
         mitigations: [
           { action: "Triage and close stale/duplicate issues", effort: "low", impact: "medium" },
-          { action: "Reduce WIP to focus on completion", effort: "medium", impact: "high" },
+          { action: "Focus on completion before starting new work", effort: "medium", impact: "high" },
         ],
         score: 55,
       });
@@ -279,27 +279,6 @@ export async function getRiskRadar(): Promise<RiskRadarResult> {
       });
     }
 
-    if (board && board.activeIssues.length > 1) {
-      risks.push({
-        id: "process-wip-violation",
-        category: "process",
-        severity: "high",
-        title: `WIP limit violated: ${board.activeIssues.length} active`,
-        description: "AI WIP limit is 1 Active issue at a time",
-        evidence: [
-          `${board.activeIssues.length} issues in Active`,
-          `Policy: max 1 Active`,
-        ],
-        trend: "new",
-        affectedAreas: [],
-        affectedIssues: board.activeIssues.map((i) => i.number),
-        mitigations: [
-          { action: "Move extra active items back to Ready", effort: "low", impact: "high" },
-          { action: "Focus on completing one item before starting another", effort: "low", impact: "high" },
-        ],
-        score: 80,
-      });
-    }
   }
 
   // ─── Dependency Risks ──────────────────────────────────

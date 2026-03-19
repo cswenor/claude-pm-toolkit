@@ -28,8 +28,8 @@ export interface SprintSimulationInput {
   trials?: number;
   /** Area filter — only use cycle times from this area */
   area?: string;
-  /** WIP limit — max concurrent items (default: 1, per PM policy) */
-  wipLimit?: number;
+  /** Max concurrent items (default: 1) */
+  concurrency?: number;
 }
 
 export interface SprintSimulationResult {
@@ -38,7 +38,7 @@ export interface SprintSimulationResult {
     sprintDays: number;
     trials: number;
     area: string | null;
-    wipLimit: number;
+    concurrency: number;
   };
   /** How many items will likely be completed in the sprint */
   throughputForecast: {
@@ -86,8 +86,8 @@ export interface BacklogForecastInput {
   trials?: number;
   /** Area filter */
   area?: string;
-  /** WIP limit (default: 1) */
-  wipLimit?: number;
+  /** Max concurrent items (default: 1) */
+  concurrency?: number;
 }
 
 export interface BacklogForecastResult {
@@ -95,7 +95,7 @@ export interface BacklogForecastResult {
     itemCount: number;
     trials: number;
     area: string | null;
-    wipLimit: number;
+    concurrency: number;
   };
   /** When will we finish? */
   completionForecast: {
@@ -231,21 +231,21 @@ function sampleCycleTime(samples: number[]): number {
 
 /**
  * Run a single sprint trial: how many items complete in sprintDays?
- * Models WIP limit — items processed sequentially within WIP slots.
+ * Models concurrency — items processed sequentially within slots.
  */
 function runSprintTrial(
   samples: number[],
   sprintDays: number,
-  wipLimit: number
+  concurrency: number
 ): number {
   let completed = 0;
-  // Each WIP slot tracks remaining time on its current item
-  const slots = new Array(wipLimit).fill(0);
+  // Each slot tracks remaining time on its current item
+  const slots = new Array(concurrency).fill(0);
 
   // Simulate day by day (0.25-day resolution for accuracy)
   const step = 0.25;
   for (let day = 0; day < sprintDays; day += step) {
-    for (let s = 0; s < wipLimit; s++) {
+    for (let s = 0; s < concurrency; s++) {
       slots[s] -= step;
       if (slots[s] <= 0) {
         // Item completed (unless we just started)
@@ -267,14 +267,14 @@ function runSprintTrial(
 function runBacklogTrial(
   samples: number[],
   itemCount: number,
-  wipLimit: number
+  concurrency: number
 ): number {
   let completed = 0;
   let totalDays = 0;
-  const slots = new Array(wipLimit).fill(0);
+  const slots = new Array(concurrency).fill(0);
 
   // Initialize slots
-  for (let s = 0; s < wipLimit && completed + s < itemCount; s++) {
+  for (let s = 0; s < concurrency && completed + s < itemCount; s++) {
     slots[s] = sampleCycleTime(samples);
   }
 
@@ -283,7 +283,7 @@ function runBacklogTrial(
 
   while (completed < itemCount && totalDays < maxDays) {
     totalDays += step;
-    for (let s = 0; s < wipLimit; s++) {
+    for (let s = 0; s < concurrency; s++) {
       slots[s] -= step;
       if (slots[s] <= 0 && completed < itemCount) {
         completed++;
@@ -327,7 +327,7 @@ export async function simulateSprint(
 ): Promise<SprintSimulationResult> {
   const sprintDays = input.sprintDays ?? 14;
   const trials = Math.min(input.trials ?? 10000, 50000); // Cap at 50k
-  const wipLimit = input.wipLimit ?? 1;
+  const concurrency = input.concurrency ?? 1;
   const area = input.area ?? null;
   const itemCount = input.itemCount ?? 10; // Target to evaluate against
 
@@ -336,7 +336,7 @@ export async function simulateSprint(
   // Run trials
   const results: number[] = [];
   for (let t = 0; t < trials; t++) {
-    results.push(runSprintTrial(samples, sprintDays, wipLimit));
+    results.push(runSprintTrial(samples, sprintDays, concurrency));
   }
   results.sort((a, b) => a - b);
 
@@ -415,7 +415,7 @@ export async function simulateSprint(
   };
 
   return {
-    input: { itemCount, sprintDays, trials, area, wipLimit },
+    input: { itemCount, sprintDays, trials, area, concurrency },
     throughputForecast,
     completionProbabilities: completionProbabilities.filter(
       (cp) => cp.probability > 0 || cp.items <= itemCount
@@ -442,7 +442,7 @@ export async function forecastBacklog(
 ): Promise<BacklogForecastResult> {
   const { itemCount } = input;
   const trials = Math.min(input.trials ?? 10000, 50000);
-  const wipLimit = input.wipLimit ?? 1;
+  const concurrency = input.concurrency ?? 1;
   const area = input.area ?? null;
 
   const { samples, warning } = await getCycleTimeSamples(area ?? undefined);
@@ -450,7 +450,7 @@ export async function forecastBacklog(
   // Run trials — each returns total days to complete all items
   const dayResults: number[] = [];
   for (let t = 0; t < trials; t++) {
-    dayResults.push(runBacklogTrial(samples, itemCount, wipLimit));
+    dayResults.push(runBacklogTrial(samples, itemCount, concurrency));
   }
   dayResults.sort((a, b) => a - b);
 
@@ -482,14 +482,14 @@ export async function forecastBacklog(
     for (let t = 0; t < Math.min(trials, 2000); t++) {
       let completed = 0;
       let elapsed = 0;
-      const slots = new Array(wipLimit).fill(0);
-      for (let s = 0; s < wipLimit; s++) {
+      const slots = new Array(concurrency).fill(0);
+      for (let s = 0; s < concurrency; s++) {
         slots[s] = sampleCycleTime(samples);
       }
       const step = 0.5;
       while (elapsed < endDay) {
         elapsed += step;
-        for (let s = 0; s < wipLimit; s++) {
+        for (let s = 0; s < concurrency; s++) {
           slots[s] -= step;
           if (slots[s] <= 0) {
             completed++;
@@ -570,7 +570,7 @@ export async function forecastBacklog(
         : "low";
 
   return {
-    input: { itemCount, trials, area, wipLimit },
+    input: { itemCount, trials, area, concurrency },
     completionForecast: {
       p50Days,
       p80Days,

@@ -572,9 +572,6 @@ export async function analyzePRImpact(
   const blockers: string[] = [];
   const warnings: string[] = [];
 
-  if (board.activeIssues.length > 1) {
-    warnings.push(`${board.activeIssues.length} items currently active — check WIP limits`);
-  }
 
   if (knowledgeRiskFiles.length > 3) {
     warnings.push(

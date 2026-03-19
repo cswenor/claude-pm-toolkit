@@ -110,7 +110,7 @@ export function register(server: McpServer) {
       description:
         "Cross-cutting anomaly detection that surfaces unusual patterns and early " +
         "warning signals across the project. Checks velocity drops, backlog growth, " +
-        "rework trends, process violations (WIP limits, stale items), dependency " +
+        "rework trends, process violations (stale items), dependency " +
         "cycles and bottlenecks, capacity risks (bus factor, decelerating contributors), " +
         "and knowledge decay. Returns anomalies sorted by severity with evidence, " +
         "trend direction, affected issues, and suggested actions. The 'things you " +

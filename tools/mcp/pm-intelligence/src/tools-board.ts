@@ -74,7 +74,7 @@ export function register(server: McpServer) {
     {
       title: "Move Issue",
       description:
-        "Move an issue to a new workflow state in the local database. Enforces transition rules and WIP limits. Valid states: Backlog, Ready, Active, Review, Rework, Done. Every transition is recorded in the event log with timestamp. Moving to Review runs pre-Review checks (clean worktree, test evidence, Codex approval) unless force=true.",
+        "Move an issue to a new workflow state in the local database. Enforces transition rules. Valid states: Backlog, Ready, Active, Review, Rework, Done. Every transition is recorded in the event log with timestamp. Moving to Review runs pre-Review checks (clean worktree, test evidence, Codex approval) unless force=true.",
       inputSchema: {
         issueNumber: z.number().int().positive().describe("Issue number"),
         targetState: z

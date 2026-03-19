@@ -79,21 +79,21 @@ export function register(server: McpServer) {
           .string()
           .optional()
           .describe("Filter cycle times to a specific area (frontend, backend, contracts, infra)"),
-        wipLimit: z
+        concurrency: z
           .number()
           .int()
           .positive()
           .optional()
-          .describe("Max concurrent items — WIP limit (default 1)"),
+          .describe("Max concurrent items (default 1)"),
       },
     },
-    wrapTool("simulate_sprint", async ({ itemCount, sprintDays, trials, area, wipLimit }) => {
+    wrapTool("simulate_sprint", async ({ itemCount, sprintDays, trials, area, concurrency }) => {
       const result = await simulateSprint({
         itemCount,
         sprintDays,
         trials,
         area,
-        wipLimit,
+        concurrency,
       });
       return toolResponse(result);
     })
@@ -118,20 +118,20 @@ export function register(server: McpServer) {
           .optional()
           .describe("Number of simulation trials (default 10000, max 50000)"),
         area: z.string().optional().describe("Filter cycle times to a specific area"),
-        wipLimit: z
+        concurrency: z
           .number()
           .int()
           .positive()
           .optional()
-          .describe("Max concurrent items — WIP limit (default 1)"),
+          .describe("Max concurrent items (default 1)"),
       },
     },
-    wrapTool("forecast_backlog", async ({ itemCount, trials, area, wipLimit }) => {
+    wrapTool("forecast_backlog", async ({ itemCount, trials, area, concurrency }) => {
       const result = await forecastBacklog({
         itemCount,
         trials,
         area,
-        wipLimit,
+        concurrency,
       });
       return toolResponse(result);
     })

@@ -278,7 +278,7 @@ export async function explainDelay(
         description: `Spent ${(waitingHours / 24).toFixed(1)} days waiting before work started`,
         evidence: `Backlog: ${(backlogHours / 24).toFixed(1)}d, Ready: ${(readyHours / 24).toFixed(1)}d`,
         daysContributed: waitingHours / 24,
-        suggestion: "Reduce WIP to pull work through faster",
+        suggestion: "Focus on completing in-progress work to pull items through faster",
       });
     }
   }

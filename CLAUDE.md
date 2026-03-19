@@ -56,8 +56,8 @@ make rebuild    # Clean + install + build
 - Priority values are lowercase: `critical`, `high`, `normal`
 - tsconfig uses `"lib": ["ES2023"]` for `Array.findLast()`
 - Event types: `workflow_change`, `priority_change`, `created`, `closed`, `sync`, `decision`, `outcome`, `dependency_added`, `dependency_resolved`
-- Workflow states: `Backlog` → `Ready` → `Active` → `Review` → `Rework` → `Done` (WIP limit: 1 Active)
-- Centralized config constants in `config.ts`: `WIP_LIMIT`, `SYNC_STALE_MS`, `BOTTLENECK_THRESHOLDS`, `STALE_THRESHOLDS`, `SYNC_LIMITS`
+- Workflow states: `Backlog` → `Ready` → `Active` → `Review` → `Rework` → `Done`
+- Centralized config constants in `config.ts`: `SYNC_STALE_MS`, `BOTTLENECK_THRESHOLDS`, `STALE_THRESHOLDS`, `SYNC_LIMITS`
 - Installer sentinel merge: `<!-- claude-pm-toolkit:start/end -->` (CLAUDE.md), `# claude-pm-toolkit:start/end` (Makefile)
 
 ## E2E Test Target

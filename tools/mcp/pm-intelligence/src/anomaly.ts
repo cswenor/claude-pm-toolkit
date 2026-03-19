@@ -103,7 +103,7 @@ export async function detectPatterns(): Promise<PatternReport> {
         evidence: `7d: ${velocity.last7Days.merged} merged, 30d: ${velocity.last30Days.merged} merged`,
         trend: "worsening",
         affectedIssues: [],
-        suggestedAction: "Check for blockers, capacity issues, or unusually large WIP items.",
+        suggestedAction: "Check for blockers, capacity issues, or unusually large items.",
       });
     }
   }
@@ -185,25 +185,6 @@ export async function detectPatterns(): Promise<PatternReport> {
   // ─── Process Anomalies ─────────────────────────────
 
   // Stale items (no staleItems in local board — skip if unavailable)
-
-  // WIP limit violation
-  if (board.activeIssues.length > 1) {
-    anomalies.push({
-      id: `anomaly-${++anomalyId}`,
-      category: "process",
-      severity: board.activeIssues.length > 2 ? "critical" : "warning",
-      title: `WIP limit exceeded (${board.activeIssues.length} active issues)`,
-      description:
-        `Policy allows 1 active issue at a time, but ${board.activeIssues.length} are currently Active. ` +
-        "This splits focus and increases context switching.",
-      evidence: board.activeIssues
-        .map((a) => `#${a.number} "${a.title}"`)
-        .join(", "),
-      trend: "new",
-      affectedIssues: board.activeIssues.map((a) => a.number),
-      suggestedAction: "Complete or park excess active items. Focus on one at a time.",
-    });
-  }
 
   // Bottleneck in Review
   if (analytics) {

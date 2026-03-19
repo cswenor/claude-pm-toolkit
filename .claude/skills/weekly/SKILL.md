@@ -26,7 +26,6 @@ Arguments: $ARGUMENTS
 **Before analyzing any data, read `docs/PM_PLAYBOOK.md` to understand:**
 
 - The AI-first workflow model (Backlog → Ready → Active → Review → Rework → Done)
-- WIP limits (AI: 1 Active issue at a time)
 - Workflow states represent permissions, not just progress
 - Tiered PR workflow (Tier 1 requires issues, Tier 2 does not)
 - What makes issues "spec ready" for AI execution

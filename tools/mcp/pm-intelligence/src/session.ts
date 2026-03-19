@@ -301,11 +301,6 @@ export async function optimizeSession(
 
   // ─── Warnings ──────────────────────────────────────────────
   const warnings: string[] = [];
-  if (board && board.activeIssues.length > 1) {
-    warnings.push(
-      `WIP limit violation: ${board.activeIssues.length} active issues (limit: 1)`
-    );
-  }
   if (anomalies && anomalies.anomalies.filter((a) => a.severity === "critical").length > 0) {
     warnings.push("Critical anomalies detected — address before new work");
   }

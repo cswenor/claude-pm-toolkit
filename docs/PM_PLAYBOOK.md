@@ -135,13 +135,6 @@ Backlog → Ready → Active → Review → Done
 | **Rework**  | Changes requested        | Address feedback, then back to Review         |
 | **Done**    | Merged and verified      | No action needed                              |
 
-**WIP Limits:**
-
-- **AI: One Active issue at a time** (hard rule)
-- **Review and Rework do NOT count toward WIP limit** (waiting on action)
-- AI can have 1 Active + unlimited in Review/Rework
-- **Humans: Keep Active small** (soft guidance, aim for 1-2)
-
 If you have items stuck in Active, resolve blockers before pulling new work.
 
 ### Active Entry Criteria
@@ -407,7 +400,6 @@ gh pr create --title "chore: update dependencies" --body "## Summary
 │       ◀─────────────────────────── (deprioritized/blocked indefinitely)                             │
 │                                                                                                      │
 │  MANDATORY STOP: Before writing code, move issue to Active                                          │
-│  WIP LIMIT: AI may have only ONE issue in Active at a time (Review/Rework don't count)              │
 │                                                                                                      │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -566,11 +558,6 @@ We use continuous flow (Kanban), not fixed sprints.
 4. Assign yourself to the issue
 5. **Move issue to Active** (`pm move <num> Active`)
 6. Create branch and start work
-
-**WIP Limits:**
-
-- AI: Maximum ONE Active issue at a time
-- Humans: Keep Active small (aim for 1-2)
 
 Blocked labels (`blocked:review`, `blocked:external`, `blocked:spec`) indicate blockers without changing workflow state.
 

@@ -19,7 +19,7 @@ Create new issues via PM interview OR work on existing issues.
 
 - State meanings and AI behavioral rules
 - Transition rules and triggers
-- WIP limits and entry/exit criteria
+- Entry/exit criteria
 
 ---
 

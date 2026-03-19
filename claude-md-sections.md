@@ -412,7 +412,6 @@ This section exists only as a high-level behavioral reference for Claude. Do not
 - **Review**: Work complete, awaiting human feedback
 - **Done**: No action required
 
-**WIP Limit:** AI may have only ONE issue in Active at a time. Review does not count.
 
 ### PR Review Process
 

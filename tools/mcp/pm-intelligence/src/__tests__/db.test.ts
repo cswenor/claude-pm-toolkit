@@ -206,11 +206,6 @@ describe("upsertIssue()", () => {
 });
 
 describe("moveIssueWorkflow()", () => {
-  // Clear any Active issues from prior tests to avoid WIP limit interference
-  beforeEach(async () => {
-    const db = await getDb();
-    db.prepare("UPDATE issues SET workflow = 'Done', state = 'closed' WHERE workflow = 'Active'").run();
-  });
 
   it("moves issue through valid transitions", async () => {
     await insertTestIssue(200, { workflow: "Backlog" });
@@ -241,10 +236,11 @@ describe("moveIssueWorkflow()", () => {
     await expect(moveIssueWorkflow(9999, "Active")).rejects.toThrow("not found");
   });
 
-  it("enforces WIP limit of 1 Active issue", async () => {
+  it("allows multiple Active issues", async () => {
     await insertTestIssue(210, { workflow: "Active" });
     await insertTestIssue(211, { workflow: "Ready" });
-    await expect(moveIssueWorkflow(211, "Active")).rejects.toThrow("WIP limit");
+    const result = await moveIssueWorkflow(211, "Active");
+    expect(result.to).toBe("Active");
   });
 
   it("records workflow_change event", async () => {
@@ -313,11 +309,6 @@ describe("addDependency()", () => {
 });
 
 describe("queryEvents()", () => {
-  beforeEach(async () => {
-    const db = await getDb();
-    db.prepare("UPDATE issues SET workflow = 'Done', state = 'closed' WHERE workflow = 'Active'").run();
-  });
-
   it("returns events for an issue", async () => {
     await insertTestIssue(400, { workflow: "Backlog" });
     await moveIssueWorkflow(400, "Ready");
