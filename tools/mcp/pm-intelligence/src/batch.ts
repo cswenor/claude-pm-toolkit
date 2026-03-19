@@ -200,7 +200,7 @@ export async function bulkMove(
       }
 
       if (!dryRun) {
-        await moveIssueWorkflow(num, targetState as any);
+        await moveIssueWorkflow(num, targetState as any, "claude", { force: true });
       }
 
       results.push({

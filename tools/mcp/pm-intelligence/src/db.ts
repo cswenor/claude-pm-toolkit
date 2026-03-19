@@ -13,11 +13,10 @@
  */
 
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { execFile, execSync } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
-import { readFileSync, readdirSync } from "node:fs";
 
 const execFileAsync = promisify(execFile);
 

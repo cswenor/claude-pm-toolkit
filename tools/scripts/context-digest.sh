@@ -186,13 +186,15 @@ if [ -n "$PM_ERR" ]; then
   fi
 fi
 
-# Parse issue metadata from pm status output (strip ANSI codes)
-CLEAN_OUTPUT=$(echo "$PM_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g')
+# Parse issue metadata from pm status output (strip ANSI codes, drop blank lines)
+CLEAN_OUTPUT=$(echo "$PM_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g' | sed '/^$/d')
 
-ISSUE_TITLE=$(echo "$CLEAN_OUTPUT" | head -1 | sed "s/^#${ISSUE_NUM}: //")
-ISSUE_STATE=$(echo "$CLEAN_OUTPUT" | grep -oP '(?<=\| )(open|closed)' || echo "unknown")
-WORKFLOW=$(echo "$CLEAN_OUTPUT" | sed -n '2p' | awk '{print $1}')
-PRIORITY=$(echo "$CLEAN_OUTPUT" | sed -n '2p' | grep -oP '(?<=\| )(critical|high|normal)(?= \|)' || echo "normal")
+# Line 1: "#22: <title>"
+# Line 2: "  <Workflow> | <pri_icon> <priority> | <state>"
+ISSUE_TITLE=$(echo "$CLEAN_OUTPUT" | sed -n '1p' | sed "s/^#${ISSUE_NUM}: //")
+ISSUE_STATE=$(echo "$CLEAN_OUTPUT" | sed -n '2p' | grep -oP '(open|closed)\s*$' | tr -d ' ' || echo "unknown")
+WORKFLOW=$(echo "$CLEAN_OUTPUT" | sed -n '2p' | sed 's/^\s*//' | awk '{print $1}')
+PRIORITY=$(echo "$CLEAN_OUTPUT" | sed -n '2p' | grep -oP '(critical|high|normal)' | head -1 || echo "normal")
 
 # Extract labels
 LABELS_RAW=$(echo "$CLEAN_OUTPUT" | grep '^\s*Labels:' | sed 's/^\s*Labels:\s*//' || echo "")

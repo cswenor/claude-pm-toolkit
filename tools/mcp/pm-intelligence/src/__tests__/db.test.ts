@@ -223,7 +223,7 @@ describe("moveIssueWorkflow()", () => {
     expect(r2.from).toBe("Ready");
     expect(r2.to).toBe("Active");
 
-    const r3 = await moveIssueWorkflow(200, "Review");
+    const r3 = await moveIssueWorkflow(200, "Review", "claude", { force: true });
     expect(r3.from).toBe("Active");
     expect(r3.to).toBe("Review");
 
