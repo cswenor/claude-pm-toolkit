@@ -52,6 +52,68 @@ async function getRepoRoot(): Promise<string> {
   return _repoRoot;
 }
 
+/**
+ * Check database integrity and attempt recovery if corrupted.
+ * SQLite databases can become corrupted when the MCP server process is
+ * killed mid-write (SIGKILL, OOM, session end). WAL mode helps but
+ * doesn't prevent all corruption. This function detects corruption on
+ * startup and rebuilds the database from GitHub if needed.
+ */
+function checkAndRepairDb(dbPath: string, pmDir: string): Database.Database {
+  let db: Database.Database;
+
+  try {
+    db = new Database(dbPath);
+    // Quick integrity check — just the header, not full scan
+    const result = db.pragma("quick_check") as Array<{ quick_check: string }>;
+    if (result[0]?.quick_check !== "ok") {
+      throw new Error(`Integrity check failed: ${result[0]?.quick_check}`);
+    }
+    return db;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[pm] Database corrupted: ${message}. Rebuilding from GitHub...`
+    );
+
+    // Close the broken connection if it was opened
+    try {
+      db!?.close();
+    } catch {
+      /* ignore close errors on corrupt db */
+    }
+
+    // Backup the corrupted file for diagnosis
+    const backupPath = join(pmDir, "state.db.corrupted");
+    try {
+      if (existsSync(dbPath)) {
+        const { copyFileSync } = require("node:fs");
+        copyFileSync(dbPath, backupPath);
+      }
+    } catch {
+      /* best effort backup */
+    }
+
+    // Remove corrupted db + WAL/SHM files
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const f = dbPath + suffix;
+      try {
+        if (existsSync(f)) {
+          const { unlinkSync } = require("node:fs");
+          unlinkSync(f);
+        }
+      } catch {
+        /* best effort cleanup */
+      }
+    }
+
+    // Create fresh database
+    db = new Database(dbPath);
+    console.error("[pm] Fresh database created. Run 'pm sync' to repopulate.");
+    return db;
+  }
+}
+
 /** Get or create the database connection */
 export async function getDb(): Promise<Database.Database> {
   if (_db) return _db;
@@ -63,26 +125,59 @@ export async function getDb(): Promise<Database.Database> {
   }
 
   _dbPath = join(pmDir, "state.db");
-  _db = new Database(_dbPath);
+  _db = checkAndRepairDb(_dbPath, pmDir);
 
-  // Performance pragmas
+  // Performance pragmas — WAL mode for crash resilience + concurrent reads
   _db.pragma("journal_mode = WAL");
-  _db.pragma("synchronous = NORMAL");
+  // FULL sync ensures WAL is flushed to disk before reporting commit success.
+  // NORMAL is faster but risks corruption if the OS crashes (not just the process).
+  // Since MCP servers get killed frequently, FULL is the safer default.
+  _db.pragma("synchronous = FULL");
   _db.pragma("foreign_keys = ON");
+  // Checkpoint WAL periodically to prevent unbounded WAL growth
+  _db.pragma("wal_autocheckpoint = 100");
 
   // Run migrations
   migrate(_db);
 
+  // Register graceful shutdown to checkpoint WAL on exit
+  registerShutdownHandler();
+
   return _db;
 }
 
-/** Close the database connection */
+/** Close the database connection, checkpointing WAL first */
 export function closeDb(): void {
   if (_db) {
+    try {
+      // Checkpoint WAL to main database file before closing
+      // This prevents WAL accumulation and reduces corruption risk on next open
+      _db.pragma("wal_checkpoint(TRUNCATE)");
+    } catch {
+      /* ignore checkpoint errors during shutdown */
+    }
     _db.close();
     _db = null;
     _dbPath = null;
   }
+}
+
+// Graceful shutdown — checkpoint WAL on process exit signals
+// MCP servers get killed frequently (session end, restart, context compression).
+// This handler runs on SIGTERM/SIGINT to flush WAL before exit.
+let _shutdownRegistered = false;
+function registerShutdownHandler(): void {
+  if (_shutdownRegistered) return;
+  _shutdownRegistered = true;
+
+  const shutdown = () => {
+    closeDb();
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+  process.on("beforeExit", () => closeDb());
 }
 
 /** Get the .pm directory path */
