@@ -238,6 +238,7 @@ fi
 echo ""
 echo "--- Exact path tests ---"
 
+# shellcheck disable=SC2088  # Tilde is intentional display text, not expansion
 assert_path_sensitive "~/.codex/config.toml"       "$HOME/.codex/config.toml"
 assert_path_sensitive "~/.pm/state.db"               "$HOME/.pm/state.db"
 assert_path_sensitive "~/.aws/credentials"          "$HOME/.aws/credentials"

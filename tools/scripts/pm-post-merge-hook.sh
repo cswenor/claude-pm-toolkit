@@ -25,6 +25,7 @@ case "$COMMAND" in
 esac
 
 # Check exit code — only proceed on success
+# shellcheck disable=SC2034  # EXIT_CODE reserved for future exit-code gating
 EXIT_CODE=$(echo "$HOOK_INPUT" | jq -r '.tool_response.exit_code // .tool_response.stdout' 2>/dev/null || echo "")
 
 # Find repo root
