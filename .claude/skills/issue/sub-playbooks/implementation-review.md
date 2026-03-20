@@ -111,12 +111,12 @@ If no plan found, skip context file creation — Codex still works without it.
 
 ### Step 1: Initial Review
 
-Codex has full filesystem access in `workspace-write` sandbox. It independently explores the codebase, runs git commands, and writes failing tests as proof of bugs.
+Codex has full filesystem access with sandbox disabled. It independently explores the codebase, runs git commands, and writes failing tests as proof of bugs.
 
 ```
 mcp__codex__codex({
   prompt: "Review the implementation for issue #<issue_num>. Run git diff main to see all tracked changes relative to main. Run git status to check for untracked files — if any are part of the implementation, read their contents directly. A review context file is available at .codex-work/review-context-<issue_num>.md — read it first to orient your review if it exists.\n\n<IMPL_REVIEW_PROMPT>",
-  sandbox: "workspace-write",
+  sandbox: "off",
   approval-policy: "never",
   cwd: "<repo_root>"
 })
@@ -242,7 +242,7 @@ After fixes, start a **fresh Codex session** (not a thread continuation — each
 ```
 mcp__codex__codex({
   prompt: "Review the implementation for issue #<issue_num>. The review ledger at /tmp/codex-review-ledger-<issue_num>.json shows what was found and fixed in prior iterations — read it first. Run git diff main to see current changes. A review context file is at .codex-work/review-context-<issue_num>.md if it exists.\n\nThis is iteration <N>. Changes since last review: [summary with file:line references].\n\n<IMPL_REVIEW_PROMPT>",
-  sandbox: "workspace-write",
+  sandbox: "off",
   approval-policy: "never",
   cwd: "<repo_root>"
 })

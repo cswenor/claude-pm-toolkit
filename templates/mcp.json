@@ -24,7 +24,7 @@
       "args": [
         "mcp-server",
         "-c", "approval_policy=\"never\"",
-        "-c", "sandbox_mode=\"workspace-write\""
+        "-c", "sandbox_mode=\"off\""
       ]
     }
   }

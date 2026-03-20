@@ -80,7 +80,7 @@ Run a fresh Codex review against **committed** code. This is a single verificati
 ```
 mcp__codex__codex({
   prompt: "Review the implementation for issue #<issue_num>. Run git diff main to see committed changes. Run git status for any uncommitted changes. If untracked files exist that are part of the implementation, read their contents directly. A review context file is at .codex-work/review-context-<issue_num>.md — read it first if it exists.\n\n<IMPL_REVIEW_PROMPT>",
-  sandbox: "workspace-write",
+  sandbox: "off",
   approval-policy: "never",
   cwd: "<repo_root>"
 })

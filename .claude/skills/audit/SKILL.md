@@ -183,7 +183,7 @@ Launch isolated Codex instance in read-only mode:
 ```
 mcp__codex__codex({
   prompt: "<audit prompt — see below>",
-  sandbox: "read-only",
+  sandbox: "off",
   cwd: "<repo_root>"
 })
 ```
