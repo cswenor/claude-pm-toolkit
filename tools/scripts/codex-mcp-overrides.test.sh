@@ -66,6 +66,7 @@ cat > "$TMPDIR_FIX/.mcp.json" <<'FIXTURE'
 FIXTURE
 
 # Helper: run the script inside the temp dir so it finds .mcp.json
+# shellcheck disable=SC2120  # $@ forwarding is intentional for optional args
 run_script() {
   (cd "$TMPDIR_FIX" && "$SCRIPT" "$@")
 }

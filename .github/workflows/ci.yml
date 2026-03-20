@@ -17,6 +17,8 @@ jobs:
           node-version: 18
           cache: npm
           cache-dependency-path: tools/mcp/pm-intelligence/package-lock.json
+      - name: Install dependencies
+        run: make install
       - name: Build MCP server
         run: make build
 

@@ -40,6 +40,10 @@ CD_INFRA_MSG='Do not cd into infra/. Use `make` targets which handle paths corre
 PIP_RE='^pip3?[[:space:]]+install([[:space:]]|$)'
 PIP_MSG='Do not manually install Python packages. Use `make` targets or the dev container.'
 
+GIT_ADD_ALL_RE='^git[[:space:]]+add[[:space:]]+(.*[[:space:]])?(-[A-Za-z]*A[A-Za-z]*|--all)([[:space:]]|$)'
+GIT_ADD_DOT_RE='^git[[:space:]]+add[[:space:]]+(.*[[:space:]])?\.([[:space:]]|$)'
+GIT_ADD_MSG='Stage specific files by name: git add <file1> <file2>. Blanket staging risks committing secrets and garbage files.'
+
 # ---------- normalize & check ----------
 
 # Nesting-aware command splitter.
@@ -389,6 +393,12 @@ while IFS= read -r subcmd; do
     fi
     if echo "$subcmd" | grep -qE "$PIP_RE"; then
         deny "$PIP_MSG"
+    fi
+    if echo "$subcmd" | grep -qE "$GIT_ADD_ALL_RE"; then
+        deny "$GIT_ADD_MSG"
+    fi
+    if echo "$subcmd" | grep -qE "$GIT_ADD_DOT_RE"; then
+        deny "$GIT_ADD_MSG"
     fi
 
 done <<< "$_loop_subcmds"

@@ -396,6 +396,10 @@ SENTINEL_START="<!-- claude-pm-toolkit:start -->"
 SENTINEL_END="<!-- claude-pm-toolkit:end -->"
 SECTIONS_FILE="$TOOLKIT_DIR/claude-md-sections.md"
 
+GITIGNORE_SENTINEL_START="# claude-pm-toolkit:start"
+GITIGNORE_SENTINEL_END="# claude-pm-toolkit:end"
+GITIGNORE_SECTIONS_FILE="$TOOLKIT_DIR/templates/gitignore-section.txt"
+
 merge_claude_md() {
   local target_claude_md="$TARGET/CLAUDE.md"
 
@@ -460,6 +464,86 @@ merge_claude_md() {
 }
 
 # ---------------------------------------------------------------------------
+# Special handler: merge .gitignore with sentinel block
+# ---------------------------------------------------------------------------
+merge_gitignore() {
+  local target_gitignore="$TARGET/.gitignore"
+
+  if [[ ! -f "$GITIGNORE_SECTIONS_FILE" ]]; then
+    log_warn "templates/gitignore-section.txt not found — skipping .gitignore merge"
+    return
+  fi
+
+  # Fix blanket .claude/ or .claude ignore before sentinel merge
+  if [[ -f "$target_gitignore" ]] && grep -qE '^\.claude/?$' "$target_gitignore"; then
+    log_info "Blanket .claude ignore detected — will be replaced by selective entries in sentinel block"
+    tmp_gi=$(mktemp)
+    TEMP_FILES+=("$tmp_gi")
+    grep -vE '^\.claude/?$' "$target_gitignore" > "$tmp_gi"
+    mv "$tmp_gi" "$target_gitignore"
+    log_ok "Removed blanket .claude ignore line"
+  fi
+
+  # Migrate legacy unsentinelled toolkit block (if present)
+  # The legacy block was written by install.sh and starts with:
+  #   # Claude Code — ignore local state, track shared config + skills
+  # We match from the "# Claude Code" header through ".pm/" to remove the entire block.
+  if [[ -f "$target_gitignore" ]] && ! grep -qF "$GITIGNORE_SENTINEL_START" "$target_gitignore" \
+     && grep -qF '# Claude Code' "$target_gitignore"; then
+    log_info "Legacy toolkit .gitignore block detected — migrating to sentinel-managed block"
+    tmp_gi=$(mktemp)
+    TEMP_FILES+=("$tmp_gi")
+    awk '
+      /^# Claude Code/ { skip=1; next }
+      skip && /^# PM Intelligence/ { next }
+      skip && /^\.pm\/$/ { skip=0; next }
+      skip && /^[[:space:]]*$/ { next }
+      skip && /^[!.]/ { next }
+      skip { skip=0 }
+      !skip { print }
+    ' "$target_gitignore" > "$tmp_gi"
+    mv "$tmp_gi" "$target_gitignore"
+    log_ok "Removed legacy toolkit block"
+  fi
+
+  if [[ ! -f "$target_gitignore" ]]; then
+    log_info "Creating .gitignore with claude-pm-toolkit entries ..."
+    {
+      echo "$GITIGNORE_SENTINEL_START"
+      cat "$GITIGNORE_SECTIONS_FILE"
+      echo "$GITIGNORE_SENTINEL_END"
+    } > "$target_gitignore"
+    log_ok "Created .gitignore"
+    return
+  fi
+
+  if grep -qF "$GITIGNORE_SENTINEL_START" "$target_gitignore"; then
+    log_info "Updating existing claude-pm-toolkit section in .gitignore ..."
+    tmp_gi=$(mktemp)
+    TEMP_FILES+=("$tmp_gi")
+    awk -v start="$GITIGNORE_SENTINEL_START" -v end="$GITIGNORE_SENTINEL_END" \
+        -v replacement_file="$GITIGNORE_SECTIONS_FILE" \
+        'BEGIN { printing=1 }
+         $0 == start { printing=0; print; while ((getline line < replacement_file) > 0) print line; close(replacement_file); next }
+         $0 == end   { printing=1 }
+         printing    { print }
+        ' "$target_gitignore" > "$tmp_gi"
+    mv "$tmp_gi" "$target_gitignore"
+    log_ok "Updated claude-pm-toolkit section in .gitignore"
+    return
+  fi
+
+  log_info "Appending claude-pm-toolkit section to existing .gitignore ..."
+  {
+    echo ""
+    echo "$GITIGNORE_SENTINEL_START"
+    cat "$GITIGNORE_SECTIONS_FILE"
+    echo "$GITIGNORE_SENTINEL_END"
+  } >> "$target_gitignore"
+  log_ok "Appended to .gitignore"
+}
+
+# ---------------------------------------------------------------------------
 # Copy files to target
 # ---------------------------------------------------------------------------
 log_section "Copying files to target"
@@ -490,8 +574,8 @@ while IFS= read -r src_file; do
   done
   $skip && continue
 
-  # Skip .git internals and .github (toolkit CI, not installable)
-  if [[ "$rel" == .git/* || "$rel" == ".git" || "$rel" == .github/* ]]; then
+  # Skip .git internals, .github (toolkit CI), and templates (used by installer, not installable)
+  if [[ "$rel" == .git/* || "$rel" == ".git" || "$rel" == .github/* || "$rel" == templates/* ]]; then
     continue
   fi
 
@@ -582,58 +666,10 @@ log_section "Handling CLAUDE.md"
 merge_claude_md
 
 # ---------------------------------------------------------------------------
-# Fix .gitignore
+# Handling .gitignore
 # ---------------------------------------------------------------------------
-GITIGNORE_FILE="$TARGET/.gitignore"
-
-# Create .gitignore if it doesn't exist
-if [[ ! -f "$GITIGNORE_FILE" ]]; then
-  log_section "Creating .gitignore"
-  cat > "$GITIGNORE_FILE" <<'GITIGNORE'
-# Claude Code — ignore local state, track shared config + skills
-.claude/*
-!.claude/commands/
-!.claude/skills/
-!.claude/settings.json
-!.claude/memory/
-.claude/settings.local.json
-.claude/plans/
-.codex-work/
-
-# PM Intelligence
-.pm/
-GITIGNORE
-  log_ok "Created .gitignore with Claude Code entries"
-fi
-
-# Fix blanket .claude/ or .claude ignore → selective .claude/* with negations
-# This ensures .claude/skills/ and .claude/settings.json are trackable in git,
-# which is required for worktrees to have access to skills.
-if [[ -f "$GITIGNORE_FILE" ]] && grep -qE '^\.claude/?$' "$GITIGNORE_FILE"; then
-  log_section "Updating .gitignore"
-  log_info "Blanket .claude ignore detected — switching to selective ignoring for worktree support"
-  awk '
-    /^\.claude\/?$/ {
-      print ".claude/*"
-      print "!.claude/commands/"
-      print "!.claude/skills/"
-      print "!.claude/settings.json"
-      print "!.claude/memory/"
-      next
-    }
-    { print }
-  ' "$GITIGNORE_FILE" > "${GITIGNORE_FILE}.tmp" && mv "${GITIGNORE_FILE}.tmp" "$GITIGNORE_FILE"
-  log_ok "Updated .gitignore: .claude/skills/ and .claude/settings.json now trackable"
-fi
-
-# Ensure essential ignore entries exist
-if [[ -f "$GITIGNORE_FILE" ]]; then
-  for entry in '.claude/settings.local.json' '.claude/plans/' '.codex-work/' '.pm/'; do
-    if ! grep -qF "$entry" "$GITIGNORE_FILE"; then
-      echo "$entry" >> "$GITIGNORE_FILE"
-    fi
-  done
-fi
+log_section "Handling .gitignore"
+merge_gitignore
 
 # ---------------------------------------------------------------------------
 # Clean up any remaining old placeholders

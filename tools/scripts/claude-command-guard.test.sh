@@ -149,6 +149,29 @@ assert_deny "pip3 install flask"     "pip3 install flask"
 # ---- pip allow ----
 assert_allow "pip --version"         "pip --version"
 
+# ---- Blanket git add deny ----
+assert_deny "git add -A"                    "git add -A"
+assert_deny "git add --all"                 "git add --all"
+assert_deny "git add ."                     "git add ."
+assert_deny "git add -A ."                  "git add -A ."
+assert_deny "git add -Av"                   "git add -Av"
+assert_deny "git add -vA"                   "git add -vA"
+assert_deny "git add --all ."               "git add --all ."
+assert_deny "echo ok && git add -A"         "echo ok && git add -A"
+assert_deny "sudo git add -A"               "sudo git add -A"
+assert_deny "git add -v ."                  "git add -v ."
+assert_deny "git add --verbose ."           "git add --verbose ."
+assert_deny "git add . (in chain)"          "echo hi && git add ."
+
+# ---- Specific git add allow ----
+assert_allow "git add specific file"        "git add src/index.ts"
+assert_allow "git add multiple files"       "git add file1.ts file2.ts"
+assert_allow "git add -p (patch mode)"      "git add -p"
+assert_allow "git add -u (tracked only)"    "git add -u"
+assert_allow "git add --update"             "git add --update"
+assert_allow "git add with path pattern"    "git add src/"
+assert_allow "git add -A in string"         "echo 'git add -A'"
+
 # ---- Fail-open (malformed input) ----
 assert_allow_raw "malformed JSON"        "not json at all"
 assert_allow_raw "empty object"          "{}"

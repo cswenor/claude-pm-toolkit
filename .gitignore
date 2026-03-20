@@ -1,11 +1,61 @@
+# Dependencies
 node_modules/
+
+# Build outputs
+tools/mcp/*/build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Secrets - NEVER commit these
+*.pem
+*.key
+credentials.json
+service-account.json
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS files
 .DS_Store
-*.bak
-.codex-work/
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+coverage/
+.nyc_output/
+
+# Claude Code local state (team settings in .claude/settings.json are committed)
+.claude/settings.local.json
 .claude/plans/
 .claude/memory/board-cache.json
 .claude/memory/decisions.jsonl
 .claude/memory/outcomes.jsonl
 .claude/memory/events.jsonl
 .claude/memory/review-findings.jsonl
-tools/mcp/*/build/
+
+# Claude Code agent worktrees (temporary, created by isolation: "worktree")
+.claude/worktrees/
+
+# Codex collaborative planning workspace (session-specific, not shared)
+.codex-work/
+
+# PM Intelligence local database
+.pm/
+
+# Plans (session-specific)
+plans/
+.plans/
+
+# Backup files
+*.bak

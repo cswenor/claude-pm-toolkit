@@ -175,7 +175,7 @@ if [ -n "$UNCOMMITTED" ]; then
     echo "" >&2
     echo "Options:" >&2
     echo "  1. Save your work: cd $WORKTREE_PATH && git stash" >&2
-    echo "  2. Or commit:      cd $WORKTREE_PATH && git add -A && git commit -m 'WIP'" >&2
+    echo "  2. Or commit:      cd $WORKTREE_PATH && git add <files> && git commit -m 'WIP'" >&2
     echo "  3. Or force:       ./tools/scripts/worktree-cleanup.sh $ISSUE_NUM --force" >&2
     exit 2
   fi
