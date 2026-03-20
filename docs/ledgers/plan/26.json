@@ -1,0 +1,199 @@
+{
+  "issue_number": 26,
+  "ledger_type": "plan",
+  "created_at": "2026-03-20T13:48:16Z",
+  "entries": [
+    {
+      "id": "P1",
+      "iteration": 1,
+      "type": "proposal",
+      "summary": "Legacy migration: detect and remove old unsentinelled toolkit block in existing installs (e.g. Shippy) before appending sentinel-managed block to prevent duplication",
+      "status": "accepted",
+      "evidence": "Critical catch. Without legacy migration, --update will duplicate entries in Shippy and all existing installs. Added to Step 3 with detection logic using the legacy comment header.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Critical catch. Without legacy migration, --update will duplicate entries in Shippy and all existing installs. Added to Step 3 with detection logic using the legacy comment header.",
+          "timestamp": "2026-03-20T13:49:18Z"
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "iteration": 1,
+      "type": "proposal",
+      "summary": "Place template in templates/gitignore-section.txt (existing templates/ dir) instead of root gitignore-template.txt, matching claude-md-sections.md pattern",
+      "status": "accepted",
+      "evidence": "Better organization. The templates/ directory already exists in the repo with github-workflows and mcp.json. Body-only file matches claude-md-sections.md convention.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Better organization. The templates/ directory already exists in the repo with github-workflows and mcp.json. Body-only file matches claude-md-sections.md convention.",
+          "timestamp": "2026-03-20T13:49:26Z"
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "iteration": 1,
+      "type": "proposal",
+      "summary": "Add .plans/ to toolkit .gitignore (repo currently has untracked .plans/ directory with plan-26.md)",
+      "status": "accepted",
+      "evidence": "The .plans/ directory is currently untracked and leaking. Adding it to gitignore is consistent with plans/ already being in the proposed gitignore.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "The .plans/ directory is currently untracked and leaking. Adding it to gitignore is consistent with plans/ already being in the proposed gitignore.",
+          "timestamp": "2026-03-20T13:49:32Z"
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "iteration": 1,
+      "type": "proposal",
+      "summary": "Fix worktree-cleanup.sh line 178 which recommends git add -A in echo message -- contradicts new guard rule",
+      "status": "accepted",
+      "evidence": "Direct product contradiction. The worktree-cleanup.sh echo message recommends the exact pattern the guard will now block. Fixing as Step 8 consistency edit.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Direct product contradiction. The worktree-cleanup.sh echo message recommends the exact pattern the guard will now block. Fixing as Step 8 consistency edit.",
+          "timestamp": "2026-03-20T13:49:54Z"
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "iteration": 1,
+      "type": "proposal",
+      "summary": "Create merge_gitignore() as a function (like merge_claude_md()) rather than inline code",
+      "status": "accepted",
+      "evidence": "Better code structure. Creating merge_gitignore() as a named function mirrors merge_claude_md() and merge_settings_json() patterns already in install.sh.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Better code structure. Creating merge_gitignore() as a named function mirrors merge_claude_md() and merge_settings_json() patterns already in install.sh.",
+          "timestamp": "2026-03-20T13:50:05Z"
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "iteration": 1,
+      "type": "proposal",
+      "summary": "validate.sh and uninstall.sh are follow-ups, not in-scope per strict AC reading",
+      "status": "rejected",
+      "evidence": "Disagree. The sentinel merge pattern for .gitignore (AC3) naturally requires uninstall.sh cleanup and validate.sh verification. The CLAUDE.md sentinel already has matching entries in both files. Omitting them would leave incomplete lifecycle management. These are lightweight additions using proven patterns, not scope creep.",
+      "history": [
+        {
+          "from": "open",
+          "to": "rejected",
+          "evidence": "Disagree. The sentinel merge pattern for .gitignore (AC3) naturally requires uninstall.sh cleanup and validate.sh verification. The CLAUDE.md sentinel already has matching entries in both files. Omitting them would leave incomplete lifecycle management. These are lightweight additions using proven patterns, not scope creep.",
+          "timestamp": "2026-03-20T13:50:14Z"
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "iteration": 2,
+      "type": "proposal",
+      "summary": "Legacy awk migration is incomplete: stops skipping at # PM Intelligence header, leaving that line and .pm/ behind. Use exact block boundaries from real legacy payload.",
+      "status": "accepted",
+      "evidence": "Correct. The awk pattern /^# Claude Code/ will match but then stop at '# PM Intelligence' line since it does not start with . or \\!. Fix: use the exact legacy block boundaries -- match from '# Claude Code' through '.pm/' using a more precise end marker.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Correct. The awk pattern /^# Claude Code/ will match but then stop at '# PM Intelligence' line since it does not start with . or \\!. Fix: use the exact legacy block boundaries -- match from '# Claude Code' through '.pm/' using a more precise end marker.",
+          "timestamp": "2026-03-20T13:57:51Z"
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "iteration": 2,
+      "type": "proposal",
+      "summary": "Define validate.sh --fix behavior: either rebuild sentinel block from template, or make .gitignore validation read-only and tell users to run install.sh --update",
+      "status": "accepted",
+      "evidence": "Good catch. The validate.sh --fix should check for sentinel block and if missing, tell user to run install.sh --update. Do not rebuild from template in validate.sh (that duplicates installer logic). Make validation read-only for sentinel presence, keep --fix only for blanket .claude conversion.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Good catch. The validate.sh --fix should check for sentinel block and if missing, tell user to run install.sh --update. Do not rebuild from template in validate.sh (that duplicates installer logic). Make validation read-only for sentinel presence, keep --fix only for blanket .claude conversion.",
+          "timestamp": "2026-03-20T13:58:02Z"
+        }
+      ]
+    },
+    {
+      "id": "P9",
+      "iteration": 2,
+      "type": "proposal",
+      "summary": "Add automated regression tests for .gitignore lifecycle (no gitignore, existing sentinel, legacy block, blanket .claude, uninstall) instead of manual-only verification for AC3",
+      "status": "rejected",
+      "evidence": "The install.sh/uninstall.sh are integration scripts that operate on real repos. Shell-based unit tests for the merge function would require significant fixture setup (temp dirs, fake repos) and would not provide proportional value. The acceptance criteria specify Shippy dogfooding as verification. The command guard already has comprehensive automated tests. Manual verification against the real Shippy repo is the right level for AC3.",
+      "history": [
+        {
+          "from": "open",
+          "to": "rejected",
+          "evidence": "The install.sh/uninstall.sh are integration scripts that operate on real repos. Shell-based unit tests for the merge function would require significant fixture setup (temp dirs, fake repos) and would not provide proportional value. The acceptance criteria specify Shippy dogfooding as verification. The command guard already has comprehensive automated tests. Manual verification against the real Shippy repo is the right level for AC3.",
+          "timestamp": "2026-03-20T13:58:11Z"
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "iteration": 2,
+      "type": "proposal",
+      "summary": "Add .vscode/ to target-repo template (templates/gitignore-section.txt) to match toolkit .gitignore and HoV coverage",
+      "status": "accepted",
+      "evidence": "Consistency gap. The toolkit .gitignore includes .vscode/ and HoV includes it. The target template should also include it for consistent coverage.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Consistency gap. The toolkit .gitignore includes .vscode/ and HoV includes it. The target template should also include it for consistent coverage.",
+          "timestamp": "2026-03-20T13:58:20Z"
+        }
+      ]
+    },
+    {
+      "id": "P11",
+      "iteration": 3,
+      "type": "proposal",
+      "summary": "BLOCKING: Target template unignores .claude/memory/ but toolkit scripts write local state there (events.jsonl, decisions.jsonl, etc). Need to re-ignore those files after unignoring the directory, or only unignore .claude/memory/.gitkeep",
+      "status": "accepted",
+      "evidence": "Critical catch. The template uses !.claude/memory/ to unignore the directory, but .claude/memory/ contains local state files (events.jsonl, decisions.jsonl, outcomes.jsonl, board-cache.json, review-findings.jsonl) that should NOT be committed. Fix: after !.claude/memory/ add specific re-ignores for the local state files, matching the pattern already in the toolkit .gitignore.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Critical catch. The template uses !.claude/memory/ to unignore the directory, but .claude/memory/ contains local state files (events.jsonl, decisions.jsonl, outcomes.jsonl, board-cache.json, review-findings.jsonl) that should NOT be committed. Fix: after !.claude/memory/ add specific re-ignores for the local state files, matching the pattern already in the toolkit .gitignore.",
+          "timestamp": "2026-03-20T14:03:46Z"
+        }
+      ]
+    },
+    {
+      "id": "P12",
+      "iteration": 3,
+      "type": "proposal",
+      "summary": "SUGGESTION: Update validate.sh help text (lines 55, 61) to match new read-only sentinel check behavior instead of advertising .codex-work/ and .pm/ auto-fixes",
+      "status": "accepted",
+      "evidence": "Good consistency catch. The help text and auto-fix documentation should match the actual behavior.",
+      "history": [
+        {
+          "from": "open",
+          "to": "accepted",
+          "evidence": "Good consistency catch. The help text and auto-fix documentation should match the actual behavior.",
+          "timestamp": "2026-03-20T14:03:51Z"
+        }
+      ]
+    }
+  ]
+}
