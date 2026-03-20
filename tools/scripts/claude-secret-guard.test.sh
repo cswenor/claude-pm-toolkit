@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2088  # Tilde in quoted test labels is intentional display text
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -238,7 +239,6 @@ fi
 echo ""
 echo "--- Exact path tests ---"
 
-# shellcheck disable=SC2088  # Tilde is intentional display text, not expansion
 assert_path_sensitive "~/.codex/config.toml"       "$HOME/.codex/config.toml"
 assert_path_sensitive "~/.pm/state.db"               "$HOME/.pm/state.db"
 assert_path_sensitive "~/.aws/credentials"          "$HOME/.aws/credentials"
