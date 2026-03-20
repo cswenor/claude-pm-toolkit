@@ -1,0 +1,45 @@
+# Claude Code local state (team settings committed via .claude/settings.json)
+.claude/*
+!.claude/commands/
+!.claude/skills/
+!.claude/settings.json
+!.claude/memory/
+.claude/memory/board-cache.json
+.claude/memory/decisions.jsonl
+.claude/memory/outcomes.jsonl
+.claude/memory/events.jsonl
+.claude/memory/review-findings.jsonl
+.claude/settings.local.json
+.claude/plans/
+
+# Claude Code agent worktrees
+.claude/worktrees/
+
+# Codex collaborative planning workspace
+.codex-work/
+
+# PM Intelligence local database
+.pm/
+
+# Plans (session-specific)
+plans/
+.plans/
+
+# Secrets - NEVER commit these
+*.pem
+*.key
+credentials.json
+service-account.json
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

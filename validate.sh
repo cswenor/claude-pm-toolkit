@@ -52,13 +52,12 @@ CHECKS PERFORMED
   5. MCP server build (build/index.js, build/cli.js exist)
   6. CLAUDE.md sentinel block integrity
   7. settings.json validity and hook configuration
-  8. .gitignore rules (.claude, .codex-work/, .pm/)
+  8. .gitignore rules (sentinel block, .claude, .codex-work/, .pm/)
   9. GitHub connectivity (optional, non-blocking)
 
 AUTO-FIX (--fix)
   - Script permissions: chmod +x on non-executable .sh files
   - .gitignore: convert blanket .claude → selective entries
-  - .gitignore: add .codex-work/ and .pm/ if missing
 
 EXIT CODES
   0 - All checks passed
@@ -420,6 +419,21 @@ log_section "8. Gitignore"
 
 GITIGNORE="$TARGET/.gitignore"
 if [[ -f "$GITIGNORE" ]]; then
+  # Check for sentinel-managed block
+  GI_SENTINEL_START="# claude-pm-toolkit:start"
+  GI_SENTINEL_END="# claude-pm-toolkit:end"
+  if grep -qF "$GI_SENTINEL_START" "$GITIGNORE" && grep -qF "$GI_SENTINEL_END" "$GITIGNORE"; then
+    GI_SENTINEL_LINES=$(awk '/# claude-pm-toolkit:start/{found=1;next} /# claude-pm-toolkit:end/{found=0} found{c++} END{print c+0}' "$GITIGNORE")
+    if [[ "$GI_SENTINEL_LINES" -gt 0 ]]; then
+      pass ".gitignore sentinel block present ($GI_SENTINEL_LINES lines of content)"
+    else
+      fail ".gitignore sentinel block is empty (start/end markers present but no content)"
+    fi
+  else
+    warn "No claude-pm-toolkit sentinel block in .gitignore — run install.sh --update to add .gitignore management"
+  fi
+
+  # Check for blanket .claude ignore (still needed for repos not yet updated)
   if grep -qE '^\.claude/?$' "$GITIGNORE"; then
     if $FIX_MODE; then
       awk '
@@ -440,28 +454,6 @@ if [[ -f "$GITIGNORE" ]]; then
     fi
   else
     pass ".claude not blanket-gitignored"
-  fi
-
-  if grep -qF '.codex-work/' "$GITIGNORE"; then
-    pass ".codex-work/ is gitignored"
-  else
-    warn ".codex-work/ not gitignored (needed for collaborative planning)"
-    if $FIX_MODE; then
-      echo '.codex-work/' >> "$GITIGNORE"
-      FIXED=$((FIXED+1))
-      pass ".codex-work/ — FIXED (added to .gitignore)"
-    fi
-  fi
-
-  if grep -qF '.pm/' "$GITIGNORE"; then
-    pass ".pm/ is gitignored"
-  else
-    warn ".pm/ not gitignored (SQLite database should not be committed)"
-    if $FIX_MODE; then
-      echo '.pm/' >> "$GITIGNORE"
-      FIXED=$((FIXED+1))
-      pass ".pm/ — FIXED (added to .gitignore)"
-    fi
   fi
 else
   warn "No .gitignore found"

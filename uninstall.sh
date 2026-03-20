@@ -301,6 +301,31 @@ else
   log_info "No toolkit targets found in Makefile"
 fi
 
+# Clean .gitignore sentinel block
+log_section ".gitignore entries"
+GITIGNORE="$TARGET/.gitignore"
+GI_SENTINEL_START="# claude-pm-toolkit:start"
+GI_SENTINEL_END="# claude-pm-toolkit:end"
+if [[ -f "$GITIGNORE" ]] && grep -qF "$GI_SENTINEL_START" "$GITIGNORE"; then
+  if $CONFIRM; then
+    tmp_gi=$(mktemp)
+    TEMP_FILES+=("$tmp_gi")
+    awk -v start="$GI_SENTINEL_START" -v end="$GI_SENTINEL_END" \
+        'BEGIN { skip=0 }
+         $0 == start { skip=1; next }
+         $0 == end   { skip=0; next }
+         !skip       { print }
+        ' "$GITIGNORE" > "$tmp_gi"
+    mv "$tmp_gi" "$GITIGNORE"
+    log_ok "Removed sentinel block from .gitignore"
+  else
+    log_info "Would remove sentinel block from .gitignore"
+  fi
+  removed_count=$((removed_count + 1))
+else
+  log_info "No sentinel block found in .gitignore"
+fi
+
 # Remove pm-intelligence from .mcp.json
 log_section "MCP configuration (.mcp.json)"
 MCP_JSON="$TARGET/.mcp.json"
