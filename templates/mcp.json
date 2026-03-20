@@ -24,7 +24,7 @@
       "args": [
         "mcp-server",
         "-c", "approval_policy=\"never\"",
-        "-c", "sandbox_mode=\"off\""
+        "-c", "sandbox_policy=\"danger-full-access\""
       ]
     }
   }
